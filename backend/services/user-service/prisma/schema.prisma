@@ -1,14 +1,63 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model Account {
+  id            String   @id @default(uuid())
+  phone         String   @unique
+  password_hash String
+  account_type  String
+  status        String
+  created_at    DateTime @default(now())
+
+  user          User?
+}
+
+model User {
+  id          String   @id @default(uuid())
+  account_id  String   @unique
+  full_name   String?
+  birth_date  DateTime?
+  email       String?  @unique
+  avatar_url  String?
+
+  account     Account  @relation(fields: [account_id], references: [id])
+  memberships ConversationMember[]
+}
+
+model Friendship {
+  id           String   @id @default(uuid())
+  requester_id String
+  receiver_id  String
+  nickname     String?
+  note         String?
+  is_favorite  Boolean  @default(false)
+  status       String
+  created_at   DateTime @default(now())
+}
+
+model Conversation {
+  id              String   @id @default(uuid())
+  type            String
+  name            String?
+  created_by      String
+  last_message_at DateTime?
+
+  members         ConversationMember[]
+}
+
+model ConversationMember {
+  conversation_id String
+  user_id         String
+  role            String
+  joined_at       DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversation_id], references: [id])
+  user         User         @relation(fields: [user_id], references: [id])
+
+  @@id([conversation_id, user_id])
 }

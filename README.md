@@ -3,7 +3,7 @@
 ## Tech Stack
 - Frontend: Next.js, React Native
 - Backend: Node.js
-- Database: MySQL, DynamoDB
+- Database: PostgreSQL, DynamoDB
 - Architecture: Microservices
 
 ## Features
