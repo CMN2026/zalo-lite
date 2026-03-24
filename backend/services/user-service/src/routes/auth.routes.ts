@@ -1,20 +1,30 @@
 import { Router } from "express";
-import { AuthController } from "../controllers/auth.controller";
-import { authMiddleware } from "../middlewares/auth.middleware";
+import { body } from "express-validator";
+import { AuthController } from "../controllers/auth.controller.js";
+import { validateRequest } from "../middlewares/validate.middleware.js";
 
-const router = Router();
-const authController = new AuthController();
+export const authRoutes = Router();
 
-// Public routes
-router.post("/register", (req, res) => authController.register(req, res));
-router.post("/login", (req, res) => authController.login(req, res));
-
-// Protected routes
-router.post("/logout", authMiddleware, (req, res) =>
-  authController.logout(req, res)
+authRoutes.post(
+  "/register",
+  [
+    body("phone").trim().isLength({ min: 8, max: 20 }),
+    body("password").isLength({ min: 8, max: 72 }),
+    body("full_name").trim().isLength({ min: 2, max: 100 }),
+    body("email").optional().isEmail(),
+    body("birth_date").optional().isISO8601(),
+    body("gender").optional().isIn(["male", "female", "other"]),
+    validateRequest,
+  ],
+  AuthController.register,
 );
-router.get("/profile", authMiddleware, (req, res) =>
-  authController.getProfile(req, res)
-);
 
-export default router;
+authRoutes.post(
+  "/login",
+  [
+    body("phone").trim().isLength({ min: 8, max: 20 }),
+    body("password").isLength({ min: 8, max: 72 }),
+    validateRequest,
+  ],
+  AuthController.login,
+);

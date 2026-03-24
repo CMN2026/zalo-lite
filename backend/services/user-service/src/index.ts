@@ -1,33 +1,35 @@
 import "dotenv/config";
 import express from "express";
-import type { Request, Response, NextFunction } from "@types/express";
-import authRoutes from "./routes/auth.routes";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import { env } from "./config/env.js";
+import { authRoutes } from "./routes/auth.routes.js";
+import { userRoutes } from "./routes/user.routes.js";
+import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.disable("x-powered-by");
+app.use(helmet());
+app.use(
+  rateLimit({
+    windowMs: env.RATE_LIMIT_WINDOW_MS,
+    max: env.RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.use(express.json({ limit: "1mb" }));
 
-// Health check
-app.get("/health", (req, res) => {
-  res.json({ status: "OK", service: "user-service" });
+app.get("/health", (_req, res) => {
+  res.status(200).json({ service: "user-service", status: "ok" });
 });
 
-// Routes
-app.use("/api/auth", authRoutes);
+app.use("/auth", authRoutes);
+app.use("/users", userRoutes);
 
-// Error handling middleware
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error(err);
-  res.status(500).json({
-    success: false,
-    message: "Internal server error",
-  });
-});
+app.use(errorHandler);
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`User service running on port ${PORT}`);
+app.listen(env.PORT, () => {
+  console.log(`user-service listening on ${env.PORT}`);
 });

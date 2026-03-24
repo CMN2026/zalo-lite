@@ -1,39 +1,19 @@
-import type { Request, Response, NextFunction } from "@types/express";
-import type { JwtPayload } from "../utils/jwt";
-import { verifyToken } from "../utils/jwt";
+import type { Request, Response, NextFunction } from "express";
+import { verifyAccessToken } from "../utils/jwt.js";
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: JwtPayload;
-    }
+export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+  const token = extractToken(req);
+  if (!token) {
+    return res.status(401).json({ message: "missing_bearer_token" });
+  }
+
+  try {
+    req.auth = verifyAccessToken(token);
+    return next();
+  } catch {
+    return res.status(401).json({ message: "invalid_or_expired_token" });
   }
 }
-
-export const authMiddleware = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const token = extractToken(req);
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: "No token provided",
-      });
-    }
-
-    const decoded = verifyToken(token);
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: "Invalid or expired token",
-    });
-  }
-};
 
 function extractToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
@@ -42,7 +22,7 @@ function extractToken(req: Request): string | null {
   }
 
   const parts = authHeader.split(" ");
-  if (parts.length !== 2 || parts[0] !== "Bearer") {
+  if (parts.length !== 2 || parts[0] !== "Bearer" || !parts[1]) {
     return null;
   }
 

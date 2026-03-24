@@ -1,0 +1,95 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zalo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: zalo_user
+      POSTGRES_USER: zalo
+      POSTGRES_PASSWORD: zalo
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../backend/services/user-service/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zalo -d zalo_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: zalo-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: zalo-dynamodb-local
+    restart: unless-stopped
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    ports:
+      - "8000:8000"
+
+  user-service:
+    build:
+      context: ../../backend/services/user-service
+      dockerfile: Dockerfile
+    container_name: zalo-user-service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgres://zalo:zalo@postgres:5432/zalo_user
+      JWT_SECRET: super-strong-jwt-secret
+      JWT_EXPIRES_IN: 7d
+      JWT_ISSUER: zalo-lite-user-service
+      JWT_AUDIENCE: zalo-lite-clients
+      BCRYPT_ROUNDS: 10
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 200
+    ports:
+      - "3001:3001"
+
+  chat-service:
+    build:
+      context: ../../backend/services/chat-service
+      dockerfile: Dockerfile
+    container_name: zalo-chat-service
+    restart: unless-stopped
+    depends_on:
+      - user-service
+      - redis
+      - dynamodb-local
+    environment:
+      PORT: 3002
+      REDIS_URL: redis://redis:6379
+      DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      AWS_REGION: ap-southeast-1
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+      USER_SERVICE_BASE_URL: http://user-service:3001
+      JWT_SECRET: super-strong-jwt-secret
+      JWT_ISSUER: zalo-lite-user-service
+      JWT_AUDIENCE: zalo-lite-clients
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 300
+      REDIS_MESSAGE_CHANNEL: chat:messages
+      TABLE_CONVERSATIONS: conversations
+      TABLE_CONVERSATION_MEMBERS: conversation_members
+      TABLE_MESSAGES: messages
+      TABLE_FRIEND_REQUESTS: friend_requests
+      TABLE_FRIENDSHIPS: friendships
+    ports:
+      - "3002:3002"
+
+volumes:
+  postgres_data:
+  redis_data:

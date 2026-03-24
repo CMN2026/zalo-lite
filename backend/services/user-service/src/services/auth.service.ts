@@ -1,100 +1,123 @@
-import { AccountRepository } from "../repositories/account.repository";
-import { hashPassword, comparePassword } from "../utils/password";
-import { generateToken } from "../utils/jwt";
+import { HttpError } from "../utils/http-error.js";
+import { db } from "../config/db.js";
+import { AccountRepository } from "../repositories/account.repository.js";
+import { UserRepository } from "../repositories/user.repository.js";
+import { comparePassword, hashPassword } from "../utils/password.js";
+import { signAccessToken } from "../utils/jwt.js";
+
+type RegisterInput = {
+  phone: string;
+  password: string;
+  full_name: string;
+  birth_date?: string;
+  gender?: string;
+  email?: string;
+  account_type?: string;
+};
+
+type LoginInput = {
+  phone: string;
+  password: string;
+};
 
 export class AuthService {
-  private accountRepository: AccountRepository;
+  private readonly accountRepository = new AccountRepository();
+  private readonly userRepository = new UserRepository();
 
-  constructor() {
-    this.accountRepository = new AccountRepository();
-  }
-
-  async register(phone: string, password: string) {
-    // Check if account already exists
-    const existingAccount = await this.accountRepository.findByPhone(phone);
-    if (existingAccount) {
-      throw new Error("Account already exists");
+  async register(input: RegisterInput) {
+    const existing = await this.accountRepository.findByPhone(input.phone);
+    if (existing) {
+      throw new HttpError(409, "phone_already_registered");
     }
 
-    // Validate password
-    if (password.length < 6) {
-      throw new Error("Password must be at least 6 characters");
+    const passwordHash = await hashPassword(input.password);
+    const client = await db.connect();
+
+    let userId = "";
+    let fullName: string | null = null;
+    let avatarUrl: string | null = null;
+    try {
+      await client.query("BEGIN");
+      const account = await this.accountRepository.create(
+        {
+          phone: input.phone,
+          password_hash: passwordHash,
+          account_type: input.account_type ?? "standard",
+          status: "active",
+          email: input.email ?? null,
+        },
+        client,
+      );
+
+      const user = await this.userRepository.create(
+        {
+          account_id: account.id,
+          full_name: input.full_name,
+          birth_date: input.birth_date ?? null,
+          gender: input.gender ?? null,
+          avatar_url: null,
+        },
+        client,
+      );
+
+      await client.query("COMMIT");
+      userId = user.id;
+      fullName = user.full_name;
+      avatarUrl = user.avatar_url;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
 
-    // Hash password and create account
-    const passwordHash = await hashPassword(password);
-    const account = await this.accountRepository.create(phone, passwordHash);
-
-    // Generate token
-    const token = generateToken({
-      accountId: account.id,
-      userId: account.user.id,
-      phone: account.phone,
-    });
+    const token = signAccessToken({ user_id: userId });
 
     return {
-      success: true,
-      message: "Registration successful",
-      data: {
-        accountId: account.id,
-        userId: account.user.id,
-        phone: account.phone,
-        token,
+      token,
+      user: {
+        id: userId,
+        full_name: fullName,
+        phone: input.phone,
+        avatar_url: avatarUrl,
       },
     };
   }
 
-  async login(phone: string, password: string) {
-    // Find account by phone
-    const account = await this.accountRepository.findByPhone(phone);
+  async login(input: LoginInput) {
+    const account = await this.accountRepository.findByPhone(input.phone);
     if (!account) {
-      throw new Error("Invalid phone or password");
+      throw new HttpError(401, "invalid_credentials");
     }
 
-    // Verify password
-    const isPasswordValid = await comparePassword(password, account.password_hash);
-    if (!isPasswordValid) {
-      throw new Error("Invalid phone or password");
+    const isValidPassword = await comparePassword(
+      input.password,
+      account.password_hash,
+    );
+    if (!isValidPassword) {
+      throw new HttpError(401, "invalid_credentials");
     }
 
-    // Check account status
     if (account.status !== "active") {
-      throw new Error("Account is not active");
+      throw new HttpError(403, "account_inactive");
     }
 
-    // Generate token
-    const token = generateToken({
-      accountId: account.id,
-      userId: account.user!.id,
-      phone: account.phone,
-    });
+    await this.accountRepository.updateLastLoginAt(account.id);
+    const user = await this.userRepository.findByAccountId(account.id);
+    if (!user) {
+      throw new HttpError(500, "user_profile_missing");
+    }
+
+    const token = signAccessToken({ user_id: user.id });
 
     return {
-      success: true,
-      message: "Login successful",
-      data: {
-        accountId: account.id,
-        userId: account.user!.id,
+      token,
+      user: {
+        id: user.id,
+        full_name: user.full_name,
         phone: account.phone,
-        token,
+        avatar_url: user.avatar_url,
       },
     };
-  }
-
-  async logout(accountId: string) {
-    // In a real application, you might want to blacklist the token
-    // For now, we just return a success response
-    return {
-      success: true,
-      message: "Logout successful",
-    };
-  }
-
-  async verifyAccount(accountId: string) {
-    const account = await this.accountRepository.findById(accountId);
-    if (!account) {
-      throw new Error("Account not found");
-    }
-    return account;
   }
 }
