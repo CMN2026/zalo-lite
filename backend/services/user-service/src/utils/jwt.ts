@@ -1,26 +1,25 @@
 import jwt from "jsonwebtoken";
+import { env } from "../config/env.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret_key";
-const JWT_EXPIRES_IN = "7d";
-
-export interface JwtPayload {
-  accountId: string;
-  userId: string;
-  phone: string;
+type AccessTokenPayload = {
+  user_id: string;
+  iat?: number;
+  exp?: number;
+  iss?: string;
+  aud?: string;
 }
 
-export function generateToken(payload: JwtPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+export function signAccessToken(payload: { user_id: string }): string {
+  return jwt.sign(payload, env.JWT_SECRET, {
+    expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions["expiresIn"],
+    issuer: env.JWT_ISSUER,
+    audience: env.JWT_AUDIENCE,
+  });
 }
 
-export function verifyToken(token: string): JwtPayload {
-  return jwt.verify(token, JWT_SECRET) as JwtPayload;
-}
-
-export function decodeToken(token: string): JwtPayload | null {
-  try {
-    return jwt.decode(token) as JwtPayload;
-  } catch {
-    return null;
-  }
+export function verifyAccessToken(token: string): AccessTokenPayload {
+  return jwt.verify(token, env.JWT_SECRET, {
+    issuer: env.JWT_ISSUER,
+    audience: env.JWT_AUDIENCE,
+  }) as AccessTokenPayload;
 }
