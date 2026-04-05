@@ -36,7 +36,23 @@ export class AccountRepository {
     return result.rows[0] ?? null;
   }
 
-  async create(input: CreateAccountInput, client?: PoolClient): Promise<Account> {
+  async findByEmail(email: string): Promise<Account | null> {
+    const result = await db.query<Account>(
+      `
+      SELECT *
+      FROM accounts
+      WHERE email = $1
+      LIMIT 1
+      `,
+      [email],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async create(
+    input: CreateAccountInput,
+    client?: PoolClient,
+  ): Promise<Account> {
     const executor = client ?? db;
     const result = await executor.query<Account>(
       `
@@ -56,6 +72,17 @@ export class AccountRepository {
       ],
     );
     return result.rows[0];
+  }
+
+  async updateStatus(accountId: string, status: string): Promise<void> {
+    await db.query(
+      `
+      UPDATE accounts
+      SET status = $1, updated_at = NOW()
+      WHERE id = $2
+      `,
+      [status, accountId],
+    );
   }
 
   async updateLastLoginAt(accountId: string): Promise<void> {

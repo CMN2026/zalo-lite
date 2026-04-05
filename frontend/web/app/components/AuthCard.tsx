@@ -22,10 +22,16 @@ export default function AuthCard({
       {children}
 
       <div className="mt-6 text-center text-sm">
-        {footerText} 
-        <Link href={footerLink} className="text-blue-600 font-medium">
-          {footerLinkText}
-        </Link>
+        {footerText}
+        {footerLink ? (
+          <Link href={footerLink} className="text-blue-600 font-medium">
+            {footerLinkText}
+          </Link>
+        ) : (
+          footerLinkText && (
+            <span className="text-gray-600 font-medium"> {footerLinkText}</span>
+          )
+        )}
       </div>
 
       <div className="mt-4 flex gap-2">

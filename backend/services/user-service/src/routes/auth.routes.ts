@@ -28,3 +28,11 @@ authRoutes.post(
   ],
   AuthController.login,
 );
+
+authRoutes.get("/verify", AuthController.verify);
+
+authRoutes.post(
+  "/resend-verification",
+  [body("email").isEmail(), validateRequest],
+  AuthController.resendVerification,
+);

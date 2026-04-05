@@ -21,4 +21,30 @@ export class AuthController {
       next(error);
     }
   }
+
+  static async verify(req: Request, res: Response, next: NextFunction) {
+    try {
+      const token = String(req.query.token || "");
+      await authService.verifyEmail(token);
+      // redirect to frontend login with success
+      const frontend = process.env.FRONTEND_URL || "http://localhost:3000";
+      res.redirect(`${frontend}/login?verified=1`);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async resendVerification(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { email } = req.body;
+      const result = await authService.resendVerification(email);
+      res.status(200).json({ message: "resend_success", data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
