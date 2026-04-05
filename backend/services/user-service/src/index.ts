@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
@@ -11,6 +12,14 @@ const app = express();
 
 app.disable("x-powered-by");
 app.use(helmet());
+app.use(
+  cors({
+    origin: env.CORS_ORIGINS,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  }),
+);
 app.use(
   rateLimit({
     windowMs: env.RATE_LIMIT_WINDOW_MS,

@@ -8,6 +8,7 @@ type Env = {
   BCRYPT_ROUNDS: number;
   RATE_LIMIT_WINDOW_MS: number;
   RATE_LIMIT_MAX: number;
+  CORS_ORIGINS: string[];
 };
 
 function getEnv(name: string, fallback?: string): string {
@@ -16,6 +17,13 @@ function getEnv(name: string, fallback?: string): string {
     throw new Error(`Missing required env var: ${name}`);
   }
   return value;
+}
+
+function parseCorsOrigins(value: string): string[] {
+  return value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 }
 
 export const env: Env = {
@@ -28,4 +36,7 @@ export const env: Env = {
   BCRYPT_ROUNDS: Number(getEnv("BCRYPT_ROUNDS", "10")),
   RATE_LIMIT_WINDOW_MS: Number(getEnv("RATE_LIMIT_WINDOW_MS", "60000")),
   RATE_LIMIT_MAX: Number(getEnv("RATE_LIMIT_MAX", "200")),
+  CORS_ORIGINS: parseCorsOrigins(
+    getEnv("CORS_ORIGINS", "http://localhost:3000"),
+  ),
 };

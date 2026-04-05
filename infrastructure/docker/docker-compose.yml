@@ -55,6 +55,7 @@ services:
       BCRYPT_ROUNDS: 10
       RATE_LIMIT_WINDOW_MS: 60000
       RATE_LIMIT_MAX: 200
+      CORS_ORIGINS: http://localhost:3000
     ports:
       - "3001:3001"
 
