@@ -19,7 +19,10 @@ export default function LoginPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+<<<<<<< HEAD
           Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+=======
+>>>>>>> c0e7a92 (fix: cors)
         },
         body: JSON.stringify({
           phone,

@@ -13,7 +13,7 @@ export default function DashboardLayout() {
   return (
     <div className="flex h-screen w-full font-sans overflow-hidden bg-slate-50">
       
-      {/* Gọi Component Sidebar và truyền prop */}\
+      {/* Gọi Component Sidebar và truyền prop */}
       <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
 
       {/* Hiển thị Component động dựa vào State */}

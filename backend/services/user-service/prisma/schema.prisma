@@ -29,15 +29,12 @@ model User {
   memberships ConversationMember[]
 }
 
-model Friendship {
-  id           String   @id @default(uuid())
-  requester_id String
-  receiver_id  String
-  nickname     String?
-  note         String?
-  is_favorite  Boolean  @default(false)
-  status       String
-  created_at   DateTime @default(now())
+model OTP {
+  id String @id @default(uuid())
+  phone String @unique
+  otp_hash String
+  expired_at DateTime?
+  attempt_count Number
 }
 
 model Conversation {
