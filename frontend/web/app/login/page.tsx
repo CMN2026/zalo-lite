@@ -1,13 +1,58 @@
 "use client";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import AuthCard from "../components/AuthCard";
 
 export default function LoginPage() {
   const router = useRouter();
 
-  const handleLogin = (e: any) => {
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const handleLogin = async (e: any) => {
     e.preventDefault();
-    alert("Login success (demo)");
+    setError("");
+
+    try {
+      const res = await fetch("http://localhost:3001/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+        },
+        body: JSON.stringify({
+          phone,
+          password,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        // BE throw error => res.ok = false => show error message
+        if (data.message === "invalid_credentials") {
+          setError("Tài khoản hoặc mật khẩu không chính xác");
+        } else if (data.message === "account_inactive") {
+          setError("Tài khoản chưa kích hoạt");
+        } else {
+          setError("Lỗi hệ thống");
+        }
+        return;
+      }
+
+      // save token
+      localStorage.setItem("token", data.data.token);
+
+      // save user (optional)
+      localStorage.setItem("user", JSON.stringify(data.data.user));
+
+      // redirect
+      router.push("/");
+    } catch (err) {
+      setError("Có lỗi xảy ra, vui lòng thử lại");
+      console.error("Login error:", err);
+    }
   };
 
   return (
@@ -20,11 +65,13 @@ export default function LoginPage() {
     >
       <form onSubmit={handleLogin} className="space-y-4">
         <div>
-          <label className="text-sm">Email Address</label>
+          <label className="text-sm">Phone</label>
           <input
-            type="email"
+            type="text"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             className="w-full mt-1 p-2 border rounded-lg"
-            placeholder="name@example.com"
+            placeholder="Enter your phone..."
           />
         </div>
 
@@ -32,8 +79,10 @@ export default function LoginPage() {
           <label className="text-sm">Password</label>
           <input
             type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             className="w-full mt-1 p-2 border rounded-lg"
-            placeholder="********"
+            placeholder="Enter your password..."
           />
         </div>
 
@@ -43,6 +92,9 @@ export default function LoginPage() {
           </label>
           <span className="text-blue-600 cursor-pointer">Forgot password?</span>
         </div>
+
+        {/* ✅ HIỂN THỊ ERROR */}
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
         <button className="w-full bg-blue-600 text-white py-2 rounded-lg">
           Sign In
