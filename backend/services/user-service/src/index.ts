@@ -10,19 +10,6 @@ import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
 
-// CORS configuration
-app.use(cors({
-  origin: "http://localhost:3000",
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
-}));
-
-app.use((req, res, next) => {
-  console.log("Origin:", req.headers.origin);
-  next();
-});
-
 app.disable("x-powered-by");
 app.use(helmet());
 app.use(

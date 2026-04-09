@@ -1,122 +1,237 @@
-import { HttpError } from "../utils/http-error.js";
-import { db } from "../config/db.js";
-import { AccountRepository } from "../repositories/account.repository.js";
-import { UserRepository } from "../repositories/user.repository.js";
-import { comparePassword, hashPassword } from "../utils/password.js";
+import { AuthProvider, UserRole } from "@prisma/client";
+import { prisma } from "../config/db.js";
+import { env } from "../config/env.js";
 import { signAccessToken } from "../utils/jwt.js";
+import { verifyGoogleIdToken } from "../utils/google-auth.js";
+import { hashPassword, verifyPassword } from "../utils/password.js";
+import { HttpError } from "../utils/http-error.js";
+
+type GoogleAuthInput = {
+  idToken: string;
+  phone?: string | null;
+  fullName?: string | null;
+  avatarUrl?: string | null;
+};
 
 type RegisterInput = {
-  phone: string;
+  email: string;
   password: string;
-  full_name: string;
-  birth_date?: string;
-  gender?: string;
-  email?: string;
-  account_type?: string;
+  fullName: string;
+  phone?: string | null;
+  avatarUrl?: string | null;
 };
 
 type LoginInput = {
-  phone: string;
+  identifier: string;
   password: string;
 };
 
 export class AuthService {
-  private readonly accountRepository = new AccountRepository();
-  private readonly userRepository = new UserRepository();
-
-  async register(input: RegisterInput) {
-    const existing = await this.accountRepository.findByPhone(input.phone);
-    if (existing) {
-      throw new HttpError(409, "phone_already_registered");
-    }
-
+  async registerWithCredentials(input: RegisterInput) {
+    const email = input.email.toLowerCase().trim();
+    const phone = input.phone?.trim() || null;
     const passwordHash = await hashPassword(input.password);
-    const client = await db.connect();
 
-    let userId = "";
-    let fullName: string | null = null;
-    let avatarUrl: string | null = null;
-    try {
-      await client.query("BEGIN");
-      const account = await this.accountRepository.create(
-        {
-          phone: input.phone,
-          password_hash: passwordHash,
-          account_type: input.account_type ?? "standard",
-          status: "active",
-          email: input.email ?? null,
-        },
-        client,
-      );
-
-      const user = await this.userRepository.create(
-        {
-          account_id: account.id,
-          full_name: input.full_name,
-          birth_date: input.birth_date ?? null,
-          gender: input.gender ?? null,
-          avatar_url: null,
-        },
-        client,
-      );
-
-      await client.query("COMMIT");
-      userId = user.id;
-      fullName = user.full_name;
-      avatarUrl = user.avatar_url;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
+    if (phone) {
+      const occupied = await prisma.user.findUnique({ where: { phone } });
+      if (occupied) {
+        throw new HttpError(409, "phone_already_used");
+      }
     }
 
-    const token = signAccessToken({ user_id: userId });
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+      include: { localCredential: true },
+    });
 
-    return {
-      token,
-      user: {
-        id: userId,
-        full_name: fullName,
-        phone: input.phone,
-        avatar_url: avatarUrl,
-      },
-    };
+    if (existingUser?.localCredential) {
+      throw new HttpError(409, "email_already_registered");
+    }
+
+    const defaultRole = env.ADMIN_EMAILS.includes(email)
+      ? UserRole.ADMIN
+      : UserRole.USER;
+
+    const user = await prisma.$transaction(async (tx) => {
+      const targetUser = existingUser
+        ? await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              fullName: input.fullName,
+              phone,
+              avatarUrl: input.avatarUrl ?? existingUser.avatarUrl,
+            },
+          })
+        : await tx.user.create({
+            data: {
+              email,
+              fullName: input.fullName,
+              phone,
+              avatarUrl: input.avatarUrl,
+              role: defaultRole,
+            },
+          });
+
+      await tx.localCredential.create({
+        data: {
+          userId: targetUser.id,
+          passwordHash,
+        },
+      });
+
+      return targetUser;
+    });
+
+    return this.buildAuthResponse(user);
   }
 
-  async login(input: LoginInput) {
-    const account = await this.accountRepository.findByPhone(input.phone);
-    if (!account) {
+  async loginWithCredentials(input: LoginInput) {
+    const identifier = input.identifier.trim().toLowerCase();
+
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: identifier },
+          { phone: input.identifier.trim() },
+        ],
+      },
+      include: { localCredential: true },
+    });
+
+    if (!user || !user.localCredential) {
       throw new HttpError(401, "invalid_credentials");
     }
 
-    const isValidPassword = await comparePassword(
-      input.password,
-      account.password_hash,
-    );
-    if (!isValidPassword) {
-      throw new HttpError(401, "invalid_credentials");
-    }
-
-    if (account.status !== "active") {
+    if (!user.isActive) {
       throw new HttpError(403, "account_inactive");
     }
 
-    await this.accountRepository.updateLastLoginAt(account.id);
-    const user = await this.userRepository.findByAccountId(account.id);
-    if (!user) {
-      throw new HttpError(500, "user_profile_missing");
+    const ok = await verifyPassword(input.password, user.localCredential.passwordHash);
+    if (!ok) {
+      throw new HttpError(401, "invalid_credentials");
     }
 
-    const token = signAccessToken({ user_id: user.id });
+    return this.buildAuthResponse(user);
+  }
+
+  async loginWithGoogle(input: GoogleAuthInput) {
+    const identity = await verifyGoogleIdToken(input.idToken);
+    if (!identity.emailVerified) {
+      throw new HttpError(403, "google_email_not_verified");
+    }
+
+    if (input.phone) {
+      const occupied = await prisma.user.findUnique({ where: { phone: input.phone } });
+      if (occupied && occupied.email !== identity.email) {
+        throw new HttpError(409, "phone_already_used");
+      }
+    }
+
+    const existingIdentity = await prisma.authIdentity.findUnique({
+      where: {
+        provider_providerUserId: {
+          provider: AuthProvider.GOOGLE,
+          providerUserId: identity.sub,
+        },
+      },
+      include: { user: true },
+    });
+
+    if (existingIdentity) {
+      if (!existingIdentity.user.isActive) {
+        throw new HttpError(403, "account_inactive");
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id: existingIdentity.user.id },
+        data: {
+          fullName: input.fullName ?? existingIdentity.user.fullName,
+          avatarUrl: input.avatarUrl ?? existingIdentity.user.avatarUrl,
+          phone: input.phone ?? existingIdentity.user.phone,
+        },
+      });
+
+      await prisma.authIdentity.update({
+        where: { id: existingIdentity.id },
+        data: { lastLoginAt: new Date() },
+      });
+
+      return this.buildAuthResponse(updatedUser);
+    }
+
+    const defaultRole = env.ADMIN_EMAILS.includes(identity.email)
+      ? UserRole.ADMIN
+      : UserRole.USER;
+
+    const user = await prisma.$transaction(async (tx) => {
+      const existingUserByEmail = await tx.user.findUnique({
+        where: { email: identity.email },
+      });
+
+      const targetUser = existingUserByEmail
+        ? await tx.user.update({
+            where: { id: existingUserByEmail.id },
+            data: {
+              fullName:
+                input.fullName ?? identity.name ?? existingUserByEmail.fullName,
+              avatarUrl:
+                input.avatarUrl ??
+                identity.picture ??
+                existingUserByEmail.avatarUrl,
+              phone: input.phone ?? existingUserByEmail.phone,
+              role: existingUserByEmail.role,
+            },
+          })
+        : await tx.user.create({
+            data: {
+              email: identity.email,
+              fullName: input.fullName ?? identity.name ?? "New User",
+              avatarUrl: input.avatarUrl ?? identity.picture,
+              phone: input.phone,
+              role: defaultRole,
+            },
+          });
+
+      await tx.authIdentity.create({
+        data: {
+          userId: targetUser.id,
+          provider: AuthProvider.GOOGLE,
+          providerUserId: identity.sub,
+          lastLoginAt: new Date(),
+        },
+      });
+
+      return targetUser;
+    });
+
+    return this.buildAuthResponse(user);
+  }
+
+  private buildAuthResponse(user: {
+    id: string;
+    email: string;
+    fullName: string;
+    phone: string | null;
+    avatarUrl: string | null;
+    role: "USER" | "ADMIN";
+    plan: "FREE" | "PREMIUM";
+  }) {
+    const token = signAccessToken({
+      userId: user.id,
+      role: user.role,
+      plan: user.plan,
+    });
 
     return {
       token,
       user: {
         id: user.id,
-        full_name: user.full_name,
-        phone: account.phone,
-        avatar_url: user.avatar_url,
+        email: user.email,
+        fullName: user.fullName,
+        phone: user.phone,
+        avatarUrl: user.avatarUrl,
+        role: user.role,
+        plan: user.plan,
       },
     };
   }

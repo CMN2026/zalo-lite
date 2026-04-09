@@ -8,7 +8,8 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
   }
 
   try {
-    req.auth = verifyAccessToken(token);
+    const payload = verifyAccessToken(token);
+    req.auth = payload;
     return next();
   } catch {
     return res.status(401).json({ message: "invalid_or_expired_token" });

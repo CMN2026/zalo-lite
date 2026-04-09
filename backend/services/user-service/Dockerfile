@@ -7,7 +7,10 @@ RUN npm ci
 
 FROM deps AS build
 COPY tsconfig.json ./
+COPY prisma.config.ts ./
+COPY prisma ./prisma
 COPY src ./src
+RUN npm run prisma:generate
 RUN npm run build
 
 FROM node:22-alpine AS runtime
@@ -15,6 +18,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev
+COPY prisma.config.ts ./
+COPY prisma ./prisma
+RUN npx prisma generate
 COPY --from=build /app/dist ./dist
 EXPOSE 3001
 CMD ["node", "dist/index.js"]
