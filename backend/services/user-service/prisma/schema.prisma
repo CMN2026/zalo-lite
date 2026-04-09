@@ -4,57 +4,104 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-model Account {
-  id            String   @id @default(uuid())
-  phone         String   @unique
-  password_hash String
-  account_type  String
-  status        String
-  created_at    DateTime @default(now())
+enum UserRole {
+  USER
+  ADMIN
 
-  user          User?
+  @@map("user_role")
+}
+
+enum UserPlan {
+  FREE
+  PREMIUM
+
+  @@map("user_plan")
+}
+
+enum AuthProvider {
+  GOOGLE
+
+  @@map("auth_provider")
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  BLOCKED
+
+  @@map("friendship_status")
 }
 
 model User {
-  id          String   @id @default(uuid())
-  account_id  String   @unique
-  full_name   String?
-  birth_date  DateTime?
-  email       String?  @unique
-  avatar_url  String?
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique @db.VarChar(255)
+  phone     String?  @unique @db.VarChar(20)
+  fullName  String   @map("full_name") @db.VarChar(100)
+  avatarUrl String?  @map("avatar_url")
+  bio       String?  @db.VarChar(280)
+  role      UserRole @default(USER)
+  plan      UserPlan @default(FREE)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  account     Account  @relation(fields: [account_id], references: [id])
-  memberships ConversationMember[]
+  identities       AuthIdentity[]
+  localCredential  LocalCredential?
+  sentRequests     Friendship[] @relation("FriendshipRequester")
+  receivedRequests Friendship[] @relation("FriendshipAddressee")
+
+  @@index([phone], map: "idx_users_phone")
+  @@index([role], map: "idx_users_role")
+  @@map("users")
 }
 
-model OTP {
-  id String @id @default(uuid())
-  phone String @unique
-  otp_hash String
-  expired_at DateTime?
-  attempt_count Number
+model LocalCredential {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @unique @map("user_id") @db.Uuid
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("local_credentials")
 }
 
-model Conversation {
-  id              String   @id @default(uuid())
-  type            String
-  name            String?
-  created_by      String
-  last_message_at DateTime?
+model AuthIdentity {
+  id             String       @id @default(uuid()) @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  provider       AuthProvider
+  providerUserId String       @map("provider_user_id") @db.VarChar(255)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastLoginAt    DateTime?    @map("last_login_at") @db.Timestamptz(6)
 
-  members         ConversationMember[]
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId], map: "idx_auth_identities_user_id")
+  @@map("auth_identities")
 }
 
-model ConversationMember {
-  conversation_id String
-  user_id         String
-  role            String
-  joined_at       DateTime @default(now())
+model Friendship {
+  id          String           @id @default(uuid()) @db.Uuid
+  requesterId String           @map("requester_id") @db.Uuid
+  addresseeId String           @map("addressee_id") @db.Uuid
+  status      FriendshipStatus @default(PENDING)
+  message     String?          @db.VarChar(150)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  respondedAt DateTime?        @map("responded_at") @db.Timestamptz(6)
 
-  conversation Conversation @relation(fields: [conversation_id], references: [id])
-  user         User         @relation(fields: [user_id], references: [id])
+  requester User @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
 
-  @@id([conversation_id, user_id])
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status], map: "idx_friendships_addressee_status")
+  @@index([requesterId, status], map: "idx_friendships_requester_status")
+  @@map("friendships")
 }

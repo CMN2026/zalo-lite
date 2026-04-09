@@ -1,7 +1,9 @@
 declare namespace Express {
   interface Request {
     auth?: {
-      user_id: string;
+      userId: string;
+      role: "USER" | "ADMIN";
+      plan: "FREE" | "PREMIUM";
       iat?: number;
       exp?: number;
       iss?: string;
