@@ -48,6 +48,8 @@ services:
     environment:
       PORT: 3001
       DATABASE_URL: postgres://zalo:zalo@postgres:5432/zalo_user
+      GOOGLE_CLIENT_ID: ""
+      ADMIN_EMAILS: ""
       JWT_SECRET: super-strong-jwt-secret
       JWT_EXPIRES_IN: 7d
       JWT_ISSUER: zalo-lite-user-service

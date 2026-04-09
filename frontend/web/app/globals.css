@@ -26,6 +26,25 @@ body {
   font-family: var(--font-geist-sans), sans-serif;
 }
 
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(22, 99, 232, 0.18);
+}
+
 .ott-card {
   border: 1px solid rgba(145, 158, 182, 0.2);
   border-radius: 14px;
