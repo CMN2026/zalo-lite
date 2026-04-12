@@ -12,6 +12,8 @@ COPY prisma ./prisma
 COPY src ./src
 RUN npm run prisma:generate
 RUN npm run build
+# Copy proto files to dist for runtime
+RUN cp src/grpc/*.proto dist/grpc/
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
