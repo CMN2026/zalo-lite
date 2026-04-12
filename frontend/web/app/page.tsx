@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../app/components/Sidebar";
 import ChatView from "../app/components/ChatView";
+import ChatbotView from "../app/components/ChatbotView";
 import FriendsView from "../app/components/FriendsView";
 import HistoryView from "../app/components/HistoryView";
 import ProfileView from "../app/components/ProfileView";
@@ -39,19 +40,18 @@ export default function DashboardLayout() {
 
   return (
     <div className="flex h-screen w-full font-sans overflow-hidden bg-slate-50">
-      
       {/* Gọi Component Sidebar và truyền prop */}
       <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
 
       {/* Hiển thị Component động dựa vào State */}
       <div className="flex-1 flex overflow-hidden">
-        {currentView === 'chat' && <ChatView />}
-        {currentView === 'history' && <HistoryView />}
-        {currentView === 'stats' && <StatsView />}
-        {currentView === 'friends' && <FriendsView />}
-        {currentView === 'profile' && <ProfileView />}
+        {currentView === "chat" && <ChatView />}
+        {currentView === "chatbot" && <ChatbotView />}
+        {currentView === "history" && <HistoryView />}
+        {currentView === "stats" && <StatsView />}
+        {currentView === "friends" && <FriendsView />}
+        {currentView === "profile" && <ProfileView />}
       </div>
-      
     </div>
   );
 }

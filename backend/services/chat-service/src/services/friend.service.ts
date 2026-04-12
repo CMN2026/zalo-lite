@@ -2,10 +2,13 @@ import { redisPublisher } from "../config/redis.js";
 import { HttpError } from "../utils/http-error.js";
 import { FriendRepository } from "../repositories/friend.repository.js";
 import { UserClientService } from "./user-client.service.js";
+import { env } from "../config/env.js";
 
 export class FriendService {
   private readonly friendRepository = new FriendRepository();
-  private readonly userClient = new UserClientService();
+  private readonly userClient = new UserClientService(
+    env.USER_SERVICE_BASE_URL,
+  );
 
   async sendRequest(senderId: string, receiverId: string) {
     if (senderId === receiverId) {
@@ -36,8 +39,14 @@ export class FriendService {
     }
 
     await this.friendRepository.markRequestAccepted(request.id);
-    await this.friendRepository.createFriendship(request.sender_id, request.receiver_id);
-    await this.friendRepository.createFriendship(request.receiver_id, request.sender_id);
+    await this.friendRepository.createFriendship(
+      request.sender_id,
+      request.receiver_id,
+    );
+    await this.friendRepository.createFriendship(
+      request.receiver_id,
+      request.sender_id,
+    );
 
     return { accepted_request_id: request.id };
   }
@@ -55,7 +64,9 @@ export class FriendService {
         }
 
         const profile = await this.userClient.getUserById(item.friend_id);
-        await redisPublisher.set(cacheKey, JSON.stringify(profile), { EX: 300 });
+        await redisPublisher.set(cacheKey, JSON.stringify(profile), {
+          EX: 300,
+        });
 
         return { ...item, profile };
       }),
@@ -68,7 +79,10 @@ export class FriendService {
       users
         .filter((item) => item.id !== userId)
         .map(async (item) => {
-          const isFriend = await this.friendRepository.isFriend(userId, item.id);
+          const isFriend = await this.friendRepository.isFriend(
+            userId,
+            item.id,
+          );
           return {
             ...item,
             is_friend: isFriend,

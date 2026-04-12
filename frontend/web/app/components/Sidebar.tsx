@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarChart2,
+  Bot,
   FileText,
   LogIn,
   LogOut,
@@ -10,11 +11,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import {
-  clearAuthSession,
-  getSavedAuthUser,
-  type AuthUser,
-} from "../lib/auth";
+import { clearAuthSession, getSavedAuthUser, type AuthUser } from "../lib/auth";
 
 interface SidebarProps {
   currentView: string;
@@ -67,24 +64,46 @@ export default function Sidebar({ currentView, setCurrentView }: SidebarProps) {
         )}
       </button>
 
-      <div onClick={() => setCurrentView('chat')} className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === 'chat' ? 'text-blue-600 bg-white shadow-sm' : 'hover:text-white'}`}>
+      <div
+        onClick={() => setCurrentView("chat")}
+        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "chat" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
+      >
         <MessageSquare className="w-6 h-6" />
       </div>
 
-      <div onClick={() => setCurrentView('history')} className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === 'history' ? 'text-blue-600 bg-white shadow-sm' : 'hover:text-white'}`}>
+      <div
+        onClick={() => setCurrentView("chatbot")}
+        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "chatbot" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
+      >
+        <Bot className="w-6 h-6" />
+      </div>
+
+      <div
+        onClick={() => setCurrentView("history")}
+        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "history" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
+      >
         <FileText className="w-6 h-6" />
       </div>
 
-      <div onClick={() => setCurrentView('stats')} className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === 'stats' ? 'text-blue-600 bg-white shadow-sm' : 'hover:text-white'}`}>
+      <div
+        onClick={() => setCurrentView("stats")}
+        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "stats" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
+      >
         <BarChart2 className="w-6 h-6" />
       </div>
 
-      <div onClick={() => setCurrentView('friends')} className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === 'friends' ? 'text-blue-600 bg-white shadow-sm' : 'hover:text-white'}`}>
+      <div
+        onClick={() => setCurrentView("friends")}
+        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "friends" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
+      >
         <Users className="w-6 h-6" />
       </div>
 
       <div className="flex-grow"></div>
-      <div onClick={() => setCurrentView('profile')} className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === 'profile' ? 'text-blue-600 bg-white shadow-sm' : 'hover:text-white'}`}>
+      <div
+        onClick={() => setCurrentView("profile")}
+        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "profile" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
+      >
         <UserRound className="w-6 h-6" />
       </div>
       <Settings className="w-6 h-6 hover:text-white cursor-pointer transition-colors" />

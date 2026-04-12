@@ -32,7 +32,7 @@ export default function RegisterPage() {
         email,
         phone: phone || undefined, // ✅ gửi nếu có
         password,
-        avatarUrl: null, // ✅ luôn null
+        avatarUrl: undefined, // ✅ luôn undefined
       });
 
       saveAuthSession(response.data.token, response.data.user);
@@ -156,9 +156,7 @@ export default function RegisterPage() {
           </div>
 
           {/* Error */}
-          {error && (
-            <p className="text-red-500 text-sm text-center">{error}</p>
-          )}
+          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
           {/* Button */}
           <button
