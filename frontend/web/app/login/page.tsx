@@ -107,8 +107,13 @@ export default function LoginPage() {
 
         {/* Footer */}
         <div className="text-center text-sm text-slate-500 mt-6">
-          Don't have an account?{" "}
-          <span className="text-blue-600 cursor-pointer">Sign Up</span>
+          Don&apos;t have an account?{" "}
+          <span
+            onClick={() => router.push("/register")}
+            className="text-blue-600 cursor-pointer"
+          >
+            Sign Up
+          </span>
         </div>
 
         {/* Social */}
