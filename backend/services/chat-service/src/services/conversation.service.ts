@@ -2,8 +2,14 @@ import { HttpError } from "../utils/http-error.js";
 import {
   ConversationRepository,
   type Conversation,
+  type ConversationMember,
 } from "../repositories/conversation.repository.js";
 import { MessageRepository } from "../repositories/message.repository.js";
+import { UserClientService } from "./user-client.service.js";
+
+export type ConversationWithMembers = Conversation & {
+  member_ids: string[];
+};
 
 export type ConversationWithMembers = Conversation & {
   member_ids: string[];
@@ -12,6 +18,7 @@ export type ConversationWithMembers = Conversation & {
 export class ConversationService {
   private readonly conversationRepository = new ConversationRepository();
   private readonly messageRepository = new MessageRepository();
+  private readonly userClient = new UserClientService();
 
   async createConversation(
     creatorId: string,
@@ -24,6 +31,10 @@ export class ConversationService {
       if (withoutCreator.length !== 1) {
         throw new HttpError(400, "direct_conversation_requires_one_receiver");
       }
+    }
+
+    if (input.type === "group" && uniqueMembers.length < 3) {
+      throw new HttpError(400, "group_requires_at_least_three_members");
     }
 
     if (uniqueMembers.length < 2) {
@@ -102,5 +113,26 @@ export class ConversationService {
     if (!isMember) {
       throw new HttpError(403, "not_a_conversation_member");
     }
+    return members;
+  }
+
+  private async assertGroupConversation(conversationId: string) {
+    const conversation = await this.conversationRepository.getConversationById(conversationId);
+    if (!conversation) {
+      throw new HttpError(404, "conversation_not_found");
+    }
+    if (conversation.type !== "group") {
+      throw new HttpError(400, "operation_only_for_group_conversations");
+    }
+    return conversation;
+  }
+
+  private async assertOwner(conversationId: string, userId: string) {
+    const members = await this.conversationRepository.getConversationMembers(conversationId);
+    const member = members.find((m) => m.user_id === userId);
+    if (!member || member.role !== "owner") {
+      throw new HttpError(403, "only_owner_can_perform_this_action");
+    }
   }
 }
+

@@ -2,6 +2,7 @@ import { Router, type Request, type RequestHandler } from "express";
 import { body } from "express-validator";
 import { AuthController } from "../controllers/auth.controller.js";
 import { validateRequest } from "../middlewares/validate.middleware.js";
+import { authMiddleware } from "../middlewares/auth.middleware.js";
 
 export const authRoutes = Router();
 
@@ -19,10 +20,10 @@ const normalizeNameFieldsMiddleware: RequestHandler = (req, _res, next) => {
 authRoutes.post(
   "/register",
   [
+    normalizeNameFieldsMiddleware,
     body().custom((_, { req }) => {
       const fullName = req.body?.fullName;
-      const fullNameSnake = req.body?.full_name;
-      if (!fullName && !fullNameSnake) {
+      if (!fullName) {
         throw new Error("fullName_required");
       }
 
@@ -30,14 +31,7 @@ authRoutes.post(
     }),
     body("email").trim().isEmail(),
     body("password").isLength({ min: 8, max: 72 }),
-    body("fullName")
-      .optional({ nullable: true })
-      .trim()
-      .isLength({ min: 2, max: 100 }),
-    body("full_name")
-      .optional({ nullable: true })
-      .trim()
-      .isLength({ min: 2, max: 100 }),
+    body("fullName").trim().isLength({ min: 2, max: 100 }),
     body("phone")
       .optional({ nullable: true })
       .trim()
@@ -46,7 +40,6 @@ authRoutes.post(
       .optional({ nullable: true })
       .isURL()
       .withMessage("avatarUrl_must_be_valid_url"),
-    normalizeNameFieldsMiddleware,
     validateRequest,
   ],
   AuthController.register,
@@ -65,6 +58,7 @@ authRoutes.post(
 authRoutes.post(
   "/google",
   [
+    normalizeNameFieldsMiddleware,
     body("idToken").trim().notEmpty(),
     body("phone")
       .optional({ nullable: true })
@@ -74,16 +68,19 @@ authRoutes.post(
       .optional({ nullable: true })
       .trim()
       .isLength({ min: 2, max: 100 }),
-    body("full_name")
-      .optional({ nullable: true })
-      .trim()
-      .isLength({ min: 2, max: 100 }),
     body("avatarUrl")
       .optional({ nullable: true })
       .isURL()
       .withMessage("avatarUrl_must_be_valid_url"),
-    normalizeNameFieldsMiddleware,
     validateRequest,
   ],
   AuthController.loginWithGoogle,
 );
+
+/**
+ * POST /auth/verify
+ * Verify JWT token and return user info
+ * Used by other microservices (saga pattern)
+ * Headers: Authorization: Bearer <token>
+ */
+authRoutes.post("/verify", authMiddleware, AuthController.verify);

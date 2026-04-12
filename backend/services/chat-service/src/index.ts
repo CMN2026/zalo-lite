@@ -17,6 +17,7 @@ import { messageRoutes } from "./routes/message.routes.js";
 import { verifyToken } from "./utils/jwt.js";
 import { MessageService } from "./services/message.service.js";
 import { ConversationRepository } from "./repositories/conversation.repository.js";
+import { initUserClientService } from "./services/user-client.service.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -52,6 +53,7 @@ app.use(
 );
 app.use(express.json({ limit: "1mb" }));
 
+// Health check
 app.get("/health", (_req, res) => {
   res.status(200).json({ service: "chat-service", status: "ok" });
 });
@@ -64,6 +66,9 @@ app.use("/friends", friendRoutes);
 app.use("/conversations", conversationRoutes);
 app.use("/messages", messageRoutes);
 app.use(errorHandler);
+
+// Initialize user client service
+initUserClientService(env.USER_SERVICE_BASE_URL);
 
 io.use((socket, next) => {
   const headerToken = socket.handshake.headers.authorization;
