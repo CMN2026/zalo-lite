@@ -15,6 +15,7 @@ type AuthPayload = {
 const env = {
 	PORT: Number(process.env.PORT ?? 3000),
 	USER_SERVICE_URL: process.env.USER_SERVICE_URL ?? "http://localhost:3001",
+	CHAT_SERVICE_URL: process.env.CHAT_SERVICE_URL ?? "http://localhost:3002",
 	JWT_SECRET: process.env.JWT_SECRET ?? "dev-secret",
 	JWT_ISSUER: process.env.JWT_ISSUER ?? "zalo-lite-user-service",
 	JWT_AUDIENCE: process.env.JWT_AUDIENCE ?? "zalo-lite-clients",
@@ -84,6 +85,28 @@ app.use(
 		target: env.USER_SERVICE_URL,
 		changeOrigin: true,
 		pathRewrite: { "^/api/admin/users": "/users/admin/list" },
+	}),
+);
+
+app.use(
+	"/api/conversations",
+	authenticateJwt,
+	authorizeRoles("USER", "ADMIN"),
+	createProxyMiddleware({
+		target: env.CHAT_SERVICE_URL,
+		changeOrigin: true,
+		pathRewrite: { "^/api/conversations": "/conversations" },
+	}),
+);
+
+app.use(
+	"/api/friends",
+	authenticateJwt,
+	authorizeRoles("USER", "ADMIN"),
+	createProxyMiddleware({
+		target: env.CHAT_SERVICE_URL,
+		changeOrigin: true,
+		pathRewrite: { "^/api/friends": "/friends" },
 	}),
 );
 
