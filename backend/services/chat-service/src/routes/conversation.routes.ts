@@ -11,10 +11,16 @@ conversationRoutes.post(
     body("type").isIn(["direct", "group"]),
     body("name").optional().isLength({ min: 1, max: 100 }),
     body("member_ids").isArray({ min: 1 }),
-    body("member_ids.*").isUUID(),
+    body("member_ids.*").isString(),
     validateRequest,
   ],
   ConversationController.create,
+);
+
+conversationRoutes.post(
+  "/direct",
+  [body("user_id").isString().notEmpty(), validateRequest],
+  ConversationController.getOrCreateDirect,
 );
 
 conversationRoutes.get("/", ConversationController.list);
@@ -22,7 +28,7 @@ conversationRoutes.get("/", ConversationController.list);
 conversationRoutes.get(
   "/:id/messages",
   [
-    param("id").isUUID(),
+    param("id").isString(),
     query("limit").optional().isInt({ min: 1, max: 100 }),
     validateRequest,
   ],

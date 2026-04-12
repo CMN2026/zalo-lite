@@ -3,6 +3,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
@@ -76,12 +77,24 @@ export class ConversationRepository {
     return (result.Item as Conversation | undefined) ?? null;
   }
 
-  async getConversationMembers(conversationId: string): Promise<ConversationMember[]> {
+  async getConversationMembers(
+    conversationId: string,
+  ): Promise<ConversationMember[]> {
+    const normalizedConversationId = conversationId?.trim();
+    if (!normalizedConversationId) {
+      console.warn(
+        "⚠️ getConversationMembers called with empty conversationId",
+      );
+      return [];
+    }
+
     const result = await dynamo.send(
       new QueryCommand({
         TableName: env.TABLE_CONVERSATION_MEMBERS,
         KeyConditionExpression: "conversation_id = :conversationId",
-        ExpressionAttributeValues: { ":conversationId": conversationId },
+        ExpressionAttributeValues: {
+          ":conversationId": normalizedConversationId,
+        },
       }),
     );
 
@@ -89,19 +102,56 @@ export class ConversationRepository {
   }
 
   async listByUserId(userId: string): Promise<Conversation[]> {
-    const membership = await dynamo.send(
-      new QueryCommand({
-        TableName: env.TABLE_CONVERSATION_MEMBERS,
-        IndexName: "user_id-index",
-        KeyConditionExpression: "user_id = :userId",
-        ExpressionAttributeValues: { ":userId": userId },
-      }),
-    );
+    const normalizedUserId = userId?.trim();
+    if (!normalizedUserId) {
+      console.warn("⚠️ listByUserId called with empty userId");
+      return [];
+    }
+
+    let membershipItems: ConversationMember[] = [];
+
+    try {
+      const membership = await dynamo.send(
+        new QueryCommand({
+          TableName: env.TABLE_CONVERSATION_MEMBERS,
+          IndexName: "user_id-index",
+          KeyConditionExpression: "user_id = :userId",
+          ExpressionAttributeValues: {
+            ":userId": normalizedUserId,
+          },
+        }),
+      );
+
+      membershipItems =
+        (membership.Items as ConversationMember[] | undefined) ?? [];
+    } catch (error) {
+      const message = String(error);
+      const canFallback =
+        message.includes("ExpressionAttributeValues must not be empty") ||
+        message.includes("The table does not have the specified index") ||
+        message.includes("Cannot do operations on a non-existent table/index");
+
+      if (!canFallback) {
+        throw error;
+      }
+
+      // Fallback for local/dev environments when GSI is not ready or unavailable.
+      const fallback = await dynamo.send(
+        new ScanCommand({
+          TableName: env.TABLE_CONVERSATION_MEMBERS,
+          FilterExpression: "user_id = :userId",
+          ExpressionAttributeValues: {
+            ":userId": normalizedUserId,
+          },
+        }),
+      );
+
+      membershipItems =
+        (fallback.Items as ConversationMember[] | undefined) ?? [];
+    }
 
     const conversationIds =
-      (membership.Items as ConversationMember[] | undefined)?.map(
-        (item) => item.conversation_id,
-      ) ?? [];
+      membershipItems.map((item) => item.conversation_id) ?? [];
 
     if (conversationIds.length === 0) {
       return [];
@@ -117,12 +167,16 @@ export class ConversationRepository {
       }),
     );
 
-    const rows =
-      response.Responses?.[env.TABLE_CONVERSATIONS] as Conversation[] | undefined;
+    const rows = response.Responses?.[env.TABLE_CONVERSATIONS] as
+      | Conversation[]
+      | undefined;
     return rows ?? [];
   }
 
-  async updateLastMessageAt(conversationId: string, timestamp: string): Promise<void> {
+  async updateLastMessageAt(
+    conversationId: string,
+    timestamp: string,
+  ): Promise<void> {
     await dynamo.send(
       new UpdateCommand({
         TableName: env.TABLE_CONVERSATIONS,

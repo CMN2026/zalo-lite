@@ -22,7 +22,11 @@ export class AuthController {
     }
   }
 
-  static async loginWithGoogle(req: Request, res: Response, next: NextFunction) {
+  static async loginWithGoogle(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       const result = await authService.loginWithGoogle(req.body);
       res.status(200).json({ message: "auth_success", data: result });

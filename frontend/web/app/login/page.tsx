@@ -1,10 +1,12 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { login, saveAuthSession } from "../lib/auth";
+import { useAuth } from "../contexts/auth";
+import { login as loginRequest, saveAuthSession } from "../lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login: authLogin } = useAuth();
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -17,21 +19,25 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await login(identifier, password);
-      saveAuthSession(response.data.token, response.data.user);
-      router.push("/");
-    } catch (err) {
-      const authError = err as Error & { errors?: Array<{ field: string; message: string }> };
+      const response = await loginRequest(identifier, password);
 
-      if (authError.message === "invalid_credentials") {
-        setError("Email/số điện thoại hoặc mật khẩu không đúng");
-      } else if (authError.message === "account_inactive") {
-        setError("Tài khoản đang bị vô hiệu hóa");
-      } else if (authError.message === "validation_error") {
-        setError(authError.errors?.[0]?.message ?? "Dữ liệu đăng nhập không hợp lệ");
-      } else {
-        setError("Không thể đăng nhập. Vui lòng thử lại.");
-      }
+      console.log("✅ Login successful:", response.data);
+
+      // Save token + current user in a unified session shape.
+      saveAuthSession(response.data.token, response.data.user);
+
+      // Update auth context
+      authLogin(response.data.user);
+
+      // Redirect to chat
+      router.push("/");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "Đăng nhập thất bại. Vui lòng thử lại.";
+      console.error("Login error:", err);
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -40,91 +46,126 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 px-4">
       {/* Logo + Title */}
-      <div className="flex flex-col items-center mb-6">
-        <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xl font-bold">
+      <div className="flex flex-col items-center mb-8">
+        <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-2xl font-bold mb-4">
           +
         </div>
-        <h1 className="text-2xl font-semibold mt-3">OTT Care</h1>
-        <p className="text-sm text-slate-500">Sign In to OTT Care</p>
+        <h1 className="text-3xl font-bold text-slate-800 mb-2">Zalo Lite</h1>
+        <p className="text-slate-500">Sign In</p>
       </div>
 
       {/* Card */}
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-md p-6">
-        <form onSubmit={handleLogin} className="space-y-4">
-          {/* Email */}
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-md p-8">
+        <form onSubmit={handleLogin} className="space-y-5">
+          {/* Email/Phone */}
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase">
-              Email address or phone number
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wide">
+              EMAIL ADDRESS OR PHONE NUMBER
             </label>
             <input
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="name@example.com or 0123456789"
-              className="w-full mt-1 px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="name@example.com"
+              required
+              className="w-full mt-2 px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           {/* Password */}
           <div>
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-slate-500 uppercase">
-                Password
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-wide">
+                PASSWORD
               </label>
-              <span className="text-sm text-blue-600 cursor-pointer">
-                Forgot password?
-              </span>
+              <a href="#" className="text-xs text-blue-600 hover:text-blue-700">
+                Forgot?
+              </a>
             </div>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full mt-1 px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+              className="w-full mt-2 px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           {/* Remember */}
-          <div className="flex items-center text-sm text-slate-600">
-            <input type="checkbox" className="mr-2" />
-            Remember me
+          <div className="flex items-center">
+            <input type="checkbox" id="remember" className="w-4 h-4 rounded" />
+            <label htmlFor="remember" className="ml-2 text-sm text-slate-600">
+              Remember me
+            </label>
           </div>
 
           {/* Error */}
           {error && (
-            <p className="text-red-500 text-sm text-center">{error}</p>
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-lg text-sm">
+              {error}
+            </div>
           )}
 
           {/* Button */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition disabled:opacity-70"
+            className="w-full py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition disabled:opacity-60 mt-6"
           >
-            {loading ? "Đang đăng nhập..." : "Sign In"}
+            {loading ? "SIGNING IN..." : "SIGN IN"}
           </button>
         </form>
 
-        {/* Footer */}
-        <div className="text-center text-sm text-slate-500 mt-6">
-          Don't have an account?{" "}
-          <span className="text-blue-600 cursor-pointer">Sign Up</span>
+        {/* Divider */}
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-slate-200"></div>
+          </div>
         </div>
 
-        {/* Social */}
-        <div className="flex gap-3 mt-4">
-          <button className="flex-1 border rounded-lg py-2 text-sm hover:bg-slate-50">
+        {/* Social Buttons */}
+        <div className="flex gap-3">
+          <button className="flex-1 border border-slate-300 rounded-lg py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition">
             Google
           </button>
-          <button className="flex-1 border rounded-lg py-2 text-sm hover:bg-slate-50">
+          <button className="flex-1 border border-slate-300 rounded-lg py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition">
             Facebook
           </button>
         </div>
+
+        {/* Footer */}
+        <div className="text-center text-sm text-slate-600 mt-6">
+          Don&apos;t have an account?{" "}
+          <a
+            href="/register"
+            className="text-blue-600 font-semibold hover:text-blue-700"
+          >
+            Sign Up
+          </a>
+        </div>
       </div>
 
-      {/* Bottom */}
-      <div className="text-xs text-slate-400 mt-6 text-center">
-        © 2024 OTT Care. All rights reserved.
+      {/* Copyright */}
+      <p className="text-xs text-slate-400 mt-8">
+        © 2024 Zalo Lite. All rights reserved.
+      </p>
+
+      {/* Test Accounts Info */}
+      <div className="mt-10 max-w-md text-center text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-4">
+        <p className="font-semibold text-slate-700 mb-2">Test Accounts</p>
+        <p className="mb-2">
+          <strong>admin@example.com</strong>
+          <br />
+          <strong>usera@example.com</strong>
+          <br />
+          <strong>userb@example.com</strong>
+          <br />
+          <strong>userc@example.com</strong>
+        </p>
+        <p>
+          <strong>Password:</strong> test12345
+        </p>
       </div>
     </div>
   );

@@ -2,9 +2,11 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { register, saveAuthSession } from "../lib/auth";
+import { useAuth } from "../contexts/auth";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { login } = useAuth();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -19,6 +21,21 @@ export default function RegisterPage() {
     e.preventDefault();
     setError("");
 
+    if (!fullName.trim() || !email.trim() || !password) {
+      setError("Vui lòng nhập đầy đủ họ tên, email và mật khẩu");
+      return;
+    }
+
+    if (password.length < 8) {
+      setError("Mật khẩu phải có ít nhất 8 ký tự");
+      return;
+    }
+
+    if (phone && (phone.trim().length < 8 || phone.trim().length > 20)) {
+      setError("Số điện thoại phải có từ 8 đến 20 ký tự");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Mật khẩu xác nhận không khớp");
       return;
@@ -32,10 +49,11 @@ export default function RegisterPage() {
         email,
         phone: phone || undefined, // ✅ gửi nếu có
         password,
-        avatarUrl: null, // ✅ luôn null
+        avatarUrl: undefined,
       });
 
       saveAuthSession(response.data.token, response.data.user);
+      login(response.data.user);
       router.push("/");
     } catch (err) {
       const authError = err as Error & {
@@ -47,7 +65,21 @@ export default function RegisterPage() {
       } else if (authError.message === "phone_already_used") {
         setError("Số điện thoại này đã được sử dụng");
       } else if (authError.message === "validation_error") {
-        setError(authError.errors?.[0]?.message ?? "Dữ liệu không hợp lệ");
+        const firstError = authError.errors?.[0];
+        if (firstError?.field === "password") {
+          setError("Mật khẩu phải có từ 8 đến 72 ký tự");
+        } else if (firstError?.field === "email") {
+          setError("Email không đúng định dạng");
+        } else if (
+          firstError?.field === "fullName" ||
+          firstError?.field === "full_name"
+        ) {
+          setError("Họ tên phải có từ 2 đến 100 ký tự");
+        } else if (firstError?.field === "phone") {
+          setError("Số điện thoại phải có từ 8 đến 20 ký tự");
+        } else {
+          setError("Dữ liệu không hợp lệ, vui lòng kiểm tra lại thông tin");
+        }
       } else {
         setError("Không thể đăng ký. Vui lòng thử lại.");
       }
@@ -156,9 +188,7 @@ export default function RegisterPage() {
           </div>
 
           {/* Error */}
-          {error && (
-            <p className="text-red-500 text-sm text-center">{error}</p>
-          )}
+          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
           {/* Button */}
           <button

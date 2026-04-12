@@ -46,10 +46,11 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      NODE_ENV: development
       PORT: 3001
       DATABASE_URL: postgres://zalo:zalo@postgres:5432/zalo_user
       GOOGLE_CLIENT_ID: ""
-      ADMIN_EMAILS: ""
+      ADMIN_EMAILS: admin@example.com
       JWT_SECRET: super-strong-jwt-secret
       JWT_EXPIRES_IN: 7d
       JWT_ISSUER: zalo-lite-user-service
@@ -57,7 +58,7 @@ services:
       BCRYPT_ROUNDS: 10
       RATE_LIMIT_WINDOW_MS: 60000
       RATE_LIMIT_MAX: 200
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3003
     ports:
       - "3001:3001"
 
@@ -72,6 +73,7 @@ services:
       - redis
       - dynamodb-local
     environment:
+      NODE_ENV: development
       PORT: 3002
       REDIS_URL: redis://redis:6379
       DYNAMODB_ENDPOINT: http://dynamodb-local:8000
@@ -92,6 +94,24 @@ services:
       TABLE_FRIENDSHIPS: friendships
     ports:
       - "3002:3002"
+
+  web:
+    build:
+      context: ../../frontend/web
+      dockerfile: Dockerfile
+    container_name: zalo-web
+    restart: unless-stopped
+    depends_on:
+      - user-service
+      - chat-service
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+      NEXT_PUBLIC_USER_SERVICE_URL: http://localhost:3001
+      NEXT_PUBLIC_CHAT_SERVICE_URL: http://localhost:3002
+    ports:
+      - "3000:3000"
 
 volumes:
   postgres_data:

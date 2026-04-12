@@ -46,6 +46,6 @@ export const env: Env = {
   RATE_LIMIT_WINDOW_MS: Number(getEnv("RATE_LIMIT_WINDOW_MS", "60000")),
   RATE_LIMIT_MAX: Number(getEnv("RATE_LIMIT_MAX", "200")),
   CORS_ORIGINS: parseCorsOrigins(
-    getEnv("CORS_ORIGINS", "http://localhost:3000"),
+    getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3003"),
   ),
 };
