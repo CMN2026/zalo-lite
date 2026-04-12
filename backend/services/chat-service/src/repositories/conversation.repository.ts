@@ -1,5 +1,6 @@
 import {
   BatchGetCommand,
+  DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -129,6 +130,97 @@ export class ConversationRepository {
         Key: { id: conversationId },
         UpdateExpression: "SET last_message_at = :timestamp",
         ExpressionAttributeValues: { ":timestamp": timestamp },
+      }),
+    );
+  }
+
+  async updateConversationName(conversationId: string, name: string): Promise<void> {
+    await dynamo.send(
+      new UpdateCommand({
+        TableName: env.TABLE_CONVERSATIONS,
+        Key: { id: conversationId },
+        UpdateExpression: "SET #n = :name",
+        ExpressionAttributeNames: { "#n": "name" },
+        ExpressionAttributeValues: { ":name": name },
+      }),
+    );
+  }
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    const members = await this.getConversationMembers(conversationId);
+
+    await Promise.all(
+      members.map((member) =>
+        dynamo.send(
+          new DeleteCommand({
+            TableName: env.TABLE_CONVERSATION_MEMBERS,
+            Key: {
+              conversation_id: conversationId,
+              user_id: member.user_id,
+            },
+          }),
+        ),
+      ),
+    );
+
+    await dynamo.send(
+      new DeleteCommand({
+        TableName: env.TABLE_CONVERSATIONS,
+        Key: { id: conversationId },
+      }),
+    );
+  }
+
+  async removeMember(conversationId: string, userId: string): Promise<void> {
+    await dynamo.send(
+      new DeleteCommand({
+        TableName: env.TABLE_CONVERSATION_MEMBERS,
+        Key: {
+          conversation_id: conversationId,
+          user_id: userId,
+        },
+      }),
+    );
+  }
+
+  async addMembers(
+    conversationId: string,
+    userIds: string[],
+    role = "member",
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    await Promise.all(
+      userIds.map((userId) =>
+        dynamo.send(
+          new PutCommand({
+            TableName: env.TABLE_CONVERSATION_MEMBERS,
+            Item: {
+              conversation_id: conversationId,
+              user_id: userId,
+              role,
+              joined_at: now,
+            },
+          }),
+        ),
+      ),
+    );
+  }
+
+  async updateMemberRole(
+    conversationId: string,
+    userId: string,
+    role: string,
+  ): Promise<void> {
+    await dynamo.send(
+      new UpdateCommand({
+        TableName: env.TABLE_CONVERSATION_MEMBERS,
+        Key: {
+          conversation_id: conversationId,
+          user_id: userId,
+        },
+        UpdateExpression: "SET #r = :role",
+        ExpressionAttributeNames: { "#r": "role" },
+        ExpressionAttributeValues: { ":role": role },
       }),
     );
   }
