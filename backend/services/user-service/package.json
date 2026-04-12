@@ -30,7 +30,9 @@
     "google-auth-library": "^10.3.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
-    "@prisma/client": "^6.6.0"
+    "@prisma/client": "^6.6.0",
+    "@grpc/grpc-js": "^1.10.9",
+    "@grpc/proto-loader": "^0.7.13"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

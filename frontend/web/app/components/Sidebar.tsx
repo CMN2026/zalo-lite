@@ -1,5 +1,17 @@
-import React from "react";
-import { MessageSquare, FileText, BarChart2, Settings } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  BarChart2,
+  Bot,
+  FileText,
+  LogIn,
+  LogOut,
+  MessageSquare,
+  Settings,
+  UserRound,
+  Users,
+} from "lucide-react";
+import { clearAuthSession, getSavedAuthUser, type AuthUser } from "../lib/auth";
 
 interface SidebarProps {
   currentView: string;
@@ -48,8 +60,38 @@ export default function Sidebar({
         <BarChart2 className="w-6 h-6" />
       </div>
 
+      <div
+        onClick={() => setCurrentView("friends")}
+        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "friends" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
+      >
+        <Users className="w-6 h-6" />
+      </div>
+
       <div className="flex-grow"></div>
+      <div
+        onClick={() => setCurrentView("profile")}
+        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "profile" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
+      >
+        <UserRound className="w-6 h-6" />
+      </div>
       <Settings className="w-6 h-6 hover:text-white cursor-pointer transition-colors" />
+      {user ? (
+        <button
+          onClick={handleLogout}
+          title="Sign out"
+          className="p-2 rounded-lg bg-white/15 text-white hover:bg-white hover:text-blue-600 transition-colors"
+        >
+          <LogOut className="w-6 h-6" />
+        </button>
+      ) : (
+        <button
+          onClick={() => router.push("/login")}
+          title="Sign in"
+          className="p-2 rounded-lg hover:text-white transition-colors"
+        >
+          <LogIn className="w-6 h-6" />
+        </button>
+      )}
     </div>
   );
 }

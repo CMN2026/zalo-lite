@@ -56,7 +56,7 @@ export async function register(input: {
   password: string;
   fullName: string;
   phone?: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
 }) {
   return post<AuthResponse<{ token: string; user: AuthUser }>>(
     "/auth/register",

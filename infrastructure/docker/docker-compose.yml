@@ -27,6 +27,11 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   dynamodb-local:
     image: amazon/dynamodb-local:latest
@@ -61,6 +66,13 @@ services:
       CORS_ORIGINS: http://localhost:3000,http://localhost:3003
     ports:
       - "3001:3001"
+      - "50051:50051"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   chat-service:
     build:
@@ -69,9 +81,12 @@ services:
     container_name: zalo-chat-service
     restart: unless-stopped
     depends_on:
-      - user-service
-      - redis
-      - dynamodb-local
+      user-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      dynamodb-local:
+        condition: service_started
     environment:
       NODE_ENV: development
       PORT: 3002
@@ -94,6 +109,57 @@ services:
       TABLE_FRIENDSHIPS: friendships
     ports:
       - "3002:3002"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3002/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  chatbot-service:
+    build:
+      context: ../../backend/services/chatbot-service
+      dockerfile: Dockerfile
+    container_name: zalo-chatbot-service
+    restart: unless-stopped
+    depends_on:
+      user-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      dynamodb-local:
+        condition: service_started
+    environment:
+      PORT: 3003
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      AWS_REGION: ap-southeast-1
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+      USER_SERVICE_BASE_URL: user-service
+      CHAT_SERVICE_BASE_URL: http://chat-service:3002
+      JWT_SECRET: super-strong-jwt-secret
+      JWT_ISSUER: zalo-lite-user-service
+      JWT_AUDIENCE: zalo-lite-clients
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 200
+      TABLE_CONVERSATIONS: chatbot_conversations
+      TABLE_FAQ: chatbot_faq
+      TABLE_NOTIFICATIONS: chatbot_notifications
+      TABLE_ANALYTICS: chatbot_analytics
+      REDIS_NOTIFICATION_CHANNEL: notifications:broadcast
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002
+      ENABLE_AI_ENGINE: "true"
+      GEMINI_API_KEY: AIzaSyAT_rd1_cJxwNUYSBUDiLCLU-AJU-CWVMY
+    ports:
+      - "3003:3003"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3003/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   web:
     build:

@@ -5,8 +5,12 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "./contexts/auth";
 import Sidebar from "../app/components/Sidebar";
 import ChatView from "../app/components/ChatView";
+import ChatbotView from "../app/components/ChatbotView";
+import FriendsView from "../app/components/FriendsView";
 import HistoryView from "../app/components/HistoryView";
+import ProfileView from "../app/components/ProfileView";
 import StatsView from "../app/components/StatsView";
+import { getAuthToken } from "../app/lib/auth";
 
 export default function DashboardLayout() {
   const router = useRouter();
