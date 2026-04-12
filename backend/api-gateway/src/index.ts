@@ -11,7 +11,7 @@ import jwt from "jsonwebtoken";
 import { createProxyMiddleware } from "http-proxy-middleware";
 
 type AuthPayload = {
-  userId: string;
+  user_id: string;
   role: "USER" | "ADMIN";
   plan: "FREE" | "PREMIUM";
 };
@@ -20,7 +20,8 @@ const env = {
   PORT: Number(process.env.PORT ?? 3004),
   USER_SERVICE_URL: process.env.USER_SERVICE_URL ?? "http://localhost:3001",
   CHAT_SERVICE_URL: process.env.CHAT_SERVICE_URL ?? "http://localhost:3002",
-  CHATBOT_SERVICE_URL: process.env.CHATBOT_SERVICE_URL ?? "http://localhost:3003",
+  CHATBOT_SERVICE_URL:
+    process.env.CHATBOT_SERVICE_URL ?? "http://localhost:3003",
   JWT_SECRET: process.env.JWT_SECRET ?? "dev-secret",
   JWT_ISSUER: process.env.JWT_ISSUER ?? "zalo-lite-user-service",
   JWT_AUDIENCE: process.env.JWT_AUDIENCE ?? "zalo-lite-clients",
@@ -122,7 +123,18 @@ app.use(
   createProxyMiddleware({
     target: env.CHATBOT_SERVICE_URL,
     changeOrigin: true,
-    pathRewrite: { "^/api/chatbot": "" },
+    pathRewrite: { "^/api/chatbot": "/chatbot" },
+  }),
+);
+
+app.use(
+  "/api/groups/:conversationId/messages",
+  authenticateJwt,
+  authorizeRoles("USER", "ADMIN"),
+  createProxyMiddleware({
+    target: env.CHAT_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: { "^/api/groups/(.+)/messages": "/conversations/$1/messages" },
   }),
 );
 
@@ -169,6 +181,8 @@ function authorizeRoles(...roles: Array<"USER" | "ADMIN">) {
       return res.status(403).json({ message: "forbidden" });
     }
 
+    // Add user_id to request for downstream services
+    (req as any).userId = req.auth.user_id;
     return next();
   };
 }

@@ -2,7 +2,8 @@ import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 
 export type JwtPayload = {
-  user_id: string;
+  userId?: string; // From user-service
+  user_id?: string; // Alternative format
 };
 
 export function verifyToken(token: string): JwtPayload {

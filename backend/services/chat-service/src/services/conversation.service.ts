@@ -10,7 +10,9 @@ import { UserClientService } from "./user-client.service.js";
 export class ConversationService {
   private readonly conversationRepository = new ConversationRepository();
   private readonly messageRepository = new MessageRepository();
-  private readonly userClient = new UserClientService();
+  private readonly userClient = new UserClientService(
+    process.env.USER_SERVICE_URL || "http://localhost:3000",
+  );
 
   async createConversation(
     creatorId: string,
@@ -55,12 +57,14 @@ export class ConversationService {
   async getConversationDetail(userId: string, conversationId: string) {
     await this.assertMember(conversationId, userId);
 
-    const conversation = await this.conversationRepository.getConversationById(conversationId);
+    const conversation =
+      await this.conversationRepository.getConversationById(conversationId);
     if (!conversation) {
       throw new HttpError(404, "conversation_not_found");
     }
 
-    const members = await this.conversationRepository.getConversationMembers(conversationId);
+    const members =
+      await this.conversationRepository.getConversationMembers(conversationId);
 
     const membersWithProfile = await Promise.all(
       members.map(async (member) => {
@@ -84,7 +88,10 @@ export class ConversationService {
     const conversation = await this.assertGroupConversation(conversationId);
     await this.assertOwner(conversationId, userId);
 
-    await this.conversationRepository.updateConversationName(conversationId, input.name);
+    await this.conversationRepository.updateConversationName(
+      conversationId,
+      input.name,
+    );
 
     return { ...conversation, name: input.name };
   }
@@ -100,7 +107,8 @@ export class ConversationService {
     const conversation = await this.assertGroupConversation(conversationId);
     await this.assertMember(conversationId, userId);
 
-    const members = await this.conversationRepository.getConversationMembers(conversationId);
+    const members =
+      await this.conversationRepository.getConversationMembers(conversationId);
 
     if (members.length <= 2) {
       throw new HttpError(400, "cannot_leave_group_with_two_or_fewer_members");
@@ -114,7 +122,8 @@ export class ConversationService {
     if (isOwner) {
       const remaining = members.filter((m) => m.user_id !== userId);
       const nextOwner = remaining.sort(
-        (a, b) => new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime(),
+        (a, b) =>
+          new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime(),
       )[0];
 
       if (nextOwner) {
@@ -135,9 +144,8 @@ export class ConversationService {
     await this.assertGroupConversation(conversationId);
     await this.assertMember(conversationId, userId);
 
-    const existingMembers = await this.conversationRepository.getConversationMembers(
-      conversationId,
-    );
+    const existingMembers =
+      await this.conversationRepository.getConversationMembers(conversationId);
     const existingIds = new Set(existingMembers.map((m) => m.user_id));
     const newMemberIds = memberIds.filter((id) => !existingIds.has(id));
 
@@ -162,17 +170,22 @@ export class ConversationService {
       throw new HttpError(400, "owner_cannot_remove_self");
     }
 
-    const members = await this.conversationRepository.getConversationMembers(conversationId);
+    const members =
+      await this.conversationRepository.getConversationMembers(conversationId);
     const isMember = members.some((m) => m.user_id === targetUserId);
     if (!isMember) {
       throw new HttpError(404, "target_not_a_member");
     }
 
-    await this.conversationRepository.removeMember(conversationId, targetUserId);
+    await this.conversationRepository.removeMember(
+      conversationId,
+      targetUserId,
+    );
   }
 
   async assertMember(conversationId: string, userId: string) {
-    const members = await this.conversationRepository.getConversationMembers(conversationId);
+    const members =
+      await this.conversationRepository.getConversationMembers(conversationId);
     const isMember = members.some((item) => item.user_id === userId);
     if (!isMember) {
       throw new HttpError(403, "not_a_conversation_member");
@@ -181,7 +194,8 @@ export class ConversationService {
   }
 
   private async assertGroupConversation(conversationId: string) {
-    const conversation = await this.conversationRepository.getConversationById(conversationId);
+    const conversation =
+      await this.conversationRepository.getConversationById(conversationId);
     if (!conversation) {
       throw new HttpError(404, "conversation_not_found");
     }
@@ -192,11 +206,11 @@ export class ConversationService {
   }
 
   private async assertOwner(conversationId: string, userId: string) {
-    const members = await this.conversationRepository.getConversationMembers(conversationId);
+    const members =
+      await this.conversationRepository.getConversationMembers(conversationId);
     const member = members.find((m) => m.user_id === userId);
     if (!member || member.role !== "owner") {
       throw new HttpError(403, "only_owner_can_perform_this_action");
     }
   }
 }
-

@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004/api";
 
 export type AuthUser = {
   id: string;
@@ -55,7 +55,8 @@ export async function register(input: {
 }
 
 async function post<T>(path: string, options: RequestOptions): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const url = API_BASE_URL.includes('/api') ? `${API_BASE_URL}${path}` : `${API_BASE_URL}/api${path}`;
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
