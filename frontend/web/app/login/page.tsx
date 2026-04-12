@@ -117,11 +117,23 @@ export default function LoginPage() {
           </button>
         </form>
 
+<<<<<<< HEAD
         {/* Divider */}
         <div className="relative my-6">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-slate-200"></div>
           </div>
+=======
+        {/* Footer */}
+        <div className="text-center text-sm text-slate-500 mt-6">
+          Don&apos;t have an account?{" "}
+          <span
+            onClick={() => router.push("/register")}
+            className="text-blue-600 cursor-pointer"
+          >
+            Sign Up
+          </span>
+>>>>>>> 41cff5b2fcba6bd3c43fc945ec8ea6a0e6253ec0
         </div>
 
         {/* Social Buttons */}

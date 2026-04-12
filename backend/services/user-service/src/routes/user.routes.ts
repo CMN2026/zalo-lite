@@ -38,7 +38,22 @@ userRoutes.patch(
 userRoutes.patch(
   "/me/avatar",
   [
-    body("avatarUrl").trim().isURL().withMessage("avatarUrl_must_be_valid_url"),
+    body("avatarUrl")
+      .trim()
+      .custom((value) => {
+        if (typeof value !== "string") {
+          throw new Error("avatarUrl_must_be_valid_url_or_image_data");
+        }
+
+        const isHttpUrl = /^https?:\/\/\S+$/i.test(value);
+        const isImageDataUrl = /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(value);
+
+        if (!isHttpUrl && !isImageDataUrl) {
+          throw new Error("avatarUrl_must_be_valid_url_or_image_data");
+        }
+
+        return true;
+      }),
     validateRequest,
   ],
   UserController.updateAvatar,

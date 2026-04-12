@@ -56,7 +56,7 @@ export async function register(input: {
   password: string;
   fullName: string;
   phone?: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
 }) {
   return post<AuthResponse<{ token: string; user: AuthUser }>>(
     "/auth/register",
@@ -116,6 +116,7 @@ export function saveAuthSession(token: string, user: AuthUser) {
   localStorage.setItem("user", JSON.stringify(user));
 }
 
+<<<<<<< HEAD
 export function getAuthToken(): string | null {
   return localStorage.getItem(AUTH_TOKEN_KEY);
 }
@@ -126,6 +127,26 @@ export function clearAuthSession() {
   localStorage.removeItem("current-user-id");
 
   // Cleanup legacy keys too.
+=======
+export function getAuthToken() {
+  return localStorage.getItem("token");
+}
+
+export function getSavedAuthUser(): AuthUser | null {
+  const rawUser = localStorage.getItem("user");
+  if (!rawUser) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawUser) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
+export function clearAuthSession() {
+>>>>>>> 41cff5b2fcba6bd3c43fc945ec8ea6a0e6253ec0
   localStorage.removeItem("token");
   localStorage.removeItem("user");
 }
