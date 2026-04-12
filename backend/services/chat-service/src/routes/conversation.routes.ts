@@ -20,6 +20,55 @@ conversationRoutes.post(
 conversationRoutes.get("/", ConversationController.list);
 
 conversationRoutes.get(
+  "/:id",
+  [param("id").isUUID(), validateRequest],
+  ConversationController.detail,
+);
+
+conversationRoutes.patch(
+  "/:id",
+  [
+    param("id").isUUID(),
+    body("name").isLength({ min: 1, max: 100 }),
+    validateRequest,
+  ],
+  ConversationController.update,
+);
+
+conversationRoutes.delete(
+  "/:id",
+  [param("id").isUUID(), validateRequest],
+  ConversationController.remove,
+);
+
+conversationRoutes.post(
+  "/:id/leave",
+  [param("id").isUUID(), validateRequest],
+  ConversationController.leave,
+);
+
+conversationRoutes.post(
+  "/:id/members",
+  [
+    param("id").isUUID(),
+    body("member_ids").isArray({ min: 1 }),
+    body("member_ids.*").isUUID(),
+    validateRequest,
+  ],
+  ConversationController.addMembers,
+);
+
+conversationRoutes.delete(
+  "/:id/members/:userId",
+  [
+    param("id").isUUID(),
+    param("userId").isUUID(),
+    validateRequest,
+  ],
+  ConversationController.removeMember,
+);
+
+conversationRoutes.get(
   "/:id/messages",
   [
     param("id").isUUID(),
