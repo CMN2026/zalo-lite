@@ -7,15 +7,10 @@ import { env } from "./config/env.js";
 import { authRoutes } from "./routes/auth.routes.js";
 import { userRoutes } from "./routes/user.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
-import { startGRPCServer, stopGRPCServer } from "./grpc/auth-server.js";
-import { prisma } from "./config/db.js";
-import type * as grpc from "@grpc/grpc-js";
+import { AuthService } from "./services/auth.service.js";
 
 const app = express();
-let grpcServer: grpc.Server;
-
-// Simple health check endpoint
-const startTime = Date.now();
+const authService = new AuthService();
 
 app.disable("x-powered-by");
 app.use(helmet());
@@ -53,21 +48,54 @@ app.use("/users", userRoutes);
 
 app.use(errorHandler);
 
-// Graceful shutdown
-process.on("SIGTERM", async () => {
-  console.log("SIGTERM received, shutting down gracefully...");
-  if (grpcServer) {
-    await stopGRPCServer(grpcServer);
-  }
-  process.exit(0);
-});
+// Dev mode: Auto-seed test users on startup
+const seedDevUsers = async () => {
+  if (process.env.NODE_ENV === "production") return;
 
-process.on("SIGINT", async () => {
-  console.log("SIGINT received, shutting down gracefully...");
-  if (grpcServer) {
-    await stopGRPCServer(grpcServer);
+  const testUsers = [
+    {
+      fullName: "Admin Support",
+      email: "admin@example.com",
+      password: "test12345",
+      phone: "0999999999",
+    },
+    {
+      fullName: "User A",
+      email: "usera@example.com",
+      password: "test12345",
+      phone: "0111111111",
+    },
+    {
+      fullName: "User B",
+      email: "userb@example.com",
+      password: "test12345",
+      phone: "0222222222",
+    },
+    {
+      fullName: "User C",
+      email: "userc@example.com",
+      password: "test12345",
+      phone: "0333333333",
+    },
+  ];
+
+  for (const user of testUsers) {
+    try {
+      await authService.registerWithCredentials(user);
+      console.log(`✅ Seeded user: ${user.email}`);
+    } catch (error: any) {
+      if (error.message?.includes("duplicate")) {
+        console.log(`ℹ️ User already exists: ${user.email}`);
+      } else {
+        console.error(`❌ Failed to seed ${user.email}:`, error.message);
+      }
+    }
   }
-  process.exit(0);
+};
+
+app.listen(env.PORT, async () => {
+  await seedDevUsers();
+  console.log(`user-service listening on ${env.PORT}`);
 });
 
 async function start() {

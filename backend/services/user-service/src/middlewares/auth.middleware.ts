@@ -1,7 +1,11 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../utils/jwt.js";
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+export function authMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   const token = extractToken(req);
   if (!token) {
     return res.status(401).json({ message: "missing_bearer_token" });

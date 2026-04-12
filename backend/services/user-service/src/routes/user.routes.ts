@@ -6,8 +6,14 @@ import { validateRequest } from "../middlewares/validate.middleware.js";
 
 export const userRoutes = Router();
 
+// Public dev endpoints (no auth required)
+if (process.env.NODE_ENV !== "production") {
+  userRoutes.get("/dev/list-all", UserController.listAllDev);
+}
+
 userRoutes.use(authMiddleware);
 
+userRoutes.get("/chat-peers", UserController.listChatPeers);
 userRoutes.get("/me", UserController.getMe);
 userRoutes.patch(
   "/me",
@@ -72,7 +78,10 @@ userRoutes.post(
   UserController.sendFriendRequest,
 );
 
-userRoutes.get("/friend-requests/incoming", UserController.listIncomingRequests);
+userRoutes.get(
+  "/friend-requests/incoming",
+  UserController.listIncomingRequests,
+);
 
 userRoutes.post(
   "/friend-requests/:requestId/respond",
