@@ -47,7 +47,7 @@ export async function register(input: {
   password: string;
   fullName: string;
   phone?: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
 }) {
   return post<AuthResponse<{ token: string; user: AuthUser }>>("/auth/register", {
     body: input,
@@ -81,4 +81,26 @@ async function post<T>(path: string, options: RequestOptions): Promise<T> {
 export function saveAuthSession(token: string, user: AuthUser) {
   localStorage.setItem("token", token);
   localStorage.setItem("user", JSON.stringify(user));
+}
+
+export function getAuthToken() {
+  return localStorage.getItem("token");
+}
+
+export function getSavedAuthUser(): AuthUser | null {
+  const rawUser = localStorage.getItem("user");
+  if (!rawUser) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawUser) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
+export function clearAuthSession() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
 }
