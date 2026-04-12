@@ -28,16 +28,6 @@ export class ConversationController {
     }
   }
 
-  static async detail(req: Request, res: Response, next: NextFunction) {
-    try {
-      const userId = req.auth?.user_id ?? "";
-      const data = await conversationService.getConversationDetail(userId, req.params.id);
-      res.status(200).json({ data });
-    } catch (error) {
-      next(error);
-    }
-  }
-
   static async listMessages(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.auth?.user_id ?? "";

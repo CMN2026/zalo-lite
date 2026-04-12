@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./contexts/auth";
+
 import Sidebar from "../app/components/Sidebar";
 import ChatView from "../app/components/ChatView";
 import ChatbotView from "../app/components/ChatbotView";

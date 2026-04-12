@@ -179,6 +179,24 @@ services:
     ports:
       - "3000:3000"
 
+  web:
+    build:
+      context: ../../frontend/web
+      dockerfile: Dockerfile
+    container_name: zalo-web
+    restart: unless-stopped
+    depends_on:
+      - user-service
+      - chat-service
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+      NEXT_PUBLIC_USER_SERVICE_URL: http://localhost:3001
+      NEXT_PUBLIC_CHAT_SERVICE_URL: http://localhost:3002
+    ports:
+      - "3000:3000"
+
 volumes:
   postgres_data:
   redis_data:

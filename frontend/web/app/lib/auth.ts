@@ -124,8 +124,6 @@ export function clearAuthSession() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_USER_KEY);
   localStorage.removeItem("current-user-id");
-
-  // Cleanup legacy keys too.
   localStorage.removeItem("token");
   localStorage.removeItem("user");
 }

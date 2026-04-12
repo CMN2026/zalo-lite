@@ -33,7 +33,6 @@ export default function Sidebar({
           className="w-full h-full object-cover"
         />
       </div>
-
       <div
         onClick={() => setCurrentView("chat")}
         className={`relative cursor-pointer p-2 rounded-lg transition-colors ${currentView === "chat" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
