@@ -2,17 +2,15 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
 
 export type ConversationMember = {
-  conversation_id: string;
-  user_id: string;
+  conversationId: string;
+  userId: string;
   role: string;
-  joined_at: string;
+  joinedAt: string;
   profile?: {
     id: string;
-    full_name?: string | null;
     fullName?: string | null;
     email?: string | null;
     phone?: string | null;
-    avatar_url?: string | null;
     avatarUrl?: string | null;
   } | null;
 };
@@ -21,9 +19,9 @@ export type Conversation = {
   id: string;
   type: "direct" | "group";
   name: string | null;
-  created_by: string;
-  last_message_at: string | null;
-  created_at: string;
+  createdBy: string;
+  lastMessageAt: string | null;
+  createdAt: string;
   members?: ConversationMember[];
 };
 
@@ -45,7 +43,7 @@ type RequestOptions = {
 export async function createConversation(input: {
   type: "direct" | "group";
   name?: string;
-  member_ids: string[];
+  memberIds: string[];
 }) {
   return request<ApiResponse<Conversation>>("/api/conversations", {
     method: "POST",
@@ -84,11 +82,11 @@ export async function addMembersToConversation(
   id: string,
   memberIds: string[],
 ) {
-  return request<ApiResponse<{ added_count: number }>>(
+  return request<ApiResponse<{ addedCount: number }>>( // changed added_count to addedCount as serializer will also affect returning object keys
     `/api/conversations/${id}/members`,
     {
       method: "POST",
-      body: { member_ids: memberIds },
+      body: { memberIds: memberIds },
     },
   );
 }

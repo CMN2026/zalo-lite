@@ -8,8 +8,8 @@ import { env } from "../config/env.js";
 
 type UserBasic = {
   id: string;
-  full_name: string | null;
-  avatar_url: string | null;
+  fullName: string | null;
+  avatarUrl: string | null;
   phone?: string;
 };
 

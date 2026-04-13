@@ -8,7 +8,7 @@ import { MessageRepository } from "../repositories/message.repository.js";
 import { UserClientService } from "./user-client.service.js";
 
 export type ConversationWithMembers = Conversation & {
-  member_ids: string[];
+  memberIds: string[];
 };
 
 
@@ -21,9 +21,9 @@ export class ConversationService {
 
   async createConversation(
     creatorId: string,
-    input: { type: "direct" | "group"; name?: string; member_ids: string[] },
+    input: { type: "direct" | "group"; name?: string; memberIds: string[] },
   ) {
-    const uniqueMembers = Array.from(new Set([creatorId, ...input.member_ids]));
+    const uniqueMembers = Array.from(new Set([creatorId, ...input.memberIds]));
 
     if (input.type === "direct") {
       const withoutCreator = uniqueMembers.filter((id) => id !== creatorId);
@@ -75,7 +75,7 @@ export class ConversationService {
     // Create new direct conversation if it doesn't exist
     return this.createConversation(userId, {
       type: "direct",
-      member_ids: [otherUserId],
+      memberIds: [otherUserId],
     });
   }
 
@@ -92,7 +92,7 @@ export class ConversationService {
 
         return {
           ...conversation,
-          member_ids: members.map((member) => member.user_id),
+          memberIds: members.map((member) => member.user_id),
         };
       }),
     );

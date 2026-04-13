@@ -36,7 +36,7 @@ export class GeminiService {
       const prompt = `
 You are a helpful chatbot for Zalo-Lite messaging app. Analyze the user's message and:
 1. Identify the intent (one of: HOW_TO_ADD_FRIEND, PASSWORD_RESET, HOW_TO_CREATE_GROUP, ACCOUNT_ISSUES, CONTACT_SUPPORT, GENERAL_INQUIRY)
-2. Provide a helpful response in Vietnamese
+2. Provide a helpful response in English
 3. Rate your confidence (0.0-1.0)
 
 User message: "${userMessage}"

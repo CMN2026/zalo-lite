@@ -5,7 +5,7 @@ import { ConversationService } from "../services/conversation.service.js";
 const messageService = new MessageService();
 const conversationService = new ConversationService();
 
-export type AuthRequest = Request & { auth?: { user_id: string } };
+export type AuthRequest = Request & { auth?: { userId: string } };
 
 export class MessageController {
   // Send text message
@@ -15,7 +15,7 @@ export class MessageController {
     next: NextFunction,
   ) {
     try {
-      const userId = req.auth?.user_id ?? "";
+      const userId = req.auth?.userId ?? "";
       const { conversationId, content, type = "text" } = req.body;
 
       const message = await messageService.sendMessage({
@@ -38,7 +38,7 @@ export class MessageController {
     next: NextFunction,
   ) {
     try {
-      const userId = req.auth?.user_id ?? "";
+      const userId = req.auth?.userId ?? "";
       const { conversationId } = req.params;
       const { content = "" } = req.body;
 
@@ -79,7 +79,7 @@ export class MessageController {
     next: NextFunction,
   ) {
     try {
-      const userId = req.auth?.user_id ?? "";
+      const userId = req.auth?.userId ?? "";
       const { conversationId } = req.params;
       const limit = Number(req.query.limit ?? 50);
 
@@ -97,7 +97,7 @@ export class MessageController {
   // Mark messages as read
   static async markAsRead(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const userId = req.auth?.user_id ?? "";
+      const userId = req.auth?.userId ?? "";
       const { conversationId } = req.params;
 
       await messageService.markMessagesAsRead(conversationId, userId);
@@ -114,7 +114,7 @@ export class MessageController {
     next: NextFunction,
   ) {
     try {
-      const userId = req.auth?.user_id ?? "";
+      const userId = req.auth?.userId ?? "";
       const { messageId } = req.params;
 
       await messageService.deleteMessage(messageId, userId);
@@ -131,7 +131,7 @@ export class MessageController {
     next: NextFunction,
   ) {
     try {
-      const userId = req.auth?.user_id ?? "";
+      const userId = req.auth?.userId ?? "";
       const { conversationId } = req.params;
       const { q } = req.query;
 

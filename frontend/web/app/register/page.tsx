@@ -70,10 +70,7 @@ export default function RegisterPage() {
           setError("Mật khẩu phải có từ 8 đến 72 ký tự");
         } else if (firstError?.field === "email") {
           setError("Email không đúng định dạng");
-        } else if (
-          firstError?.field === "fullName" ||
-          firstError?.field === "full_name"
-        ) {
+        } else if (firstError?.field === "fullName") {
           setError("Họ tên phải có từ 2 đến 100 ký tự");
         } else if (firstError?.field === "phone") {
           setError("Số điện thoại phải có từ 8 đến 20 ký tự");

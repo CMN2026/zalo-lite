@@ -15,36 +15,62 @@ export type Conversation = {
   id: string;
   type: "direct" | "group";
   name: string | null;
-  created_by: string;
-  last_message_at: string | null;
-  created_at: string;
+  createdBy: string;
+  lastMessageAt: string | null;
+  createdAt: string;
 };
 
 export type ConversationMember = {
-  conversation_id: string;
-  user_id: string;
+  conversationId: string;
+  userId: string;
   role: string;
-  joined_at: string;
+  joinedAt: string;
 };
+
+// Helper mapper functions to centralise formatting
+const mapConversation = (item: any): Conversation => ({
+  id: item.id,
+  type: item.type,
+  name: item.name,
+  createdBy: item.created_by,
+  lastMessageAt: item.last_message_at,
+  createdAt: item.created_at,
+});
+
+const mapMember = (item: any): ConversationMember => ({
+  conversationId: item.conversation_id,
+  userId: item.user_id,
+  role: item.role,
+  joinedAt: item.joined_at,
+});
 
 export class ConversationRepository {
   async createConversation(
-    payload: Pick<Conversation, "type" | "name" | "created_by">,
+    payload: Pick<Conversation, "type" | "name" | "createdBy">,
     memberIds: string[],
   ): Promise<Conversation> {
     const conversation: Conversation = {
       id: uuidv4(),
       type: payload.type,
       name: payload.name,
-      created_by: payload.created_by,
-      last_message_at: null,
-      created_at: new Date().toISOString(),
+      createdBy: payload.createdBy,
+      lastMessageAt: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const dbItem = {
+      id: conversation.id,
+      type: conversation.type,
+      name: conversation.name,
+      created_by: conversation.createdBy,
+      last_message_at: conversation.lastMessageAt,
+      created_at: conversation.createdAt,
     };
 
     await dynamo.send(
       new PutCommand({
         TableName: env.TABLE_CONVERSATIONS,
-        Item: conversation,
+        Item: dbItem,
       }),
     );
 
@@ -56,7 +82,7 @@ export class ConversationRepository {
             Item: {
               conversation_id: conversation.id,
               user_id: userId,
-              role: userId === payload.created_by ? "owner" : "member",
+              role: userId === payload.createdBy ? "owner" : "member",
               joined_at: new Date().toISOString(),
             },
           }),
@@ -75,7 +101,7 @@ export class ConversationRepository {
       }),
     );
 
-    return (result.Item as Conversation | undefined) ?? null;
+    return result.Item ? mapConversation(result.Item) : null;
   }
 
   async getConversationMembers(
@@ -99,7 +125,7 @@ export class ConversationRepository {
       }),
     );
 
-    return (result.Items as ConversationMember[] | undefined) ?? [];
+    return (result.Items || []).map(mapMember);
   }
 
   async listByUserId(userId: string): Promise<Conversation[]> {
@@ -129,8 +155,7 @@ export class ConversationRepository {
         }),
       );
 
-      membershipItems =
-        (membership.Items as ConversationMember[] | undefined) ?? [];
+      membershipItems = (membership.Items || []).map(mapMember);
     } catch (error) {
       const message =
         error instanceof Error
@@ -162,12 +187,11 @@ export class ConversationRepository {
         }),
       );
 
-      membershipItems =
-        (fallback.Items as ConversationMember[] | undefined) ?? [];
+      membershipItems = (fallback.Items || []).map(mapMember);
     }
 
     const conversationIds =
-      membershipItems.map((item) => item.conversation_id) ?? [];
+      membershipItems.map((item) => item.conversationId) ?? [];
 
     if (conversationIds.length === 0) {
       return [];
@@ -183,10 +207,8 @@ export class ConversationRepository {
       }),
     );
 
-    const rows = response.Responses?.[env.TABLE_CONVERSATIONS] as
-      | Conversation[]
-      | undefined;
-    return rows ?? [];
+    const rows = response.Responses?.[env.TABLE_CONVERSATIONS] || [];
+    return rows.map(mapConversation);
   }
 
   async updateLastMessageAt(
@@ -228,7 +250,7 @@ export class ConversationRepository {
             TableName: env.TABLE_CONVERSATION_MEMBERS,
             Key: {
               conversation_id: conversationId,
-              user_id: member.user_id,
+              user_id: member.userId,
             },
           }),
         ),

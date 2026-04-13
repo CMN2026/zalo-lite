@@ -24,6 +24,32 @@ function getToken(): string | null {
 }
 
 /**
+ * Handles the raw Response from fetch to properly parse JSON/text and throw appropriate errors.
+ */
+async function handleApiResponse<T = unknown>(res: Response): Promise<T> {
+  const contentType = res.headers.get("content-type") ?? "";
+  
+  let payload: unknown;
+  if (contentType.includes("application/json")) {
+    payload = await res.json();
+  } else {
+    const text = await res.text();
+    payload = { message: text || `http_${res.status}` };
+  }
+
+  if (!res.ok) {
+    const body = payload as ApiErrorBody;
+    // UX improvement: Show specific error instead of generic ones like request_failed
+    const errorMessage = body.message ?? "Lỗi kết nối hoặc thực thi từ máy chủ.";
+    const err = new Error(errorMessage) as Error & ApiErrorBody;
+    err.errors = body.errors;
+    throw err;
+  }
+
+  return payload as T;
+}
+
+/**
  * Generic authenticated API request helper.
  * Throws an `Error` whose `.message` is the server `message` field on failure.
  */
@@ -33,7 +59,7 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const token = options.token ?? getToken();
   if (!token) {
-    const err = new Error("missing_local_session") as Error & ApiErrorBody;
+    const err = new Error("Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.") as Error & ApiErrorBody;
     throw err;
   }
 
@@ -53,26 +79,7 @@ export async function apiFetch<T = unknown>(
   }
 
   const res = await fetch(url, init);
-
-  // Try to parse JSON; fall back to text
-  const contentType = res.headers.get("content-type") ?? "";
-  let payload: unknown;
-  if (contentType.includes("application/json")) {
-    payload = await res.json();
-  } else {
-    const text = await res.text();
-    payload = { message: text || `http_${res.status}` };
-  }
-
-  if (!res.ok) {
-    const body = payload as ApiErrorBody;
-    const err = new Error(body.message ?? "request_failed") as Error &
-      ApiErrorBody;
-    err.errors = body.errors;
-    throw err;
-  }
-
-  return payload as T;
+  return handleApiResponse<T>(res);
 }
 
 /**
@@ -88,18 +95,6 @@ export async function publicPost<T = unknown>(
     body: JSON.stringify(body),
   });
 
-  const contentType = res.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json")
-    ? await res.json()
-    : { message: await res.text() };
-
-  if (!res.ok) {
-    const err = new Error(
-      (payload as ApiErrorBody).message ?? "request_failed",
-    ) as Error & ApiErrorBody;
-    err.errors = (payload as ApiErrorBody).errors;
-    throw err;
-  }
-
-  return payload as T;
+  return handleApiResponse<T>(res);
 }
+

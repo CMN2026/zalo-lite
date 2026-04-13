@@ -35,15 +35,7 @@ interface UserSummary {
   role?: "USER" | "ADMIN";
 }
 
-interface ConversationApiRaw {
-  id: string;
-  name?: string;
-  member_ids?: string[];
-  created_at: string;
-  created_by?: string;
-  type?: "direct" | "group";
-  last_message_at?: string | null;
-}
+
 
 interface ConversationApi {
   id: string;
@@ -157,11 +149,9 @@ export default function ChatView() {
       const raw = item as {
         id?: unknown;
         fullName?: unknown;
-        full_name?: unknown;
         email?: unknown;
         phone?: unknown;
         avatarUrl?: unknown;
-        avatar_url?: unknown;
         role?: unknown;
       };
 
@@ -170,15 +160,11 @@ export default function ChatView() {
       let fullName = raw.id;
       if (typeof raw.fullName === "string") {
         fullName = raw.fullName;
-      } else if (typeof raw.full_name === "string") {
-        fullName = raw.full_name;
       }
 
       let avatarUrl: string | null = null;
       if (typeof raw.avatarUrl === "string") {
         avatarUrl = raw.avatarUrl;
-      } else if (typeof raw.avatar_url === "string") {
-        avatarUrl = raw.avatar_url;
       }
 
       const normalized: UserSummary = {
@@ -196,19 +182,7 @@ export default function ChatView() {
     }, []);
   };
 
-  const normalizeConversations = (
-    payload: ConversationApiRaw[],
-  ): ConversationApi[] => {
-    return payload.map((item) => ({
-      id: item.id,
-      name: item.name,
-      memberIds: item.member_ids ?? [],
-      createdAt: item.created_at,
-      createdBy: item.created_by,
-      type: item.type,
-      lastMessageAt: item.last_message_at,
-    }));
-  };
+
 
   const fetchUsers = useCallback(async () => {
     if (!currentUserId) {
@@ -262,8 +236,7 @@ export default function ChatView() {
         "/api/conversations",
       );
 
-      const rawData = (response.data ?? []) as ConversationApiRaw[];
-      const data = normalizeConversations(rawData);
+      const data = (response.data ?? []) as ConversationApi[];
       const currentRole = user?.role ?? "USER";
 
       const mapped = data.reduce<Conversation[]>((acc, conv) => {

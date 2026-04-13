@@ -6,10 +6,20 @@ import { validateRequest } from "../middlewares/validate.middleware.js";
 
 export const userRoutes = Router();
 
-// Public dev endpoints (no auth required)
-if (process.env.NODE_ENV !== "production") {
-  userRoutes.get("/dev/list-all", UserController.listAllDev);
-}
+const avatarUrlValidator = (value: unknown) => {
+  if (typeof value !== "string") {
+    throw new Error("avatarUrl_must_be_valid_url_or_image_data");
+  }
+
+  const isHttpUrl = /^https?:\/\/\S+$/i.test(value);
+  const isImageDataUrl = /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(value);
+
+  if (!isHttpUrl && !isImageDataUrl) {
+    throw new Error("avatarUrl_must_be_valid_url_or_image_data");
+  }
+
+  return true;
+};
 
 userRoutes.use(authMiddleware);
 
@@ -38,22 +48,7 @@ userRoutes.patch(
 userRoutes.patch(
   "/me/avatar",
   [
-    body("avatarUrl")
-      .trim()
-      .custom((value) => {
-        if (typeof value !== "string") {
-          throw new Error("avatarUrl_must_be_valid_url_or_image_data");
-        }
-
-        const isHttpUrl = /^https?:\/\/\S+$/i.test(value);
-        const isImageDataUrl = /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(value);
-
-        if (!isHttpUrl && !isImageDataUrl) {
-          throw new Error("avatarUrl_must_be_valid_url_or_image_data");
-        }
-
-        return true;
-      }),
+    body("avatarUrl").trim().custom(avatarUrlValidator),
     validateRequest,
   ],
   UserController.updateAvatar,
