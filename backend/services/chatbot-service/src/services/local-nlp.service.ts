@@ -57,7 +57,7 @@ export class LocalNLPService {
         "loi mat khau",
       ],
       response:
-        "🔐 Để đặt lại mật khẩu:\n1. Nhấn \"Quên mật khẩu?\" trên màn hình đăng nhập\n2. Nhập email đã đăng ký\n3. Kiểm tra hộp thư đến (kể cả Spam)\n4. Nhấn liên kết trong email và tạo mật khẩu mới\n\nMật khẩu mới phải dài ít nhất 8 ký tự. Bạn cần hỗ trợ thêm không?",
+        'Để đặt lại mật khẩu:\n1. Nhấn "Quên mật khẩu?" trên màn hình đăng nhập\n2. Nhập email đã đăng ký\n3. Kiểm tra hộp thư đến (kể cả Spam)\n4. Nhấn liên kết trong email và tạo mật khẩu mới\n\nMật khẩu mới phải dài ít nhất 8 ký tự. Bạn cần hỗ trợ thêm không?',
     },
 
     // ── Social: add/find friends ──────────────────────────────────────────────
@@ -79,7 +79,7 @@ export class LocalNLPService {
         "huy ket ban",
       ],
       response:
-        "👥 Thêm bạn bè trên Zalo-Lite:\n1. Mở tab \"Bạn bè\" (biểu tượng người dùng)\n2. Nhấn tab \"Tìm\" rồi nhập số điện thoại\n3. Nhấn \"Add Friend\" để gửi lời mời\n4. Chờ họ chấp nhận trong tab \"Requests\"\n\nBạn cần giúp gì thêm không?",
+        'Thêm bạn bè trên Zalo-Lite:\n1. Mở tab "Bạn bè" (biểu tượng người dùng)\n2. Nhấn tab "Tìm" rồi nhập số điện thoại\n3. Nhấn "Add Friend" để gửi lời mời\n4. Chờ họ chấp nhận trong tab "Requests"\n\nBạn cần giúp gì thêm không?',
     },
 
     // ── Group chat ────────────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ export class LocalNLPService {
         "ra khoi nhom",
       ],
       response:
-        "👥 Tạo nhóm chat:\n1. Vào tab \"Tin nhắn\" → nhấn nút \"+\" (góc trên phải)\n2. Nhập tên nhóm\n3. Chọn ít nhất 2 bạn bè từ danh sách\n4. Nhấn \"Tạo nhóm\"\n\nLưu ý: Bạn cần có ít nhất 2 bạn bè trong hệ thống để tạo nhóm. Cần giúp gì thêm không?",
+        'Tạo nhóm chat:\n1. Vào tab "Tin nhắn" → nhấn nút "+" (góc trên phải)\n2. Nhập tên nhóm\n3. Chọn ít nhất 2 bạn bè từ danh sách\n4. Nhấn "Tạo nhóm"\n\nLưu ý: Bạn cần có ít nhất 2 bạn bè trong hệ thống để tạo nhóm. Cần giúp gì thêm không?',
     },
 
     // ── Account issues ───────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ export class LocalNLPService {
         "bi vo hieu hoa",
       ],
       response:
-        "⚠️ Vấn đề tài khoản cần xử lý thủ công.\n\nVui lòng cung cấp:\n• Email hoặc SĐT đăng ký tài khoản\n• Mô tả chi tiết vấn đề đang gặp\n• Thời gian phát hiện vấn đề\n\nChúng tôi sẽ xem xét và phản hồi trong vòng 24 giờ.",
+        "Vấn đề tài khoản cần xử lý thủ công.\n\nVui lòng cung cấp:\n• Email hoặc SĐT đăng ký tài khoản\n• Mô tả chi tiết vấn đề đang gặp\n• Thời gian phát hiện vấn đề\n\nChúng tôi sẽ xem xét và phản hồi trong vòng 24 giờ.",
       action: "escalate",
     },
 
@@ -151,7 +151,7 @@ export class LocalNLPService {
         "phan hoi",
       ],
       response:
-        "📞 Liên hệ hỗ trợ Zalo-Lite:\n• Email: support@zalo-lite.com\n• Hotline: 1800-1234 (Thứ 2–7, 8:00–20:00)\n• Chat trực tiếp: nhắn tin tại đây, nhân viên sẽ hỗ trợ bạn\n\nBạn có thể mô tả chi tiết vấn đề để chúng tôi hỗ trợ nhanh hơn.",
+        "Liên hệ hỗ trợ Zalo-Lite:\n• Email: support@zalo-lite.com\n• Hotline: 1800-1234 (Thứ 2–7, 8:00–20:00)\n• Chat trực tiếp: nhắn tin tại đây, nhân viên sẽ hỗ trợ bạn\n\nBạn có thể mô tả chi tiết vấn đề để chúng tôi hỗ trợ nhanh hơn.",
       action: "escalate",
     },
 
@@ -176,7 +176,7 @@ export class LocalNLPService {
         "dung nhu the nao",
       ],
       response:
-        "❓ Bạn cần hướng dẫn về tính năng nào của Zalo-Lite?\n\nCác tính năng chính:\n✓ Chat 1-1 và nhóm (tối thiểu 3 người)\n✓ Gửi ảnh, video, file đính kèm\n✓ Thêm bạn bè qua số điện thoại\n✓ Trạng thái online/offline\n✓ Bảo mật end-to-end\n\nHãy mô tả cụ thể tình huống bạn đang gặp để tôi hướng dẫn chi tiết hơn!",
+        "Bạn cần hướng dẫn về tính năng nào của Zalo-Lite?\n\nCác tính năng chính:\n✓ Chat 1-1 và nhóm (tối thiểu 3 người)\n✓ Gửi ảnh, video, file đính kèm\n✓ Thêm bạn bè qua số điện thoại\n✓ Trạng thái online/offline\n✓ Bảo mật end-to-end\n\nHãy mô tả cụ thể tình huống bạn đang gặp để tôi hướng dẫn chi tiết hơn!",
     },
 
     // ── Billing ───────────────────────────────────────────────────────────────
@@ -199,7 +199,7 @@ export class LocalNLPService {
         "hoan tien",
       ],
       response:
-        "💳 Thông tin thanh toán Zalo-Lite:\n\nZalo-Lite là ứng dụng MIỄN PHÍ hoàn toàn!\n✓ Không phí duy trì tài khoản\n✓ Không giới hạn tin nhắn\n✓ Không quảng cáo bắt buộc\n\nNếu bạn bị tính phí không rõ lý do, vui lòng liên hệ ngay để chúng tôi kiểm tra.",
+        "Thông tin thanh toán Zalo-Lite:\n\nZalo-Lite là ứng dụng MIỄN PHÍ hoàn toàn!\n✓ Không phí duy trì tài khoản\n✓ Không giới hạn tin nhắn\n✓ Không quảng cáo bắt buộc\n\nNếu bạn bị tính phí không rõ lý do, vui lòng liên hệ ngay để chúng tôi kiểm tra.",
       action: "escalate",
     },
 
@@ -224,7 +224,7 @@ export class LocalNLPService {
         "quyen rieng tu",
       ],
       response:
-        "🔒 Bảo mật & Riêng tư trên Zalo-Lite:\n✓ Mã hóa end-to-end cho mọi tin nhắn\n✓ Không chia sẻ dữ liệu cá nhân\n✓ Chặn người dùng: vào profile → Chặn\n✓ Báo cáo spam: nhấn giữ tin nhắn → Báo cáo\n\nNếu nghi ngờ tài khoản bị xâm nhập, hãy đổi mật khẩu ngay và liên hệ hỗ trợ.",
+        "Bảo mật & Riêng tư trên Zalo-Lite:\n✓ Mã hóa end-to-end cho mọi tin nhắn\n✓ Không chia sẻ dữ liệu cá nhân\n✓ Chặn người dùng: vào profile → Chặn\n✓ Báo cáo spam: nhấn giữ tin nhắn → Báo cáo\n\nNếu nghi ngờ tài khoản bị xâm nhập, hãy đổi mật khẩu ngay và liên hệ hỗ trợ.",
     },
 
     // ── App crash / not opening ───────────────────────────────────────────────
@@ -248,7 +248,7 @@ export class LocalNLPService {
         "man hinh trang",
       ],
       response:
-        "🔧 Xử lý sự cố ứng dụng:\n1. Đóng hoàn toàn ứng dụng và mở lại\n2. Kiểm tra kết nối internet\n3. Xóa cache ứng dụng (Cài đặt → Ứng dụng → Zalo-Lite → Xóa cache)\n4. Cập nhật lên phiên bản mới nhất\n5. Khởi động lại thiết bị\n\nNếu vẫn còn lỗi, vui lòng mô tả thiết bị và hệ điều hành để hỗ trợ tốt hơn.",
+        "Xử lý sự cố ứng dụng:\n1. Đóng hoàn toàn ứng dụng và mở lại\n2. Kiểm tra kết nối internet\n3. Xóa cache ứng dụng (Cài đặt → Ứng dụng → Zalo-Lite → Xóa cache)\n4. Cập nhật lên phiên bản mới nhất\n5. Khởi động lại thiết bị\n\nNếu vẫn còn lỗi, vui lòng mô tả thiết bị và hệ điều hành để hỗ trợ tốt hơn.",
     },
 
     // ── Notifications ─────────────────────────────────────────────────────────
@@ -270,7 +270,7 @@ export class LocalNLPService {
         "do khong phai phien",
       ],
       response:
-        "🔔 Cài đặt thông báo:\n1. Vào Cài đặt hệ thống → Thông báo → Zalo-Lite → Bật thông báo\n2. Trong ứng dụng: Cài đặt → Thông báo → Bật âm thanh & rung\n3. Kiểm tra xem điện thoại có ở chế độ \"Không làm phiền\" không\n4. Kết nối internet ổn định là điều kiện nhận thông báo\n\nBạn đang dùng iOS hay Android?",
+        'Cài đặt thông báo:\n1. Vào Cài đặt hệ thống → Thông báo → Zalo-Lite → Bật thông báo\n2. Trong ứng dụng: Cài đặt → Thông báo → Bật âm thanh & rung\n3. Kiểm tra xem điện thoại có ở chế độ "Không làm phiền" không\n4. Kết nối internet ổn định là điều kiện nhận thông báo\n\nBạn đang dùng iOS hay Android?',
     },
 
     // ── Media sharing ─────────────────────────────────────────────────────────
@@ -294,7 +294,7 @@ export class LocalNLPService {
         "luu anh",
       ],
       response:
-        "📎 Gửi ảnh, video và file:\n• Trong cửa sổ chat → nhấn biểu tượng đính kèm (📎)\n• Chọn ảnh từ thư viện hoặc chụp mới\n• Kích thước tối đa: ảnh 10MB, video 50MB, file 100MB\n\nNếu không gửi được:\n1. Kiểm tra kết nối internet\n2. Kiểm tra dung lượng file\n3. Cho phép ứng dụng truy cập bộ nhớ trong Cài đặt",
+        "Gửi ảnh, video và file:\n• Trong cửa sổ chat → nhấn biểu tượng đính kèm (📎)\n• Chọn ảnh từ thư viện hoặc chụp mới\n• Kích thước tối đa: ảnh 10MB, video 50MB, file 100MB\n\nNếu không gửi được:\n1. Kiểm tra kết nối internet\n2. Kiểm tra dung lượng file\n3. Cho phép ứng dụng truy cập bộ nhớ trong Cài đặt",
     },
 
     // ── Voice / video call ────────────────────────────────────────────────────
@@ -317,7 +317,7 @@ export class LocalNLPService {
         "truoc cuoc goi",
       ],
       response:
-        "📞 Gọi điện & Video call:\n• Mở chat → nhấn biểu tượng điện thoại (thoại) hoặc camera (video)\n\nXử lý sự cố:\n1. Cho phép ứng dụng truy cập Micro và Camera\n2. Kiểm tra kết nối internet (cần ít nhất 1 Mbps)\n3. Đảm bảo đối phương đang online\n4. Thử bật/tắt Wifi rồi kết nối lại\n\nVẫn gặp lỗi? Mô tả chi tiết để hỗ trợ thêm.",
+        "Gọi điện & Video call:\n• Mở chat → nhấn biểu tượng điện thoại (thoại) hoặc camera (video)\n\nXử lý sự cố:\n1. Cho phép ứng dụng truy cập Micro và Camera\n2. Kiểm tra kết nối internet (cần ít nhất 1 Mbps)\n3. Đảm bảo đối phương đang online\n4. Thử bật/tắt Wifi rồi kết nối lại\n\nVẫn gặp lỗi? Mô tả chi tiết để hỗ trợ thêm.",
     },
   ];
 
