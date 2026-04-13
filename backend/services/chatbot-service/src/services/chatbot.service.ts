@@ -22,7 +22,23 @@ export class ChatbotService {
     // Get or create conversation
     let convId = conversationId;
     if (!convId) {
-      convId = await conversationRepository.create(userId);
+      const latestActiveConversation =
+        await conversationRepository.getLatestActiveConversationByUserId(
+          userId,
+        );
+      convId =
+        latestActiveConversation?.conversationId ||
+        (await conversationRepository.create(userId));
+    } else {
+      const currentConversation =
+        await conversationRepository.getConversation(convId);
+
+      if (
+        !currentConversation ||
+        ["resolved", "closed"].includes(currentConversation.status)
+      ) {
+        convId = await conversationRepository.create(userId);
+      }
     }
 
     // ⚡ Step 1: Check cache first (fastest response)
@@ -161,6 +177,13 @@ export class ChatbotService {
       createdAt: Date.now(),
     };
 
+    if (classifyResult.action === "escalate") {
+      await conversationRepository.escalateToAdmin(
+        convId,
+        "pending_assignment",
+      );
+    }
+
     await conversationRepository.addMessage(convId, botMessage);
 
     // 💾 Step 2: Cache successful response for future use
@@ -254,6 +277,16 @@ export class ChatbotService {
         confidence: p.avgConfidence.toFixed(2),
       })),
     };
+  }
+
+  /**
+   * Delete a single conversation
+   */
+  async deleteConversation(userId: string, conversationId: string) {
+    return conversationRepository.deleteConversationForUser(
+      conversationId,
+      userId,
+    );
   }
 }
 

@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
 
 export type ConversationMember = {
   conversation_id: string;
@@ -88,10 +89,7 @@ export async function addMembersToConversation(
   );
 }
 
-export async function removeMemberFromConversation(
-  id: string,
-  userId: string,
-) {
+export async function removeMemberFromConversation(id: string, userId: string) {
   return request<ApiResponse<null>>(
     `/api/conversations/${id}/members/${userId}`,
     {
@@ -100,7 +98,10 @@ export async function removeMemberFromConversation(
   );
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
   const token = localStorage.getItem("token");
   if (!token) {
     throw buildError({ message: "missing_local_session" });
@@ -115,7 +116,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
-  const payload = (await response.json()) as unknown;
+  const contentType = response.headers.get("content-type") || "";
+  const rawPayload = await response.text();
+  const payload =
+    contentType.includes("application/json") && rawPayload
+      ? (JSON.parse(rawPayload) as unknown)
+      : { message: rawPayload || `http_${response.status}` };
 
   if (!response.ok) {
     throw buildError(payload);

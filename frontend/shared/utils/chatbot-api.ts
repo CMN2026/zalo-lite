@@ -3,7 +3,8 @@
  * Handles communication with chatbot-service
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004/api/chatbot";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3004";
 
 export interface SendMessageRequest {
   message: string;
@@ -36,7 +37,7 @@ export async function sendChatbotMessage(
   request: SendMessageRequest,
   token: string,
 ): Promise<SendMessageResponse> {
-  const response = await fetch(`${API_BASE_URL}/chatbot/messages`, {
+  const response = await fetch(`${API_BASE_URL}/api/chatbot/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -58,7 +59,7 @@ export async function sendChatbotMessage(
 export async function getChatbotConversations(
   token: string,
 ): Promise<GetConversationsResponse> {
-  const response = await fetch(`${API_BASE_URL}/chatbot/conversations`, {
+  const response = await fetch(`${API_BASE_URL}/api/chatbot/conversations`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -86,7 +87,7 @@ export async function getChatbotConversationHistory(
   }>;
 }> {
   const response = await fetch(
-    `${API_BASE_URL}/chatbot/conversations/${conversationId}/messages`,
+    `${API_BASE_URL}/api/chatbot/conversations/${conversationId}/messages`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -108,7 +109,7 @@ export async function createChatbotConversation(
   title: string,
   token: string,
 ): Promise<{ id: string; title: string }> {
-  const response = await fetch(`${API_BASE_URL}/chatbot/conversations`, {
+  const response = await fetch(`${API_BASE_URL}/api/chatbot/conversations`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -132,7 +133,7 @@ export async function deleteChatbotConversation(
   token: string,
 ): Promise<void> {
   const response = await fetch(
-    `${API_BASE_URL}/chatbot/conversations/${conversationId}`,
+    `${API_BASE_URL}/api/chatbot/conversations/${conversationId}`,
     {
       method: "DELETE",
       headers: {
@@ -157,7 +158,7 @@ export async function getChatbotFAQ(token: string): Promise<{
     category: string;
   }>;
 }> {
-  const response = await fetch(`${API_BASE_URL}/chatbot/faq`, {
+  const response = await fetch(`${API_BASE_URL}/api/chatbot/faq`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -169,3 +170,5 @@ export async function getChatbotFAQ(token: string): Promise<{
 
   return response.json();
 }
+
+// Dev clear-all API removed intentionally to prevent misuse.

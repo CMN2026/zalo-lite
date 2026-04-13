@@ -19,22 +19,21 @@ import {
   addMembersToConversation,
   removeMemberFromConversation,
   type Conversation,
-  type ConversationMember,
 } from "../lib/conversations";
 import { listFriends, type ProfileUser } from "../lib/users";
 import { getSavedAuthUser } from "../lib/auth";
 
 interface GroupDetailPanelProps {
-  conversationId: string;
-  onConversationUpdated: () => void;
-  onConversationDeleted: () => void;
+  readonly conversationId: string;
+  readonly onConversationUpdated: () => void;
+  readonly onConversationDeleted: () => void;
 }
 
 export default function GroupDetailPanel({
   conversationId,
   onConversationUpdated,
   onConversationDeleted,
-}: GroupDetailPanelProps) {
+}: Readonly<GroupDetailPanelProps>) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -93,7 +92,12 @@ export default function GroupDetailPanel({
   }
 
   async function handleDelete() {
-    if (!window.confirm("Bạn có chắc muốn giải tán nhóm này? Thao tác này không thể hoàn tác.")) return;
+    if (
+      !globalThis.confirm(
+        "Bạn có chắc muốn giải tán nhóm này? Thao tác này không thể hoàn tác.",
+      )
+    )
+      return;
     setBusyAction("delete");
     setError("");
     try {
@@ -107,7 +111,7 @@ export default function GroupDetailPanel({
   }
 
   async function handleLeave() {
-    if (!window.confirm("Bạn có chắc muốn rời nhóm này?")) return;
+    if (!globalThis.confirm("Bạn có chắc muốn rời nhóm này?")) return;
     setBusyAction("leave");
     setError("");
     try {
@@ -128,7 +132,7 @@ export default function GroupDetailPanel({
   async function handleRemoveMember(userId: string) {
     const member = members.find((m) => m.user_id === userId);
     const name = member?.profile?.full_name ?? "thành viên";
-    if (!window.confirm(`Bạn có chắc muốn xóa ${name} khỏi nhóm?`)) return;
+    if (!globalThis.confirm(`Bạn có chắc muốn xóa ${name} khỏi nhóm?`)) return;
     setBusyAction(`remove-${userId}`);
     setError("");
     try {
@@ -198,7 +202,7 @@ export default function GroupDetailPanel({
     <div className="w-80 border-l border-slate-200 bg-white flex flex-col overflow-y-auto">
       {/* Group Header */}
       <div className="flex flex-col items-center py-8 border-b border-slate-100">
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center mb-3 shadow-lg">
+        <div className="w-20 h-20 rounded-full bg-linear-to-br from-blue-500 to-indigo-600 flex items-center justify-center mb-3 shadow-lg">
           <Users className="w-9 h-9 text-white" />
         </div>
 
@@ -242,7 +246,9 @@ export default function GroupDetailPanel({
           </div>
         )}
 
-        <p className="text-sm text-slate-500 mt-1">{members.length} thành viên</p>
+        <p className="text-sm text-slate-500 mt-1">
+          {members.length} thành viên
+        </p>
       </div>
 
       {/* Error / Notice */}
@@ -274,18 +280,25 @@ export default function GroupDetailPanel({
         {showAddMember && (
           <div className="mb-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-slate-600">Thêm bạn bè</span>
+              <span className="text-xs font-semibold text-slate-600">
+                Thêm bạn bè
+              </span>
               <button onClick={() => setShowAddMember(false)}>
                 <X className="w-3.5 h-3.5 text-slate-400" />
               </button>
             </div>
             {friends.length === 0 ? (
-              <p className="text-xs text-slate-500">Không có bạn bè nào để thêm.</p>
+              <p className="text-xs text-slate-500">
+                Không có bạn bè nào để thêm.
+              </p>
             ) : (
               <>
                 <div className="max-h-32 overflow-y-auto space-y-1">
                   {friends.map((friend) => (
-                    <label key={friend.id} className="flex items-center gap-2 py-1 cursor-pointer text-xs">
+                    <label
+                      key={friend.id}
+                      className="flex items-center gap-2 py-1 cursor-pointer text-xs"
+                    >
                       <input
                         type="checkbox"
                         checked={addingIds.has(friend.id)}
@@ -308,7 +321,9 @@ export default function GroupDetailPanel({
                   disabled={addingIds.size === 0 || busyAction === "add"}
                   className="mt-2 w-full bg-blue-600 text-white text-xs py-1.5 rounded-lg disabled:opacity-50"
                 >
-                  {busyAction === "add" ? "Đang thêm..." : `Thêm (${addingIds.size})`}
+                  {busyAction === "add"
+                    ? "Đang thêm..."
+                    : `Thêm (${addingIds.size})`}
                 </button>
               </>
             )}
@@ -317,6 +332,7 @@ export default function GroupDetailPanel({
 
         <div className="space-y-1">
           {members.map((member) => {
+            // Backend returns full_name field from user profile
             const name = member.profile?.full_name ?? "Unknown";
             const initials = name
               .split(" ")

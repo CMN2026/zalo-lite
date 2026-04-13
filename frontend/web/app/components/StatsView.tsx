@@ -1,65 +1,77 @@
 import React from "react";
-import { Download, Calendar, Star } from "lucide-react";
-import { mockStatsTickets } from "../lib/mockData";
 
+/**
+ * StatsView — Thống kê chatbot.
+ * Placeholder UI — số liệu thực sẽ được lấy từ /api/chatbot/stats.
+ */
 export default function StatsView() {
   return (
     <div className="flex-1 overflow-y-auto bg-slate-50 p-8 h-full font-sans text-slate-800">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">My Performance & Feedback</h1>
-          <p className="text-slate-500 text-sm mt-1">Personal metrics and customer satisfaction insights</p>
-        </div>
-        <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium"><Calendar className="w-4 h-4" /> Last 30 Days</button>
-          <button className="bg-blue-600 text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"><Download className="w-4 h-4" /> Export My Stats</button>
+          <h1 className="text-2xl font-bold">Thống kê chatbot</h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Hiệu suất và chỉ số chất lượng hỗ trợ khách hàng.
+          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-6 mb-6">
-        {/* Mock Data Stats */}
+      <div className="grid grid-cols-2 gap-6 mb-6">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex justify-between items-start mb-2"><span className="text-xs font-bold text-slate-500 uppercase">My Resolution Rate</span></div>
-          <h2 className="text-4xl font-bold mb-2">96.5%</h2>
-          <div className="w-full bg-slate-100 h-1.5 rounded-full mt-4"><div className="bg-blue-600 h-1.5 rounded-full w-[96.5%]"></div></div>
+          <p className="text-xs font-bold text-slate-500 uppercase mb-2">
+            Tổng cuộc hội thoại
+          </p>
+          <h2 className="text-4xl font-bold text-slate-900">—</h2>
+          <p className="text-xs text-slate-400 mt-2">Đang tải...</p>
         </div>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex justify-between items-start mb-2"><span className="text-xs font-bold text-slate-500 uppercase">Avg. Handling Time</span></div>
-          <h2 className="text-4xl font-bold mb-1">8m 12s</h2>
-          <p className="text-xs text-slate-500">Target: &lt; 10m 00s</p>
+          <p className="text-xs font-bold text-slate-500 uppercase mb-2">
+            Đã giải quyết
+          </p>
+          <h2 className="text-4xl font-bold text-slate-900">—</h2>
+          <p className="text-xs text-slate-400 mt-2">Đang tải...</p>
         </div>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex justify-between items-start mb-2"><span className="text-xs font-bold text-slate-500 uppercase">Personal CSAT Score</span></div>
-          <h2 className="text-4xl font-bold mb-2">4.9/5.0</h2>
-          <div className="flex text-yellow-400 gap-1"><Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/><Star className="w-4 h-4 fill-current"/></div>
+          <p className="text-xs font-bold text-slate-500 uppercase mb-2">
+            Cần nhân viên
+          </p>
+          <h2 className="text-4xl font-bold text-slate-900">—</h2>
+          <p className="text-xs text-slate-400 mt-2">Đang tải...</p>
         </div>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex justify-between items-start mb-2"><span className="text-xs font-bold text-slate-500 uppercase">Tickets Resolved</span></div>
-          <h2 className="text-4xl font-bold mt-1">42</h2>
-          <p className="text-xs text-slate-500 mt-2">Top 5% of Team today</p>
+          <p className="text-xs font-bold text-slate-500 uppercase mb-2">
+            Pattern đã học
+          </p>
+          <h2 className="text-4xl font-bold text-slate-900">—</h2>
+          <p className="text-xs text-slate-400 mt-2">Đang tải...</p>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mt-6">
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center"><h3 className="font-bold">Recent High-Priority Tickets I Handled</h3></div>
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500 font-semibold border-b border-slate-100">
-            <tr><th className="px-6 py-4">Ticket ID</th><th className="px-6 py-4">Subject</th><th className="px-6 py-4">Category</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Rating</th><th className="px-6 py-4">Customer Comment</th></tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {mockStatsTickets.map((row, i) => (
-              <tr key={i}>
-                <td className="px-6 py-4 font-semibold text-blue-600">{row.id}</td>
-                <td className="px-6 py-4"><div className="font-bold">{row.subject}</div><div className="text-xs text-slate-500">{row.sub}</div></td>
-                <td className="px-6 py-4">{row.category}</td>
-                <td className="px-6 py-4"><span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded-sm uppercase">{row.status}</span></td>
-                <td className="px-6 py-4">{row.rating === 0 ? <span className="text-slate-500">Pending</span> : <div className="flex text-yellow-400 gap-0.5">{[...Array(row.rating)].map((_, idx) => <Star key={idx} className="w-4 h-4 fill-current"/>)}</div>}</td>
-                <td className="px-6 py-4 text-slate-500 truncate max-w-[250px]">{row.comment}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 text-center">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="w-12 h-12 text-slate-300 mx-auto mb-3"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={1.5}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
+          />
+        </svg>
+        <h3 className="font-semibold text-slate-700 mb-2">
+          Tính năng đang phát triển
+        </h3>
+        <p className="text-sm text-slate-500 max-w-md mx-auto">
+          Dashboard thống kê chi tiết sẽ được tích hợp từ endpoint{" "}
+          <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">
+            GET /api/chatbot/stats
+          </code>{" "}
+          trong phiên bản tiếp theo.
+        </p>
       </div>
     </div>
   );

@@ -20,13 +20,11 @@ export class ChatbotIOHandler {
             conversationId,
           );
 
-          // Send response back to client
           socket.emit("chatbot_response", {
             conversationId: result.conversationId,
             message: result.message,
           });
 
-          // If escalation needed, notify admins
           if (result.action === "escalate") {
             this.io.emit("escalation_request", {
               conversationId: result.conversationId,
@@ -39,24 +37,13 @@ export class ChatbotIOHandler {
         }
       });
 
-      // Handle mark as read
-      socket.on("mark_as_read", async (data) => {
-        try {
-          const { conversationId, messageId } = data;
-          // TODO: Implement mark as read logic if needed
-          socket.emit("marked_as_read", { messageId });
-        } catch (error) {
-          console.error("Error marking as read:", error);
-        }
-      });
-
-      // Handle typing indicator
+      // Typing indicator — broadcast to other clients
       socket.on("typing", (data) => {
         const { conversationId } = data;
         socket.broadcast.emit("user_typing", { conversationId });
       });
 
-      // Handle system notification broadcast (admin only)
+      // System notification broadcast (admin only)
       socket.on("broadcast_notification", async (data) => {
         try {
           const { title, content, type, recipientType, userId } = data;
@@ -69,7 +56,6 @@ export class ChatbotIOHandler {
             userId,
           );
 
-          // Broadcast to all connected clients
           this.io.emit("system_notification", {
             id: notification.notificationId,
             title: notification.title,

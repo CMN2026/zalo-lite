@@ -135,7 +135,7 @@ services:
       AWS_REGION: ap-southeast-1
       AWS_ACCESS_KEY_ID: dummy
       AWS_SECRET_ACCESS_KEY: dummy
-      USER_SERVICE_BASE_URL: user-service
+      USER_SERVICE_BASE_URL: http://user-service:3001
       CHAT_SERVICE_BASE_URL: http://chat-service:3002
       JWT_SECRET: super-strong-jwt-secret
       JWT_ISSUER: zalo-lite-user-service
@@ -146,6 +146,7 @@ services:
       TABLE_FAQ: chatbot_faq
       TABLE_NOTIFICATIONS: chatbot_notifications
       TABLE_ANALYTICS: chatbot_analytics
+      AUTO_CLOSE_INACTIVE_HOURS: 24
       REDIS_NOTIFICATION_CHANNEL: notifications:broadcast
       CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002
       ENABLE_AI_ENGINE: "true"

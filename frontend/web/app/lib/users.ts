@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004/api";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
 
 export type ProfileUser = {
   id: string;
@@ -54,13 +55,12 @@ export async function updateMe(input: {
 }
 
 export async function updateAvatar(avatarUrl: string) {
-  return request<ApiResponse<Pick<ProfileUser, "id" | "avatarUrl" | "updatedAt">>>(
-    "/users/me/avatar",
-    {
-      method: "PATCH",
-      body: { avatarUrl },
-    },
-  );
+  return request<
+    ApiResponse<Pick<ProfileUser, "id" | "avatarUrl" | "updatedAt">>
+  >("/users/me/avatar", {
+    method: "PATCH",
+    body: { avatarUrl },
+  });
 }
 
 export async function discoverUsers(phone: string) {
@@ -77,7 +77,9 @@ export async function sendFriendRequest(phone: string, message?: string) {
 }
 
 export async function listIncomingFriendRequests() {
-  return request<ApiResponse<FriendRequest[]>>("/users/friend-requests/incoming");
+  return request<ApiResponse<FriendRequest[]>>(
+    "/users/friend-requests/incoming",
+  );
 }
 
 export async function respondFriendRequest(
@@ -97,13 +99,16 @@ export async function listFriends() {
   return request<ApiResponse<ProfileUser[]>>("/users/friends");
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
   const token = localStorage.getItem("token");
   if (!token) {
     throw buildError({ message: "missing_local_session" });
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${API_BASE_URL}/api${path}`, {
     method: options.method ?? "GET",
     headers: {
       "Content-Type": "application/json",

@@ -1,407 +1,608 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import {
-  Send,
-  Paperclip,
-  Smile,
-  Loader2,
-  Check,
-  CheckCheck,
-  AlertCircle,
-} from "lucide-react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { API_BASE_URL } from "../lib/api";
+
+// ============================================================================
+// TYPES
+// ============================================================================
 
 interface ChatMessage {
   id: string;
   content: string;
-  type: "user" | "bot";
-  timestamp: Date;
-  status?: "sending" | "sent" | "error";
+  senderId: string;
+  type?: string;
+  senderName?: string;
+  createdAt: number | string | Date;
+  confidence?: number;
 }
 
 interface Conversation {
-  id: string;
-  title: string;
-  lastMessage: string;
-  timestamp: Date;
-  unread: number;
-  avatar: string;
+  conversationId: string;
+  title?: string;
+  createdAt: number | string | Date;
+  messages: ChatMessage[];
+  status?:
+    | "waiting_response"
+    | "needs_staff"
+    | "resolved"
+    | "active"
+    | "closed";
+  userId: string;
+  escalatedToAdmin?: boolean;
+  lastMessageAt?: number | string | Date;
 }
 
-// Mock conversation data
-const mockConversations: Conversation[] = [
-  {
-    id: "1",
-    title: "Support Bot",
-    lastMessage: "How can I help you today?",
-    timestamp: new Date(Date.now() - 3600000),
-    unread: 0,
-    avatar: "https://via.placeholder.com/40?text=Support",
-  },
-  {
-    id: "2",
-    title: "Sales Assistant",
-    lastMessage: "Tell me about our products",
-    timestamp: new Date(Date.now() - 7200000),
-    unread: 2,
-    avatar: "https://via.placeholder.com/40?text=Sales",
-  },
-  {
-    id: "3",
-    title: "FAQ Bot",
-    lastMessage: "What would you like to know?",
-    timestamp: new Date(Date.now() - 86400000),
-    unread: 0,
-    avatar: "https://via.placeholder.com/40?text=FAQ",
-  },
-];
+// ============================================================================
+// QUICK SUGGESTIONS
+// ============================================================================
 
-// Mock messages
-const mockMessages: Record<string, ChatMessage[]> = {
-  "1": [
-    {
-      id: "m1",
-      content: "Hi! How can I help you today?",
-      type: "bot",
-      timestamp: new Date(Date.now() - 300000),
-      status: "sent",
-    },
-    {
-      id: "m2",
-      content: "I have a question about my account",
-      type: "user",
-      timestamp: new Date(Date.now() - 240000),
-      status: "sent",
-    },
-    {
-      id: "m3",
-      content:
-        "Sure! I'd be happy to help. What's your question about your account?",
-      type: "bot",
-      timestamp: new Date(Date.now() - 200000),
-      status: "sent",
-    },
-  ],
-  "2": [
-    {
-      id: "m1",
-      content: "Welcome! Which product would you like to learn about?",
-      type: "bot",
-      timestamp: new Date(Date.now() - 7200000),
-      status: "sent",
-    },
-  ],
-  "3": [
-    {
-      id: "m1",
-      content: "Hello! What would you like to know?",
-      type: "bot",
-      timestamp: new Date(Date.now() - 86400000),
-      status: "sent",
-    },
-  ],
-};
+const QUICK_SUGGESTIONS = [
+  { id: "password", label: "Quên mật khẩu", text: "Tôi quên mật khẩu, cần đặt lại" },
+  { id: "add_friend", label: "Thêm bạn bè", text: "Tôi muốn biết cách thêm bạn bè" },
+  { id: "create_group", label: "Tạo nhóm chat", text: "Tôi cần hỗ trợ tạo nhóm chat" },
+  { id: "account", label: "Vấn đề tài khoản", text: "Tài khoản của tôi đang gặp vấn đề" },
+  { id: "payment", label: "Thanh toán", text: "Tôi có câu hỏi về phí sử dụng" },
+  { id: "staff", label: "Gặp nhân viên", text: "Tôi muốn nói chuyện với nhân viên" },
+] as const;
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function getToken(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("token") ?? "";
+}
+
+function authHeaders() {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${getToken()}`,
+  };
+}
+
+function formatTime(date: number | string | Date | undefined): string {
+  if (!date) return "";
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function statusLabel(s?: Conversation["status"]): string {
+  if (s === "needs_staff") return "Cần nhân viên";
+  if (s === "resolved" || s === "closed") return "Đã xử lý";
+  return "Đang hỗ trợ";
+}
+
+function statusBadgeClass(s?: Conversation["status"]): string {
+  if (s === "needs_staff") return "bg-amber-100 text-amber-700";
+  if (s === "resolved" || s === "closed") return "bg-emerald-100 text-emerald-700";
+  return "bg-sky-100 text-sky-700";
+}
+
+function getConversationTitle(conv: Conversation): string {
+  if (conv.title?.trim()) return conv.title;
+  const firstUser = conv.messages?.find((m) => m.senderId !== "chatbot");
+  if (!firstUser?.content) return "Hỗ trợ khách hàng";
+  const t = firstUser.content;
+  return t.length > 32 ? `${t.slice(0, 32)}…` : t;
+}
+
+function getLastPreview(conv: Conversation): string {
+  if (!conv.messages?.length) return "Chưa có tin nhắn";
+  const last = conv.messages[conv.messages.length - 1];
+  const prefix = last.senderId === "chatbot" ? "Bot: " : "Bạn: ";
+  const text = last.content.length > 38 ? `${last.content.slice(0, 38)}…` : last.content;
+  return `${prefix}${text}`;
+}
+
+// ============================================================================
+// COMPONENT
+// ============================================================================
 
 export default function ChatbotView() {
-  const [activeChatId, setActiveChatId] = useState("1");
-  const [messages, setMessages] = useState<ChatMessage[]>(
-    mockMessages["1"] || [],
-  );
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [botTyping, setBotTyping] = useState(false);
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [loadingConvs, setLoadingConvs] = useState(true);
+  const [sendError, setSendError] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const activeChat =
-    mockConversations.find((c) => c.id === activeChatId) ||
-    mockConversations[0];
+  // ─── API ──────────────────────────────────────────────────────────────────
 
-  // Auto-scroll to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Switch conversation
-  const handleConversationChange = (chatId: string) => {
-    setActiveChatId(chatId);
-    setMessages(mockMessages[chatId] || []);
-    setInputValue("");
-  };
-
-  // Send message
-  const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
-
-    const userMessage: ChatMessage = {
-      id: `m${Date.now()}`,
-      content: inputValue,
-      type: "user",
-      timestamp: new Date(),
-      status: "sending",
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInputValue("");
-    setIsLoading(true);
-
+  const fetchConversations = useCallback(async (): Promise<Conversation[] | null> => {
     try {
-      // Get token from localStorage
-      const token = localStorage.getItem("token");
-      if (!token) {
-        alert("Please log in first");
-        setIsLoading(false);
-        return;
-      }
+      const res = await fetch(`${API_BASE_URL}/api/chatbot/conversations`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data.data as Conversation[]) ?? [];
+    } catch {
+      return null;
+    }
+  }, []);
 
-      // Call actual API
-      const response = await fetch("http://localhost:3003/chatbot/messages", {
+  const fetchMessages = useCallback(async (convId: string) => {
+    setLoadingMsgs(true);
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/chatbot/conversations/${convId}/history`,
+        { headers: authHeaders() },
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      setMessages(data.data?.messages ?? []);
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingMsgs(false);
+    }
+  }, []);
+
+  const postMessage = useCallback(
+    async (text: string, convId: string | null): Promise<string | null> => {
+      const body: Record<string, unknown> = { message: text };
+      if (convId) body.conversationId = convId;
+
+      const res = await fetch(`${API_BASE_URL}/api/chatbot/messages`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message: userMessage.content,
-          conversationId: activeChatId ? `conv-${activeChatId}` : null,
-        }),
+        headers: authHeaders(),
+        body: JSON.stringify(body),
       });
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(payload.message ?? `Lỗi ${res.status}`);
       }
 
-      const data = await response.json();
-      const botMessage: ChatMessage = {
-        id: `m${Date.now() + 1}`,
-        content: data.data.message.content,
-        type: "bot",
-        timestamp: new Date(),
-        status: "sent",
+      const data = await res.json();
+      return (data.data?.conversationId as string) ?? null;
+    },
+    [],
+  );
+
+  // ─── ACTIONS ──────────────────────────────────────────────────────────────
+
+  const handleSend = useCallback(
+    async (text: string, targetConvId?: string | null) => {
+      const trimmed = text.trim();
+      if (!trimmed || sending) return;
+
+      setSending(true);
+      setBotTyping(true);
+      setSendError(null);
+
+      // Optimistic user message
+      const optMsg: ChatMessage = {
+        id: `opt-${Date.now()}`,
+        content: trimmed,
+        senderId: "me",
+        type: "user",
+        createdAt: Date.now(),
       };
+      setMessages((prev) => [...prev, optMsg]);
+      setInputValue("");
 
-      setMessages((prev) => [
-        ...prev.map((m) =>
-          m.id === userMessage.id ? { ...m, status: "sent" as const } : m,
-        ),
-        botMessage,
-      ]);
-    } catch (error) {
-      console.error("Failed to send message:", error);
-      setMessages((prev) => [
-        ...prev.map((m) =>
-          m.id === userMessage.id ? { ...m, status: "error" as const } : m,
-        ),
-      ]);
-      alert("Failed to send message. Check console for details.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      try {
+        const convId =
+          targetConvId !== undefined ? targetConvId : activeId;
+        const resultConvId = await postMessage(trimmed, convId);
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  };
+        const resolvedConvId = resultConvId ?? convId;
+        if (resolvedConvId && !activeId) setActiveId(resolvedConvId);
 
-  const formatDate = (date: Date) => {
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    if (isToday) return formatTime(date);
-    return date.toLocaleDateString();
-  };
+        const freshConvs = await fetchConversations();
+        if (freshConvs) setConversations(freshConvs);
+
+        if (resolvedConvId) await fetchMessages(resolvedConvId);
+      } catch (err) {
+        setSendError(
+          err instanceof Error ? err.message : "Không thể gửi tin nhắn.",
+        );
+        setMessages((prev) => prev.filter((m) => m.id !== optMsg.id));
+      } finally {
+        setSending(false);
+        setBotTyping(false);
+        inputRef.current?.focus();
+      }
+    },
+    [activeId, sending, postMessage, fetchConversations, fetchMessages],
+  );
+
+  const handleSelectConv = useCallback(
+    async (convId: string) => {
+      setActiveId(convId);
+      setSendError(null);
+      await fetchMessages(convId);
+    },
+    [fetchMessages],
+  );
+
+  const handleNewConv = useCallback(() => {
+    setActiveId(null);
+    setMessages([]);
+    setInputValue("");
+    setSendError(null);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, []);
+
+  const handleDeleteConv = useCallback(
+    async (convId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!confirm("Xóa cuộc trò chuyện này?")) return;
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/api/chatbot/conversations/${convId}`,
+          { method: "DELETE", headers: authHeaders() },
+        );
+        if (!res.ok) throw new Error();
+        setConversations((prev) => prev.filter((c) => c.conversationId !== convId));
+        if (activeId === convId) { setActiveId(null); setMessages([]); }
+      } catch {
+        alert("Không thể xóa. Vui lòng thử lại.");
+      }
+    },
+    [activeId],
+  );
+
+  const handleCloseConv = useCallback(async () => {
+    if (!activeId || !confirm("Đánh dấu cuộc trò chuyện là đã xử lý?")) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/chatbot/conversations/${activeId}/close`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const freshConvs = await fetchConversations();
+      if (freshConvs) setConversations(freshConvs);
+      await fetchMessages(activeId);
+    } catch { /* ignore */ }
+  }, [activeId, fetchConversations, fetchMessages]);
+
+  // ─── LIFECYCLE ────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    setLoadingConvs(true);
+    fetchConversations().then((convs) => {
+      if (convs) {
+        setConversations(convs);
+        const active = convs.find((c) =>
+          ["waiting_response", "needs_staff", "active"].includes(c.status ?? ""),
+        );
+        if (active) {
+          setActiveId(active.conversationId);
+          fetchMessages(active.conversationId);
+        }
+      }
+      setLoadingConvs(false);
+    });
+    setTimeout(() => inputRef.current?.focus(), 100);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, botTyping]);
+
+  const activeConv = conversations.find((c) => c.conversationId === activeId);
+  const isResolved =
+    activeConv?.status === "resolved" || activeConv?.status === "closed";
+  const needsStaff = activeConv?.status === "needs_staff";
+
+  // ─── RENDER ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex w-full h-full bg-white font-sans text-slate-800">
-      {/* Left Sidebar: Conversation List */}
-      <div className="w-80 border-r border-slate-200 flex flex-col bg-white">
-        <div className="p-4 border-b border-slate-100">
-          <h1 className="text-xl font-bold text-slate-900">AI Chatbots</h1>
-          <p className="text-xs text-slate-500 mt-1">Your conversations</p>
-        </div>
+    <div className="flex w-full h-full bg-white">
 
-        <div className="flex-1 overflow-y-auto">
-          {mockConversations.map((conversation) => (
-            <div
-              key={conversation.id}
-              onClick={() => handleConversationChange(conversation.id)}
-              className={`p-4 flex gap-3 cursor-pointer border-b border-slate-50 transition-colors ${
-                activeChatId === conversation.id
-                  ? "bg-blue-50 border-l-4 border-l-blue-600"
-                  : "hover:bg-slate-50"
-              }`}
-            >
-              <div className="relative flex-shrink-0">
-                <img
-                  src={conversation.avatar}
-                  alt={conversation.title}
-                  className="w-12 h-12 rounded-full object-cover"
-                />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-baseline mb-1">
-                  <h3 className="text-sm font-semibold truncate">
-                    {conversation.title}
-                  </h3>
-                  <span className="text-xs text-slate-400 whitespace-nowrap ml-2">
-                    {formatDate(conversation.timestamp)}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 truncate">
-                  {conversation.lastMessage}
-                </p>
-              </div>
-              {conversation.unread > 0 && (
-                <div className="flex-shrink-0 bg-blue-600 text-white text-xs font-semibold w-5 h-5 rounded-full flex items-center justify-center">
-                  {conversation.unread}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Chat Area */}
-      <div className="flex-1 flex flex-col bg-slate-50">
-        {/* Chat Header */}
-        <div className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3">
-            <img
-              src={activeChat.avatar}
-              alt={activeChat.title}
-              className="w-10 h-10 rounded-full object-cover"
-            />
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900">
-                {activeChat.title}
-              </h2>
-              <p className="text-xs text-slate-500">Always online</p>
-            </div>
+      {/* ─── LEFT SIDEBAR ─────────────────────────────────────────────────── */}
+      <div className="w-72 flex-shrink-0 border-r border-slate-200 flex flex-col bg-slate-50">
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-bold text-slate-900">Hỗ trợ khách hàng</p>
+            <p className="text-[11px] text-slate-400">Trả lời 24/7</p>
           </div>
-          <button className="text-slate-500 hover:text-slate-700 p-2 rounded-lg transition-colors">
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2m0 7a1 1 0 110-2 1 1 0 010 2m0 7a1 1 0 110-2 1 1 0 010 2"
-              />
-            </svg>
+          <button
+            onClick={handleNewConv}
+            className="text-xs font-medium text-blue-600 hover:text-blue-700 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+            title="Cuộc trò chuyện mới"
+          >
+            + Mới
           </button>
         </div>
 
-        {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
-          {messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <img
-                  src={activeChat.avatar}
-                  alt={activeChat.title}
-                  className="w-16 h-16 rounded-full object-cover mx-auto mb-4 opacity-50"
-                />
-                <p className="text-slate-500 text-sm">
-                  No messages yet. Start a conversation!
-                </p>
-              </div>
+        {/* Conversation list */}
+        <div className="flex-1 overflow-y-auto">
+          {loadingConvs ? (
+            <div className="p-6 text-center text-sm text-slate-400">Đang tải...</div>
+          ) : conversations.length === 0 ? (
+            <div className="p-6 text-center text-sm text-slate-400">
+              Chưa có cuộc trò chuyện nào
             </div>
           ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[70%] ${
-                    message.type === "user"
-                      ? "bg-blue-600 text-white"
-                      : "bg-white text-slate-800 border border-slate-200"
-                  } p-4 rounded-2xl ${
-                    message.type === "user"
-                      ? "rounded-br-none"
-                      : "rounded-bl-none"
-                  } shadow-sm`}
-                >
-                  <p className="text-sm leading-relaxed">{message.content}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span
-                      className={`text-xs ${message.type === "user" ? "text-blue-100" : "text-slate-400"}`}
-                    >
-                      {formatTime(message.timestamp)}
-                    </span>
-                    {message.type === "user" && (
-                      <span
-                        className={
-                          message.status === "sent"
-                            ? "text-blue-100"
-                            : "text-slate-400"
-                        }
+            <div className="py-2 space-y-0.5 px-2">
+              {conversations.map((conv) => {
+                const isActive = activeId === conv.conversationId;
+                return (
+                  <div
+                    key={conv.conversationId}
+                    className={`group flex items-start gap-2 p-3 rounded-xl cursor-pointer transition-all ${
+                      isActive ? "bg-blue-600" : "hover:bg-white"
+                    }`}
+                    onClick={() => handleSelectConv(conv.conversationId)}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-1">
+                        <p
+                          className={`text-xs font-semibold truncate ${
+                            isActive ? "text-white" : "text-slate-900"
+                          }`}
+                        >
+                          {getConversationTitle(conv)}
+                        </p>
+                        <span
+                          className={`text-[10px] flex-shrink-0 ${
+                            isActive ? "text-blue-200" : "text-slate-400"
+                          }`}
+                        >
+                          {formatTime(conv.lastMessageAt)}
+                        </span>
+                      </div>
+                      <p
+                        className={`text-[11px] truncate mt-0.5 ${
+                          isActive ? "text-blue-200" : "text-slate-400"
+                        }`}
                       >
-                        {message.status === "sending" && (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        )}
-                        {message.status === "sent" && (
-                          <CheckCheck className="w-3 h-3" />
-                        )}
-                        {message.status === "error" && (
-                          <AlertCircle className="w-3 h-3" />
-                        )}
+                        {getLastPreview(conv)}
+                      </p>
+                      <span
+                        className={`inline-flex mt-1.5 items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                          isActive ? "bg-blue-500 text-white" : statusBadgeClass(conv.status)
+                        }`}
+                      >
+                        {statusLabel(conv.status)}
                       </span>
-                    )}
+                    </div>
+                    <button
+                      onClick={(e) => handleDeleteConv(conv.conversationId, e)}
+                      className={`opacity-0 group-hover:opacity-100 flex-shrink-0 text-[11px] px-1.5 py-0.5 rounded transition-all ${
+                        isActive
+                          ? "text-blue-200 hover:text-white"
+                          : "text-slate-400 hover:text-slate-600"
+                      }`}
+                      title="Xóa"
+                    >
+                      ✕
+                    </button>
                   </div>
-                </div>
-              </div>
-            ))
-          )}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-white text-slate-800 border border-slate-200 p-4 rounded-2xl rounded-bl-none shadow-sm">
-                <div className="flex gap-2">
-                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce animation-delay-100"></div>
-                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce animation-delay-200"></div>
-                </div>
-              </div>
+                );
+              })}
             </div>
           )}
-          <div ref={messagesEndRef} />
         </div>
+      </div>
 
-        {/* Message Input Area */}
-        <div className="bg-white border-t border-slate-200 p-4">
-          <div className="flex gap-3">
-            <button className="text-slate-500 hover:text-slate-700 p-2 rounded-lg transition-colors flex-shrink-0">
-              <Paperclip className="w-5 h-5" />
-            </button>
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-              placeholder="Type your message..."
-              className="flex-1 bg-slate-100 text-slate-900 placeholder-slate-400 rounded-full py-3 px-4 text-sm outline-none focus:bg-slate-50 focus:ring-2 focus:ring-blue-500"
-            />
+      {/* ─── RIGHT: CHAT AREA ─────────────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+
+        {/* Chat header */}
+        {activeConv && (
+          <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                {getConversationTitle(activeConv)}
+              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span
+                  className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${statusBadgeClass(activeConv.status)}`}
+                >
+                  {statusLabel(activeConv.status)}
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  {messages.length} tin nhắn
+                </span>
+              </div>
+            </div>
+            {!isResolved && (
+              <button
+                onClick={handleCloseConv}
+                className="text-xs text-slate-500 hover:text-slate-800 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                Đóng hội thoại
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Escalation notice */}
+        {needsStaff && (
+          <div className="flex-shrink-0 mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <p className="text-xs font-semibold text-amber-800">
+              Đang chuyển đến nhân viên hỗ trợ
+            </p>
+            <p className="text-[11px] text-amber-600 mt-0.5">
+              Nhân viên sẽ phản hồi sớm nhất có thể. Bạn vẫn có thể tiếp tục nhắn tin.
+            </p>
+          </div>
+        )}
+
+        {/* Resolved notice */}
+        {isResolved && (
+          <div className="flex-shrink-0 mx-4 mt-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-emerald-800">
+                Cuộc trò chuyện đã được xử lý
+              </p>
+              <p className="text-[11px] text-emerald-600">
+                Cảm ơn bạn đã liên hệ.
+              </p>
+            </div>
             <button
-              onClick={() => handleSendMessage()}
-              disabled={!inputValue.trim() || isLoading}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white p-2 rounded-lg transition-colors flex-shrink-0"
+              onClick={handleNewConv}
+              className="text-xs font-medium text-emerald-700 hover:text-emerald-900 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors"
             >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Send className="w-5 h-5" />
-              )}
-            </button>
-            <button className="text-slate-500 hover:text-slate-700 p-2 rounded-lg transition-colors flex-shrink-0">
-              <Smile className="w-5 h-5" />
+              Cuộc trò chuyện mới
             </button>
           </div>
+        )}
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {!activeId ? (
+            /* Welcome screen */
+            <div className="h-full flex flex-col items-center justify-center max-w-xl mx-auto text-center py-8">
+              <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white text-2xl mb-4 shadow-md">
+                💬
+              </div>
+              <h1 className="text-2xl font-bold text-slate-900 mb-1">Xin chào!</h1>
+              <p className="text-slate-500 text-sm mb-7">
+                Tôi là trợ lý hỗ trợ khách hàng của Zalo-Lite.
+                <br />
+                Bạn đang gặp vấn đề gì? Hãy chọn hoặc nhập câu hỏi bên dưới.
+              </p>
+              <div className="grid grid-cols-2 gap-3 w-full mb-6">
+                {QUICK_SUGGESTIONS.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => handleSend(s.text, null)}
+                    disabled={sending}
+                    className="p-3 bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl text-left text-sm font-medium text-slate-700 hover:text-blue-700 transition-all disabled:opacity-50"
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400">
+                Hoặc gõ câu hỏi bên dưới để bắt đầu
+              </p>
+            </div>
+          ) : loadingMsgs ? (
+            <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+              Đang tải tin nhắn...
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+              Chưa có tin nhắn
+            </div>
+          ) : (
+            <>
+              {messages.map((msg) => {
+                const isUser = msg.senderId !== "chatbot";
+                const isBot = msg.senderId === "chatbot";
+
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex items-end gap-2 ${isUser ? "justify-end" : "justify-start"}`}
+                  >
+                    {/* Bot label */}
+                    {!isUser && (
+                      <div className="w-7 h-7 rounded-full flex-shrink-0 bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
+                        {isBot ? "AI" : "NV"}
+                      </div>
+                    )}
+
+                    <div className={`max-w-sm flex flex-col ${isUser ? "items-end" : "items-start"}`}>
+                      {!isUser && (
+                        <span className="text-[10px] text-slate-400 mb-0.5 ml-1">
+                          {isBot ? "Trợ lý AI" : (msg.senderName ?? "Nhân viên")}
+                        </span>
+                      )}
+                      <div
+                        className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words ${
+                          isUser
+                            ? "bg-blue-600 text-white rounded-br-sm"
+                            : "bg-slate-100 text-slate-800 rounded-bl-sm"
+                        }`}
+                        style={{ whiteSpace: "pre-line" }}
+                      >
+                        {msg.content}
+                      </div>
+                      <span className="text-[10px] text-slate-400 mt-0.5">
+                        {formatTime(msg.createdAt)}
+                      </span>
+                    </div>
+
+                    {isUser && (
+                      <div className="w-7 h-7 rounded-full flex-shrink-0 bg-slate-200 flex items-center justify-center text-slate-500 text-xs font-bold">
+                        TÔI
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Typing indicator */}
+              {botTyping && (
+                <div className="flex items-end gap-2 justify-start">
+                  <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
+                    AI
+                  </div>
+                  <div className="bg-slate-100 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </>
+          )}
+        </div>
+
+        {/* ─── INPUT BAR — always visible ───────────────────────────────────── */}
+        <div className="flex-shrink-0 border-t border-slate-200 bg-white px-4 py-3">
+          {sendError && (
+            <p className="text-xs text-red-500 mb-2">{sendError}</p>
+          )}
+
+          {isResolved ? (
+            <div className="flex items-center justify-center gap-2 py-2 text-sm text-slate-400">
+              <span>Cuộc trò chuyện đã kết thúc.</span>
+              <button
+                onClick={handleNewConv}
+                className="text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Bắt đầu mới
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2 items-end">
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend(inputValue, activeId ?? null);
+                  }
+                }}
+                disabled={sending}
+                placeholder={
+                  activeId
+                    ? "Nhập tin nhắn..."
+                    : "Nhập câu hỏi để bắt đầu..."
+                }
+                className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 transition-all"
+              />
+              <button
+                onClick={() => handleSend(inputValue, activeId ?? null)}
+                disabled={!inputValue.trim() || sending}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 text-white text-sm font-medium rounded-xl transition-colors flex-shrink-0"
+              >
+                {sending ? "..." : "Gửi"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

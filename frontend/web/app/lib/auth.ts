@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004/api";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
 
 export type AuthUser = {
   id: string;
@@ -24,7 +25,9 @@ type RequestOptions = {
   body: Record<string, unknown>;
 };
 
-function isValidationErrorResponse(value: unknown): value is ValidationErrorResponse {
+function isValidationErrorResponse(
+  value: unknown,
+): value is ValidationErrorResponse {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -49,13 +52,16 @@ export async function register(input: {
   phone?: string;
   avatarUrl?: string | null;
 }) {
-  return post<AuthResponse<{ token: string; user: AuthUser }>>("/auth/register", {
-    body: input,
-  });
+  return post<AuthResponse<{ token: string; user: AuthUser }>>(
+    "/auth/register",
+    {
+      body: input,
+    },
+  );
 }
 
 async function post<T>(path: string, options: RequestOptions): Promise<T> {
-  const url = API_BASE_URL.includes('/api') ? `${API_BASE_URL}${path}` : `${API_BASE_URL}/api${path}`;
+  const url = `${API_BASE_URL}${path}`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -67,7 +73,8 @@ async function post<T>(path: string, options: RequestOptions): Promise<T> {
   const payload = (await response.json()) as unknown;
 
   if (!response.ok) {
-    const error = new Error("request_failed") as Error & ValidationErrorResponse;
+    const error = new Error("request_failed") as Error &
+      ValidationErrorResponse;
     if (isValidationErrorResponse(payload)) {
       error.message = payload.message ?? "request_failed";
       error.errors = payload.errors;

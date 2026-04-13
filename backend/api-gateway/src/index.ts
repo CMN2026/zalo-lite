@@ -8,10 +8,14 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
-import { createProxyMiddleware } from "http-proxy-middleware";
+import { createProxyMiddleware, fixRequestBody } from "http-proxy-middleware";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Config
+// ─────────────────────────────────────────────────────────────────────────────
 
 type AuthPayload = {
-  user_id: string;
+  userId: string; // JWT uses camelCase from user-service
   role: "USER" | "ADMIN";
   plan: "FREE" | "PREMIUM";
 };
@@ -25,9 +29,9 @@ const env = {
   JWT_SECRET: process.env.JWT_SECRET ?? "dev-secret",
   JWT_ISSUER: process.env.JWT_ISSUER ?? "zalo-lite-user-service",
   JWT_AUDIENCE: process.env.JWT_AUDIENCE ?? "zalo-lite-clients",
-  CORS_ORIGINS: (process.env.CORS_ORIGINS ?? "http://localhost:3002")
+  CORS_ORIGINS: (process.env.CORS_ORIGINS ?? "http://localhost:3000")
     .split(",")
-    .map((item) => item.trim())
+    .map((s) => s.trim())
     .filter(Boolean),
 };
 
@@ -38,6 +42,10 @@ declare global {
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// App
+// ─────────────────────────────────────────────────────────────────────────────
 
 const app = express();
 
@@ -57,106 +65,126 @@ app.use(
     legacyHeaders: false,
   }),
 );
-app.use(express.json({ limit: "1mb" }));
+
+// IMPORTANT: Parse body here so we can re-serialize it for the proxy.
+// Without this, http-proxy-middleware tries to forward an already-consumed stream → ERR_EMPTY_RESPONSE.
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true, limit: "2mb" }));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ service: "api-gateway", status: "ok" });
 });
 
+/**
+ * Build a proxy middleware that:
+ * 1. Rewrites the path prefix
+ * 2. Re-serialises the JSON body that Express already consumed
+ */
+function buildProxy(
+  target: string,
+  mapPath: (path: string) => string,
+): express.RequestHandler {
+  const proxy = createProxyMiddleware({
+    target,
+    changeOrigin: true,
+    pathRewrite: (path) => mapPath(path),
+    // Allow us to modify the request before it's sent upstream
+    on: {
+      proxyReq(proxyReq, req) {
+        // Re-stream body that was already parsed by express.json().
+        fixRequestBody(proxyReq, req as unknown as Request);
+      },
+      error(err, _req, res) {
+        console.error("[Proxy Error]", err);
+        const response = res as Response;
+        if (!response.headersSent) {
+          response.status(503).json({
+            message: "service_unavailable",
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      },
+    },
+  });
+
+  return proxy as unknown as express.RequestHandler;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public routes — no auth required
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.use(
   "/api/auth",
-  createProxyMiddleware({
-    target: env.USER_SERVICE_URL,
-    changeOrigin: true,
-    pathRewrite: { "^/api/auth": "/auth" },
-  }),
+  buildProxy(env.USER_SERVICE_URL, (path) => `/auth${path}`),
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Protected routes — JWT required
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.use(
   "/api/users",
   authenticateJwt,
   authorizeRoles("USER", "ADMIN"),
-  createProxyMiddleware({
-    target: env.USER_SERVICE_URL,
-    changeOrigin: true,
-    pathRewrite: { "^/api/users": "/users" },
-  }),
-);
-
-app.use(
-  "/api/admin/users",
-  authenticateJwt,
-  authorizeRoles("ADMIN"),
-  createProxyMiddleware({
-    target: env.USER_SERVICE_URL,
-    changeOrigin: true,
-    pathRewrite: { "^/api/admin/users": "/users/admin/list" },
-  }),
+  buildProxy(env.USER_SERVICE_URL, (path) => `/users${path}`),
 );
 
 app.use(
   "/api/conversations",
   authenticateJwt,
   authorizeRoles("USER", "ADMIN"),
-  createProxyMiddleware({
-    target: env.CHAT_SERVICE_URL,
-    changeOrigin: true,
-    pathRewrite: { "^/api/conversations": "/conversations" },
-  }),
+  buildProxy(env.CHAT_SERVICE_URL, (path) => `/conversations${path}`),
 );
 
 app.use(
   "/api/friends",
   authenticateJwt,
   authorizeRoles("USER", "ADMIN"),
-  createProxyMiddleware({
-    target: env.CHAT_SERVICE_URL,
-    changeOrigin: true,
-    pathRewrite: { "^/api/friends": "/friends" },
-  }),
+  buildProxy(env.CHAT_SERVICE_URL, (path) => `/friends${path}`),
 );
 
 app.use(
   "/api/chatbot",
   authenticateJwt,
   authorizeRoles("USER", "ADMIN"),
-  createProxyMiddleware({
-    target: env.CHATBOT_SERVICE_URL,
-    changeOrigin: true,
-    pathRewrite: { "^/api/chatbot": "/chatbot" },
-  }),
+  buildProxy(env.CHATBOT_SERVICE_URL, (path) => `/chatbot${path}`),
 );
 
-app.use(
-  "/api/groups/:conversationId/messages",
-  authenticateJwt,
-  authorizeRoles("USER", "ADMIN"),
-  createProxyMiddleware({
-    target: env.CHAT_SERVICE_URL,
-    changeOrigin: true,
-    pathRewrite: { "^/api/groups/(.+)/messages": "/conversations/$1/messages" },
-  }),
-);
+// ─────────────────────────────────────────────────────────────────────────────
+// Global error handler
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  console.error(error);
-  return res.status(500).json({ message: "gateway_internal_error" });
+  console.error("[Gateway Error]", error);
+  if (!res.headersSent) {
+    res.status(500).json({ message: "gateway_internal_error" });
+  }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Start
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.listen(env.PORT, () => {
-  console.log(`api-gateway listening on ${env.PORT}`);
+  console.log(`api-gateway listening on port ${env.PORT}`);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auth middleware
+// ─────────────────────────────────────────────────────────────────────────────
 
 function authenticateJwt(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
-  if (!header) {
+  if (!header?.startsWith("Bearer ")) {
     return res.status(401).json({ message: "missing_bearer_token" });
   }
 
-  const [prefix, token] = header.split(" ");
-  if (prefix !== "Bearer" || !token) {
-    return res.status(401).json({ message: "invalid_authorization_header" });
-  }
+  const token = header.slice(7);
 
   try {
     const payload = jwt.verify(token, env.JWT_SECRET, {
@@ -176,13 +204,9 @@ function authorizeRoles(...roles: Array<"USER" | "ADMIN">) {
     if (!req.auth) {
       return res.status(401).json({ message: "unauthorized" });
     }
-
     if (!roles.includes(req.auth.role)) {
       return res.status(403).json({ message: "forbidden" });
     }
-
-    // Add user_id to request for downstream services
-    (req as any).userId = req.auth.user_id;
     return next();
   };
 }

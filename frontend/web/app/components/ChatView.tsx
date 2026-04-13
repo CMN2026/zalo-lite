@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useCallback, useEffect, useState, useRef } from "react";
-import { Bell, Search, Paperclip, Smile, Send, Bot, Users } from "lucide-react";
+import { Bell, Search, Paperclip, Smile, Send, Users } from "lucide-react";
 import { listConversations, type Conversation } from "../lib/conversations";
 import CreateGroupModal from "./CreateGroupModal";
 import GroupDetailPanel from "./GroupDetailPanel";
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3004";
 
 type ActiveChat = { source: "real"; id: string };
 
@@ -16,7 +19,6 @@ export default function ChatView() {
   const [realConversations, setRealConversations] = useState<Conversation[]>(
     [],
   );
-  const [loadingConversations, setLoadingConversations] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeReal = activeChat
@@ -28,26 +30,17 @@ export default function ChatView() {
   );
 
   const loadConversations = useCallback(async () => {
-    setLoadingConversations(true);
     try {
       const response = await listConversations();
       setRealConversations(response.data);
-    } catch {
-      // Silently fail - mock data is still available
-    } finally {
-      setLoadingConversations(false);
+    } catch (error) {
+      console.error("Failed to load conversations:", error);
     }
   }, []);
 
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  // No scroll effect needed - only using real conversations
 
   function handleGroupCreated(_conversationId: string) {
     void loadConversations();
@@ -96,12 +89,7 @@ export default function ChatView() {
         throw new Error(`API error: ${response.status}`);
       }
 
-      const data = await response.json();
-      const botMessage = data.data.message;
-      const conversationId = data.data.conversationId;
-
-      // Update mock conversations with both user and bot messages
-      // Message handled by backend, reload conversations
+      // Reload conversations to reflect new messages
       void loadConversations();
     } catch (error) {
       console.error("Failed to send message:", error);
@@ -150,12 +138,12 @@ export default function ChatView() {
               {groupConversations.map((conv) => {
                 const isActive = activeChat?.id === conv.id;
                 return (
-                  <div
+                  <button
                     key={conv.id}
                     onClick={() =>
                       setActiveChat({ source: "real", id: conv.id })
                     }
-                    className={`p-4 flex gap-3 cursor-pointer border-b border-slate-50 transition-colors ${
+                    className={`w-full p-4 flex gap-3 cursor-pointer border-b border-slate-50 transition-colors text-left ${
                       isActive ? "bg-blue-50" : "hover:bg-slate-50"
                     }`}
                   >
@@ -183,7 +171,7 @@ export default function ChatView() {
                         Nhóm chat
                       </p>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </>
