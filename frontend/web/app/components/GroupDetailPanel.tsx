@@ -19,6 +19,7 @@ import {
   addMembersToConversation,
   removeMemberFromConversation,
   type Conversation,
+  type ConversationMember,
 } from "../lib/conversations";
 import { listFriends, type ProfileUser } from "../lib/users";
 import { getSavedAuthUser } from "../lib/auth";
@@ -56,6 +57,22 @@ export default function GroupDetailPanel({
   const members = conversation?.members ?? [];
   const currentMember = members.find((m) => m.user_id === currentUserId);
   const isOwner = currentMember?.role === "owner";
+
+  const getMemberDisplayName = (member: ConversationMember) => {
+    const profile = member.profile;
+    const candidate =
+      profile?.full_name ||
+      profile?.fullName ||
+      profile?.email ||
+      profile?.phone ||
+      member.user_id;
+    const normalized = (candidate ?? "").trim();
+    return normalized || `User ${member.user_id.slice(0, 6)}`;
+  };
+
+  const getMemberAvatar = (member: ConversationMember) => {
+    return member.profile?.avatar_url || member.profile?.avatarUrl || null;
+  };
 
   useEffect(() => {
     void loadDetail();
@@ -131,7 +148,7 @@ export default function GroupDetailPanel({
 
   async function handleRemoveMember(userId: string) {
     const member = members.find((m) => m.user_id === userId);
-    const name = member?.profile?.full_name ?? "thành viên";
+    const name = member ? getMemberDisplayName(member) : "thành viên";
     if (!globalThis.confirm(`Bạn có chắc muốn xóa ${name} khỏi nhóm?`)) return;
     setBusyAction(`remove-${userId}`);
     setError("");
@@ -332,14 +349,14 @@ export default function GroupDetailPanel({
 
         <div className="space-y-1">
           {members.map((member) => {
-            // Backend returns full_name field from user profile
-            const name = member.profile?.full_name ?? "Unknown";
+            const name = getMemberDisplayName(member);
             const initials = name
               .split(" ")
-              .map((p) => p[0])
+              .map((p: string) => p[0])
               .join("")
               .slice(0, 2)
               .toUpperCase();
+            const avatarUrl = getMemberAvatar(member);
             const isSelf = member.user_id === currentUserId;
             const isOwnerMember = member.role === "owner";
 
@@ -348,9 +365,9 @@ export default function GroupDetailPanel({
                 key={member.user_id}
                 className="flex items-center gap-2.5 py-2 px-1 rounded-lg hover:bg-slate-50 transition-colors"
               >
-                {member.profile?.avatar_url ? (
+                {avatarUrl ? (
                   <img
-                    src={member.profile.avatar_url}
+                    src={avatarUrl}
                     alt={name}
                     className="w-9 h-9 rounded-full object-cover"
                   />

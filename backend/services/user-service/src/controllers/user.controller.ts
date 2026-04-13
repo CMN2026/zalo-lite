@@ -5,6 +5,16 @@ import { HttpError } from "../utils/http-error.js";
 const userService = new UserService();
 
 export class UserController {
+  static async listChatPeers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.listChatPeers(userId);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getMe(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.auth?.userId;
@@ -35,7 +45,11 @@ export class UserController {
     }
   }
 
-  static async discoverByPhone(req: Request, res: Response, next: NextFunction) {
+  static async discoverByPhone(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       const userId = req.auth?.userId;
       if (!userId) {
@@ -50,17 +64,29 @@ export class UserController {
     }
   }
 
-  static async sendFriendRequest(req: Request, res: Response, next: NextFunction) {
+  static async sendFriendRequest(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       const userId = req.auth?.userId;
-      const data = await userService.sendFriendRequest(userId, req.body.phone, req.body.message);
+      const data = await userService.sendFriendRequest(
+        userId,
+        req.body.phone,
+        req.body.message,
+      );
       res.status(201).json({ message: "friend_request_sent", data });
     } catch (error) {
       next(error);
     }
   }
 
-  static async listIncomingRequests(req: Request, res: Response, next: NextFunction) {
+  static async listIncomingRequests(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       const userId = req.auth?.userId;
       const data = await userService.listIncomingRequests(userId);
@@ -70,7 +96,11 @@ export class UserController {
     }
   }
 
-  static async respondFriendRequest(req: Request, res: Response, next: NextFunction) {
+  static async respondFriendRequest(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       const userId = req.auth?.userId;
       const data = await userService.respondFriendRequest(
@@ -94,7 +124,11 @@ export class UserController {
     }
   }
 
-  static async listUsersForAdmin(req: Request, res: Response, next: NextFunction) {
+  static async listUsersForAdmin(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       const role = req.auth?.role;
       if (role !== "ADMIN") {
@@ -104,6 +138,20 @@ export class UserController {
       const page = Number(req.query.page ?? 1);
       const limit = Number(req.query.limit ?? 20);
       const data = await userService.listUsers(page, limit);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async listAllDev(req: Request, res: Response, next: NextFunction) {
+    try {
+      // Dev mode only - list all users
+      if (process.env.NODE_ENV === "production") {
+        throw new HttpError(404, "not_found");
+      }
+
+      const data = await userService.listUsers(1, 1000);
       res.status(200).json({ data });
     } catch (error) {
       next(error);

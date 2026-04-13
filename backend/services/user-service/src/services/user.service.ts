@@ -3,6 +3,32 @@ import { prisma } from "../config/db.js";
 import { HttpError } from "../utils/http-error.js";
 
 export class UserService {
+  async listChatPeers(userId: string | undefined, limit = 50) {
+    if (!userId) {
+      throw new HttpError(401, "unauthorized");
+    }
+
+    const safeLimit =
+      Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50;
+
+    return prisma.user.findMany({
+      where: {
+        id: { not: userId },
+        isActive: true,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        avatarUrl: true,
+        role: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: safeLimit,
+    });
+  }
+
   async getByIdOrThrow(userId: string | undefined) {
     if (!userId) {
       throw new HttpError(401, "unauthorized");
@@ -34,14 +60,20 @@ export class UserService {
 
   async updateProfile(
     userId: string | undefined,
-    input: { fullName?: string | null; phone?: string | null; bio?: string | null },
+    input: {
+      fullName?: string | null;
+      phone?: string | null;
+      bio?: string | null;
+    },
   ) {
     if (!userId) {
       throw new HttpError(401, "unauthorized");
     }
 
     if (input.phone) {
-      const existing = await prisma.user.findUnique({ where: { phone: input.phone } });
+      const existing = await prisma.user.findUnique({
+        where: { phone: input.phone },
+      });
       if (existing && existing.id !== userId) {
         throw new HttpError(409, "phone_already_used");
       }
@@ -215,7 +247,9 @@ export class UserService {
       throw new HttpError(401, "unauthorized");
     }
 
-    const request = await prisma.friendship.findUnique({ where: { id: requestId } });
+    const request = await prisma.friendship.findUnique({
+      where: { id: requestId },
+    });
     if (!request || request.addresseeId !== userId) {
       throw new HttpError(404, "friend_request_not_found");
     }
@@ -286,7 +320,8 @@ export class UserService {
 
   async listUsers(page: number, limit: number) {
     const safePage = Number.isFinite(page) && page > 0 ? page : 1;
-    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const safeLimit =
+      Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
     const skip = (safePage - 1) * safeLimit;
 
     const [items, total] = await prisma.$transaction([

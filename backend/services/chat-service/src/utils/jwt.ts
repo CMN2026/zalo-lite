@@ -7,8 +7,15 @@ export type JwtPayload = {
 };
 
 export function verifyToken(token: string): JwtPayload {
-  return jwt.verify(token, env.JWT_SECRET, {
+  const rawPayload = jwt.verify(token, env.JWT_SECRET, {
     issuer: env.JWT_ISSUER,
     audience: env.JWT_AUDIENCE,
-  }) as JwtPayload;
+  }) as { user_id?: string; userId?: string; sub?: string };
+
+  const userId = rawPayload.user_id ?? rawPayload.userId ?? rawPayload.sub;
+  if (!userId) {
+    throw new Error("invalid_token_payload");
+  }
+
+  return { user_id: userId };
 }

@@ -8,8 +8,12 @@ export type ConversationMember = {
   joined_at: string;
   profile?: {
     id: string;
-    full_name: string | null;
-    avatar_url: string | null;
+    full_name?: string | null;
+    fullName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    avatar_url?: string | null;
+    avatarUrl?: string | null;
   } | null;
 };
 

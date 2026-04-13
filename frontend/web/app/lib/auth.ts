@@ -40,9 +40,12 @@ function isValidationErrorResponse(
 }
 
 export async function login(identifier: string, password: string) {
-  return post<AuthResponse<{ token: string; user: AuthUser }>>("/auth/login", {
-    body: { identifier, password },
-  });
+  return post<AuthResponse<{ token: string; user: AuthUser }>>(
+    "/api/auth/login",
+    {
+      body: { identifier, password },
+    },
+  );
 }
 
 export async function register(input: {
@@ -53,50 +56,27 @@ export async function register(input: {
   avatarUrl?: string | null;
 }) {
   return post<AuthResponse<{ token: string; user: AuthUser }>>(
-    "/auth/register",
+    "/api/auth/register",
     {
       body: input,
     },
   );
 }
 
-async function post<T>(path: string, options: RequestOptions): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(options.body),
-  });
-
-  const payload = (await response.json()) as unknown;
-
-  if (!response.ok) {
-    const error = new Error("request_failed") as Error &
-      ValidationErrorResponse;
-    if (isValidationErrorResponse(payload)) {
-      error.message = payload.message ?? "request_failed";
-      error.errors = payload.errors;
-    }
-
-    throw error;
-  }
-
-  return payload as T;
-}
+export const AUTH_TOKEN_KEY = "token";
+export const AUTH_USER_KEY = "user";
 
 export function saveAuthSession(token: string, user: AuthUser) {
-  localStorage.setItem("token", token);
-  localStorage.setItem("user", JSON.stringify(user));
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
 }
 
 export function getAuthToken() {
-  return localStorage.getItem("token");
+  return localStorage.getItem(AUTH_TOKEN_KEY);
 }
 
 export function getSavedAuthUser(): AuthUser | null {
-  const rawUser = localStorage.getItem("user");
+  const rawUser = localStorage.getItem(AUTH_USER_KEY);
   if (!rawUser) {
     return null;
   }
@@ -109,6 +89,48 @@ export function getSavedAuthUser(): AuthUser | null {
 }
 
 export function clearAuthSession() {
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_USER_KEY);
+}
+
+async function post<T>(path: string, options: RequestOptions): Promise<T> {
+  const url = `${API_BASE_URL}${path}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(options.body),
+  });
+
+  const raw = await response.text();
+  const contentType = response.headers.get("content-type") ?? "";
+
+  let payload: unknown = null;
+  if (raw) {
+    if (contentType.includes("application/json")) {
+      payload = JSON.parse(raw) as unknown;
+    } else {
+      payload = { message: raw.slice(0, 120) };
+    }
+  }
+
+  if (!response.ok) {
+    const error = new Error("request_failed") as Error &
+      ValidationErrorResponse;
+    if (isValidationErrorResponse(payload)) {
+      error.message = payload.message ?? "request_failed";
+      error.errors = payload.errors;
+    } else if (!contentType.includes("application/json")) {
+      error.message = "api_response_is_not_json_check_api_base_url";
+    }
+
+    throw error;
+  }
+
+  if (!contentType.includes("application/json")) {
+    throw new Error("api_response_is_not_json_check_api_base_url");
+  }
+
+  return payload as T;
 }

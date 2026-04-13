@@ -4,11 +4,17 @@ import express, {
   type Request,
   type Response,
 } from "express";
+import http from "node:http";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
 import { createProxyMiddleware, fixRequestBody } from "http-proxy-middleware";
+import { Server as SocketIOServer, type Socket } from "socket.io";
+import {
+  io as createSocketClient,
+  type Socket as ClientSocket,
+} from "socket.io-client";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -48,6 +54,17 @@ declare global {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const app = express();
+const httpServer = http.createServer(app);
+
+// Socket.io server - proxies to chat-service
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: env.CORS_ORIGINS,
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+  path: "/socket.io/",
+});
 
 app.disable("x-powered-by");
 app.use(helmet());
@@ -114,13 +131,37 @@ function buildProxy(
   return proxy as unknown as express.RequestHandler;
 }
 
+function mapApiPrefix(apiPrefix: string, upstreamPrefix: string) {
+  const normalizedApiPrefix = apiPrefix.endsWith("/")
+    ? apiPrefix.slice(0, -1)
+    : apiPrefix;
+  const normalizedUpstreamPrefix = upstreamPrefix.endsWith("/")
+    ? upstreamPrefix.slice(0, -1)
+    : upstreamPrefix;
+
+  return (path: string) => {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+    if (normalizedPath.startsWith(normalizedApiPrefix)) {
+      const suffix = normalizedPath.slice(normalizedApiPrefix.length);
+      return `${normalizedUpstreamPrefix}${suffix}`;
+    }
+
+    if (normalizedPath === "/") {
+      return normalizedUpstreamPrefix;
+    }
+
+    return `${normalizedUpstreamPrefix}${normalizedPath}`;
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public routes — no auth required
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.use(
   "/api/auth",
-  buildProxy(env.USER_SERVICE_URL, (path) => `/auth${path}`),
+  buildProxy(env.USER_SERVICE_URL, mapApiPrefix("/api/auth", "/auth")),
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,29 +172,166 @@ app.use(
   "/api/users",
   authenticateJwt,
   authorizeRoles("USER", "ADMIN"),
-  buildProxy(env.USER_SERVICE_URL, (path) => `/users${path}`),
+  buildProxy(env.USER_SERVICE_URL, mapApiPrefix("/api/users", "/users")),
 );
 
 app.use(
   "/api/conversations",
   authenticateJwt,
   authorizeRoles("USER", "ADMIN"),
-  buildProxy(env.CHAT_SERVICE_URL, (path) => `/conversations${path}`),
+  buildProxy(
+    env.CHAT_SERVICE_URL,
+    mapApiPrefix("/api/conversations", "/conversations"),
+  ),
 );
 
 app.use(
   "/api/friends",
   authenticateJwt,
   authorizeRoles("USER", "ADMIN"),
-  buildProxy(env.CHAT_SERVICE_URL, (path) => `/friends${path}`),
+  buildProxy(env.CHAT_SERVICE_URL, mapApiPrefix("/api/friends", "/friends")),
+);
+
+app.use(
+  "/api/messages",
+  authenticateJwt,
+  authorizeRoles("USER", "ADMIN"),
+  buildProxy(env.CHAT_SERVICE_URL, mapApiPrefix("/api/messages", "/messages")),
+);
+
+app.use(
+  "/api/uploads",
+  buildProxy(env.CHAT_SERVICE_URL, mapApiPrefix("/api/uploads", "/uploads")),
 );
 
 app.use(
   "/api/chatbot",
   authenticateJwt,
   authorizeRoles("USER", "ADMIN"),
-  buildProxy(env.CHATBOT_SERVICE_URL, (path) => `/chatbot${path}`),
+  buildProxy(env.CHATBOT_SERVICE_URL, mapApiPrefix("/api/chatbot", "/chatbot")),
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Socket.io connection handling
+// ─────────────────────────────────────────────────────────────────────────────
+
+io.use((socket: Socket, next: (err?: Error) => void) => {
+  try {
+    const headerToken = socket.handshake.headers.authorization;
+    const authToken = socket.handshake.auth.token;
+
+    const bearer =
+      typeof headerToken === "string" && headerToken.startsWith("Bearer ")
+        ? headerToken.slice(7)
+        : undefined;
+
+    const token = bearer ?? authToken;
+
+    if (!token || typeof token !== "string") {
+      return next(new Error("unauthorized: missing_token"));
+    }
+
+    // Verify JWT token
+    const payload = jwt.verify(token, env.JWT_SECRET, {
+      issuer: env.JWT_ISSUER,
+      audience: env.JWT_AUDIENCE,
+    }) as AuthPayload;
+
+    // Store auth info in socket for later use
+    socket.data.auth = payload;
+    socket.data.token = token;
+    next();
+  } catch (error) {
+    console.error("[Socket.io Auth Error]", error);
+    next(new Error("unauthorized: invalid_token"));
+  }
+});
+
+io.on("connection", (socket: Socket) => {
+  const token =
+    typeof socket.data.token === "string" ? socket.data.token : undefined;
+
+  if (!token) {
+    socket.disconnect(true);
+    return;
+  }
+
+  const upstream: ClientSocket = createSocketClient(env.CHAT_SERVICE_URL, {
+    path: "/socket.io/",
+    auth: { token },
+    transports: ["websocket", "polling"],
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+  });
+
+  console.log(
+    `[Socket.io] Connected: ${socket.id} (user: ${socket.data.auth?.userId})`,
+  );
+
+  const clientToUpstreamEvents = [
+    "join_conversation",
+    "leave_conversation",
+    "message:send",
+    "message:typing",
+    "message:read",
+    "message:delete",
+  ];
+
+  clientToUpstreamEvents.forEach((eventName) => {
+    socket.on(eventName, (payload: unknown) => {
+      upstream.emit(eventName, payload);
+    });
+  });
+
+  const upstreamToClientEvents = [
+    "connect",
+    "disconnect",
+    "connect_error",
+    "message:receive",
+    "message:send_ack",
+    "message:typing",
+    "message:read_receipt",
+    "message:deleted",
+    "notification:new_message",
+    "user:online",
+    "user:joined_conversation",
+    "user:left_conversation",
+    "join_conversation_ack",
+    "join_conversation_error",
+    "leave_conversation_ack",
+    "leave_conversation_error",
+    "message:read_error",
+    "message:delete_error",
+  ];
+
+  upstreamToClientEvents.forEach((eventName) => {
+    upstream.on(eventName, (payload: unknown) => {
+      if (eventName === "connect") {
+        console.log(`[Socket.io] Upstream connected for ${socket.id}`);
+        return;
+      }
+      if (eventName === "disconnect") {
+        console.log(`[Socket.io] Upstream disconnected for ${socket.id}`);
+        return;
+      }
+      if (eventName === "connect_error") {
+        console.error(`[Socket.io] Upstream error for ${socket.id}`, payload);
+        socket.emit("connect_error", payload);
+        return;
+      }
+      socket.emit(eventName, payload);
+    });
+  });
+
+  socket.on("disconnect", () => {
+    if (upstream.connected) {
+      upstream.disconnect();
+    }
+    console.log(`[Socket.io] Disconnected: ${socket.id}`);
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Global error handler
@@ -170,8 +348,22 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 // Start
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.listen(env.PORT, () => {
+httpServer.listen(env.PORT, () => {
   console.log(`api-gateway listening on port ${env.PORT}`);
+  console.log(`  - REST API: http://localhost:${env.PORT}/api/*`);
+  console.log(`  - Socket.io: http://localhost:${env.PORT}/socket.io/`);
+});
+
+// Graceful shutdown
+const signals = ["SIGTERM", "SIGINT"];
+signals.forEach((signal) => {
+  process.on(signal, () => {
+    console.log(`\n[${signal}] Shutting down gracefully...`);
+    httpServer.close(() => {
+      console.log("Server closed");
+      process.exit(0);
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
