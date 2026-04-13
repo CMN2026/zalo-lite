@@ -34,8 +34,10 @@ const conversationRepository = new ConversationRepository();
 app.disable("x-powered-by");
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://localhost:3003", "*"],
+    origin: env.CORS_ORIGINS,
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
 app.use(

@@ -99,7 +99,7 @@ export default function CreateGroupModal({
       const response = await createConversation({
         type: "group",
         name: groupName.trim(),
-        member_ids: Array.from(selectedIds),
+        memberIds: Array.from(selectedIds),
       });
       onCreated(response.data.id);
       onClose();

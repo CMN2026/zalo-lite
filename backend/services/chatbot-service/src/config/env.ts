@@ -16,6 +16,7 @@ type Env = {
   TABLE_FAQ: string;
   TABLE_NOTIFICATIONS: string;
   TABLE_ANALYTICS: string;
+  AUTO_CLOSE_INACTIVE_HOURS: number;
 };
 
 function getEnv(name: string, fallback?: string): string {
@@ -59,4 +60,5 @@ export const env: Env = {
   TABLE_FAQ: getEnv("TABLE_FAQ", "chatbot_faq"),
   TABLE_NOTIFICATIONS: getEnv("TABLE_NOTIFICATIONS", "chatbot_notifications"),
   TABLE_ANALYTICS: getEnv("TABLE_ANALYTICS", "chatbot_analytics"),
+  AUTO_CLOSE_INACTIVE_HOURS: Number(getEnv("AUTO_CLOSE_INACTIVE_HOURS", "24")),
 };

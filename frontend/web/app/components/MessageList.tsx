@@ -1,13 +1,16 @@
+/* eslint-disable sonarjs/cognitive-complexity */
 "use client";
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useLayoutEffect, useMemo, useRef } from "react";
 import { Check, CheckCheck, Download } from "lucide-react";
 import { getAuthToken } from "../lib/auth";
+import { API_BASE_URL } from "../lib/api";
 
 export interface Message {
   id: string;
   conversation_id: string;
   sender_id: string;
+  sender_name?: string;
   type: "text" | "file";
   content: string;
   created_at: string;
@@ -31,12 +34,6 @@ type ParsedFilePayload = {
   file_type?: string;
 };
 
-const rawChatServiceUrl = process.env.NEXT_PUBLIC_CHAT_SERVICE_URL;
-const CHAT_SERVICE_URL =
-  rawChatServiceUrl && /^https?:\/\//i.test(rawChatServiceUrl)
-    ? rawChatServiceUrl
-    : "http://localhost:3002";
-
 interface MessageListProps {
   messages: Message[];
   currentUserId: string;
@@ -55,7 +52,7 @@ export default function MessageList({
   isLoading = false,
   isAdminView = false,
   showSenderAvatar = true,
-}: MessageListProps) {
+}: Readonly<MessageListProps>) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const displayMessages = useMemo(() => {
     const seen = new Set<string>();
@@ -118,6 +115,13 @@ export default function MessageList({
   const isMessageFromCurrentUser = (senderId: string) =>
     senderId === currentUserId;
 
+  const getSenderDisplayName = (message: Message) => {
+    if (message.sender_name && message.sender_name.trim().length > 0) {
+      return message.sender_name;
+    }
+    return `User ${message.sender_id.slice(0, 6)}`;
+  };
+
   const parseFilePayload = (content: string): ParsedFilePayload => {
     try {
       return JSON.parse(content) as ParsedFilePayload;
@@ -126,6 +130,11 @@ export default function MessageList({
         file_name: "attachment",
       };
     }
+  };
+
+  const buildUploadBasePath = (filePath: string) => {
+    const suffix = filePath.replace(/^\/uploads/, "");
+    return `${API_BASE_URL}/api/uploads${suffix}`;
   };
 
   return (
@@ -153,6 +162,12 @@ export default function MessageList({
 
             const isOwn = isMessageFromCurrentUser(message.sender_id);
             const readStatus = getReadStatus(message);
+            const otherTextBubbleClass = isAdminView
+              ? "bg-white text-slate-800 border border-slate-200"
+              : "bg-white text-slate-800 border border-slate-200 rounded-bl-none";
+            const otherFileBubbleClass = isAdminView
+              ? "bg-white border-slate-200 hover:bg-slate-50"
+              : "bg-white border-slate-200 rounded-bl-none hover:bg-slate-50";
 
             if (message.type === "text") {
               return (
@@ -181,23 +196,23 @@ export default function MessageList({
                         isOwn ? "items-end" : "items-start"
                       }`}
                     >
+                      {!isOwn && (
+                        <p className="text-[11px] text-slate-500 mb-1 ml-1 font-medium">
+                          {getSenderDisplayName(message)}
+                        </p>
+                      )}
+
                       <div
                         className={`px-4 py-2 rounded-2xl max-w-xs wrap-break-word shadow-sm transition-all ${
                           isOwn
                             ? "bg-blue-600 text-white rounded-br-md"
-                            : isAdminView
-                              ? "bg-white text-slate-800 border border-slate-200"
-                              : "bg-white text-slate-800 border border-slate-200 rounded-bl-none"
+                            : otherTextBubbleClass
                         }`}
                       >
                         <p className="text-sm">{message.content}</p>
                       </div>
 
-                      <div
-                        className={`flex items-center gap-1 text-xs mt-1 ${
-                          isOwn ? "text-slate-400" : "text-slate-400"
-                        }`}
-                      >
+                      <div className="flex items-center gap-1 text-xs mt-1 text-slate-400">
                         <span>{formatTime(message.created_at)}</span>
                         {isOwn && (
                           <>
@@ -234,7 +249,7 @@ export default function MessageList({
               const filePath = embeddedFile?.path;
               const previewUrl =
                 filePath && authToken
-                  ? `${CHAT_SERVICE_URL}${filePath}?token=${encodeURIComponent(authToken)}`
+                  ? `${buildUploadBasePath(filePath)}?token=${encodeURIComponent(authToken)}`
                   : undefined;
               const downloadUrl =
                 previewUrl && fileName
@@ -269,6 +284,12 @@ export default function MessageList({
                         isOwn ? "items-end" : "items-start"
                       }`}
                     >
+                      {!isOwn && (
+                        <p className="text-[11px] text-slate-500 mb-1 ml-1 font-medium">
+                          {getSenderDisplayName(message)}
+                        </p>
+                      )}
+
                       {isImage && previewUrl && (
                         <button
                           type="button"
@@ -293,9 +314,7 @@ export default function MessageList({
                           className={`px-4 py-3 rounded-2xl shadow-sm border transition-all ${
                             isOwn
                               ? "bg-blue-600 border-blue-600 rounded-br-md"
-                              : isAdminView
-                                ? "bg-white border-slate-200 hover:bg-slate-50"
-                                : "bg-white border-slate-200 rounded-bl-none hover:bg-slate-50"
+                              : otherFileBubbleClass
                           } cursor-pointer group`}
                         >
                           <a
@@ -335,11 +354,7 @@ export default function MessageList({
                         </div>
                       )}
 
-                      <div
-                        className={`flex items-center gap-1 text-xs mt-1 ${
-                          isOwn ? "text-slate-400" : "text-slate-400"
-                        }`}
-                      >
+                      <div className="flex items-center gap-1 text-xs mt-1 text-slate-400">
                         <span>{formatTime(message.created_at)}</span>
                         {isOwn && (
                           <>

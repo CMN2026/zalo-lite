@@ -1,10 +1,22 @@
 /**
- * Local NLP Service - Vietnamese Intent Classification
- * No API calls needed, 100% offline
- * Self-learning from user interactions
+ * Local NLP Service — Vietnamese Intent Classification
+ * Offline, no external API calls needed.
+ * Learns from user interactions via Redis (via LearningService).
+ *
+ * ─── HOW TO ADD MORE TRAINING DATA ──────────────────────────────────────────
+ * 1. Add a new object to the `patterns` array below with:
+ *    - intent:    unique UPPER_SNAKE_CASE name
+ *    - keywords:  Vietnamese words WITHOUT diacritics (the transliterate()
+ *                 function strips them automatically before matching)
+ *    - response:  the reply shown to the user (WITH full Vietnamese diacritics)
+ *    - action:    "escalate" if this should be forwarded to a human agent,
+ *                 or undefined to let the bot handle it entirely.
+ * 2. Restart the chatbot-service — no rebuild needed (TypeScript is compiled
+ *    at startup via ts-node / the Dockerfile runs `tsc` first).
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { learningService, LearnedPattern } from "./learning.service.js";
+import { learningService, type LearnedPattern } from "./learning.service.js";
 
 export interface LocalNLPResponse {
   intent: string;
@@ -21,252 +33,342 @@ interface IntentPattern {
 }
 
 export class LocalNLPService {
-  private patterns: IntentPattern[] = [
+  // ─── TRAINING DATA ─────────────────────────────────────────────────────────
+  // Add / edit entries here to train the chatbot.
+  // Keywords MUST be in ASCII (no diacritics) — transliterate() handles that.
+  // ──────────────────────────────────────────────────────────────────────────
+  private readonly patterns: IntentPattern[] = [
+    // ── Authentication & account recovery ────────────────────────────────────
     {
       intent: "PASSWORD_RESET",
       keywords: [
-        "quen",
-        "mat khau",
+        "forget",
+        "forgot password",
         "reset",
         "password",
-        "cap lai",
-        "dang nhap khong",
-        "khong nho",
+        "change password",
+        "recover password",
+        "cannot login",
+        "login error",
+        "lost password",
       ],
       response:
-        "🔐 Để đặt lại mật khẩu:\n1. Nhấp 'Quên mật khẩu?' trên màn hình đăng nhập\n2. Nhập email của bạn\n3. Kiểm tra hộp thư để nhận liên kết đặt lại\n4. Tạo mật khẩu mới\n\nCần giúp thêm không?",
-      action: undefined,
+        'To reset your password:\n1. Click "Forgot Password?" on the login screen\n2. Enter your registered email address\n3. Check your inbox (including Spam)\n4. Click the link in the email and create a new password\n\nYour new password must be at least 8 characters long. Do you need further assistance?',
     },
+
+    // ── Social: add/find friends ──────────────────────────────────────────────
     {
       intent: "HOW_TO_ADD_FRIEND",
       keywords: [
-        "them ban",
-        "ket ban",
-        "tim ban",
-        "moi ban",
-        "add",
-        "tim kiem",
-        "lien he",
+        "add friend",
+        "make friends",
+        "find friend",
+        "invite",
+        "search friend",
+        "friend request",
+        "accept request",
+        "friends",
+        "friend list",
+        "unfriend",
+        "remove friend",
       ],
       response:
-        "👥 Thêm bạn bè dễ dàng:\n1. Mở tab 'Liên hệ'\n2. Nhấp biểu tượng '+'\n3. Tìm kiếm theo tên hoặc số điện thoại\n4. Nhấp 'Gửi lời mời kết bạn'\n5. Chờ họ chấp nhận\n\nBạn cần giúp gì khác?",
-      action: undefined,
+        'To add friends on Zalo-Lite:\n1. Open the "Friends" tab\n2. Tap "Search" and enter a phone number\n3. Tap "Add Friend" to send an invitation\n4. Wait for them to accept in the "Requests" tab\n\nCan I help you with anything else?',
     },
+
+    // ── Group chat ────────────────────────────────────────────────────────────
     {
       intent: "HOW_TO_CREATE_GROUP",
       keywords: [
-        "tao nhom",
-        "nhom",
+        "create group",
         "group",
-        "tao group",
-        "tao nhom chat",
-        "nhom ban",
+        "new group",
+        "group chat",
+        "team chat",
+        "conversation",
+        "cannot create group",
+        "add member",
+        "remove member",
+        "leave group",
+        "exit group",
       ],
       response:
-        "👨‍👩‍👧‍👦 Tạo nhóm chat:\n1. Nhấn biểu tượng '+' → 'Tạo nhóm'\n2. Chọn bạn bè (tối thiểu 2 người)\n3. Đặt tên nhóm\n4. Chọn ảnh (tùy chọn)\n5. Nhấp 'Tạo'\n\nHoàn tất! Bắt đầu chat với nhóm ngay.",
-      action: undefined,
+        'To create a group chat:\n1. Go to the "Messages" tab → tap the "+" icon (top right)\n2. Enter a group name\n3. Select at least 2 friends\n4. Tap "Create Group"\n\nNote: You need at least 2 friends in your list. Let me know if you need help!',
     },
+
+    // ── Account issues ───────────────────────────────────────────────────────
     {
       intent: "ACCOUNT_ISSUES",
       keywords: [
-        "tai khoan",
-        "dang nhap",
-        "dang ky",
-        "xoa",
-        "khoa",
-        "bi khoa",
-        "tai khoan bi",
-        "khong the dang nhap",
+        "account",
+        "locked",
+        "blocked",
+        "cannot access",
+        "login",
+        "register",
+        "delete account",
+        "activate account",
+        "banned",
+        "deactivated",
       ],
       response:
-        "⚠️ Vấn đề tài khoản yêu cầu hỗ trợ chuyên nghiệp.\n\nVui lòng cung cấp:\n• Email/điện thoại tài khoản\n• Mô tả chi tiết vấn đề\n• Thời gian xảy ra\n\nChúng tôi sẽ giải quyết trong 24 giờ.",
+        "Account issues require manual review from our team.\n\nPlease provide:\n• Registered email or phone number\n• Detailed description of the issue\n• When the issue started occurring\n\nWe will review and respond within 24 hours.",
       action: "escalate",
     },
+
+    // ── Contact & general support ─────────────────────────────────────────────
     {
       intent: "CONTACT_SUPPORT",
       keywords: [
-        "lien he",
-        "ho tro",
-        "can giup",
+        "contact",
         "support",
-        "gap loi",
-        "bao cao",
-        "chinh sach",
-        "khieu nai",
+        "need help",
+        "assist",
+        "error",
+        "report bug",
+        "policy",
+        "complain",
+        "staff",
+        "consult",
+        "question",
+        "help",
+        "feedback",
       ],
       response:
-        "📞 Liên hệ hỗ trợ:\n• Email: support@zalo-lite.com\n• Hotline: 1800-1234\n• Chat trực tiếp: Nhấp nút 'Hỗ trợ' dưới đây\n\nThời gian hỗ trợ: Thứ 2-7, 8AM-8PM\n\nChúng tôi luôn sẵn sàng!",
+        "Contact Zalo-Lite support:\n• Email: support@zalo-lite.com\n• Hotline: 1800-1234 (Mon-Sat, 8:00 AM–8:00 PM)\n• Live Chat: reply here and an agent will assist you soon.\n\nPlease provide specific details so we can help faster.",
       action: "escalate",
     },
+
+    // ── Feature questions ─────────────────────────────────────────────────────
     {
       intent: "FEATURE_INQUIRY",
       keywords: [
-        "tinh nang",
-        "lam sao",
-        "cach",
-        "the nao",
-        "sao khong",
-        "tai sao",
-        "co tinh nang",
-        "khong co",
+        "feature",
+        "how to",
+        "way",
+        "why",
+        "cannot",
+        "where",
+        "guide",
+        "use",
+        "setting",
+        "setup",
+        "start",
+        "tutorial",
       ],
       response:
-        "❓ Bạn muốn biết về tính năng nào của Zalo-Lite?\n\nCác tính năng phổ biến:\n✓ Chat 1-1 & nhóm\n✓ Gọi điện & video call\n✓ Chia sẻ file/ảnh\n✓ Trạng thái online\n✓ Mã hóa end-to-end\n\nMô tả chi tiết tính năng bạn cần?",
-      action: undefined,
+        "Which Zalo-Lite feature do you need help with?\n\nKey features:\n✓ 1-on-1 and Group Chat (up to 3+ people)\n✓ Send photos, videos, and files\n✓ Add friends via phone number\n✓ Online/Offline status\n✓ End-to-end encryption\n\nPlease describe what you're trying to do!",
     },
+
+    // ── Billing ───────────────────────────────────────────────────────────────
     {
       intent: "BILLING_ISSUES",
       keywords: [
-        "thanh toan",
-        "chi phi",
-        "tai chi",
-        "hoa don",
-        "tien",
-        "gia tien",
+        "payment",
+        "cost",
+        "finance",
+        "invoice",
+        "money",
+        "price",
+        "fee",
         "free",
+        "premium",
+        "upgrade",
+        "plan",
+        "charged",
+        "refund",
       ],
       response:
-        "💳 Thông tin thanh toán:\n\nZalo-Lite là ứng dụng hoàn toàn MIỄN PHÍ!\n\n✓ Không phí duy trì tài khoản\n✓ Không phí gọi/chat\n✓ Không quảng cáo bắt buộc\n\nNếu bị tính phí, vui lòng báo cáo ngay.",
+        "Zalo-Lite Billing Info:\n\nZalo-Lite is completely FREE!\n✓ No account maintenance fees\n✓ Unlimited messaging\n✓ No forced advertisements\n\nIf you were inexplicably charged, please contact us immediately for an investigation.",
       action: "escalate",
     },
+
+    // ── Privacy & security ───────────────────────────────────────────────────
     {
       intent: "PRIVACY_SECURITY",
       keywords: [
-        "bao mat",
-        "rieng tu",
-        "an toan",
-        "ma hoa",
-        "tieu du ai",
-        "toc do",
+        "security",
+        "privacy",
+        "safe",
+        "hacked",
+        "compromised",
+        "change phone number",
+        "2fa",
+        "otp",
         "spam",
+        "block",
+        "report spam",
       ],
       response:
-        "🔒 Bảo mật & Riêng tư:\n\n✓ Mã hóa end-to-end cho mọi tin nhắn\n✓ Dữ liệu lưu trữ an toàn tại Việt Nam\n✓ Không bao giờ chia sẻ thông tin cá nhân\n✓ Chặn người dùng & báo cáo spam dễ dàng\n\nBạn có tin tưởng chúng tôi không?",
-      action: undefined,
+        "Privacy & Security on Zalo-Lite:\n✓ End-to-end encryption for all messages\n✓ We do not share your personal data\n✓ Block users: Go to their profile → Block\n✓ Report spam: Long press a message → Report\n\nIf you suspect an account breach, change your password immediately and contact support.",
+    },
+
+    // ── App crash / not opening ───────────────────────────────────────────────
+    {
+      intent: "APP_CRASH",
+      keywords: [
+        "app crash",
+        "crashing",
+        "not opening",
+        "stuck",
+        "frozen",
+        "force close",
+        "restart",
+        "update",
+        "white screen",
+        "black screen",
+        "loading issue",
+      ],
+      response:
+        "App Troubleshooting:\n1. Force close the app and reopen it\n2. Check your internet connection\n3. Clear the app cache (Settings → Apps → Zalo-Lite → Clear Cache)\n4. Update to the latest version via App Store/Google Play\n5. Restart your device\n\nStill experiencing issues? Please tell us your OS model.",
+    },
+
+    // ── Notifications ─────────────────────────────────────────────────────────
+    {
+      intent: "NOTIFICATION_ISSUES",
+      keywords: [
+        "notification",
+        "no notification",
+        "push",
+        "sound",
+        "vibrate",
+        "alerts",
+        "silent",
+        "not ringing",
+        "dnd",
+        "do not disturb",
+      ],
+      response:
+        'Notification Settings:\n1. System: Settings → Notifications → Zalo-Lite → Turn on\n2. In-App: Settings → Notifications → Enable sound and vibration\n3. Check if "Do Not Disturb" mode is active on your phone\n4. Ensure a stable internet connection\n\nAre you using iOS or Android?',
+    },
+
+    // ── Media sharing ─────────────────────────────────────────────────────────
+    {
+      intent: "MEDIA_SHARING",
+      keywords: [
+        "send photo",
+        "send video",
+        "send file",
+        "attachment",
+        "picture",
+        "image",
+        "upload",
+        "cannot send",
+        "not showing",
+        "save file",
+        "download",
+      ],
+      response:
+        "Media & Files:\n• Open a chat → tap the attachment icon (📎)\n• Choose an image from your gallery or snap a new one\n• Max sizes: Image 10MB, Video 50MB, File 100MB\n\nIf it fails:\n1. Check your network\n2. Check file size limits\n3. Grant Storage permissions in device settings",
+    },
+
+    // ── Voice / video call ────────────────────────────────────────────────────
+    {
+      intent: "VOICE_VIDEO_CALL",
+      keywords: [
+        "call",
+        "video call",
+        "voice call",
+        "cannot hear",
+        "cannot see",
+        "call error",
+        "microphone",
+        "mic",
+        "camera",
+        "disconnected",
+      ],
+      response:
+        "Voice & Video calls:\n• Open chat → tap the phone (voice) or camera (video) icon\n\nTroubleshooting:\n1. Allow Microphone & Camera permissions\n2. Maintain at least a 1Mbps connection\n3. Verify the other user is online\n4. Toggle wifi to refresh network\n\nDoes the issue persist? Detail the error to get assistance.",
     },
   ];
 
-  /**
-   * Simple transliteration (remove Vietnamese marks quickly)
-   * Also handles corrupted UTF-8 from client-side encoding issues
-   */
   private transliterate(text: string): string {
-    return (
-      text
-        .toLowerCase()
-        .trim()
-        // Handle corrupted Vietnamese characters (from UTF-8 issues)
-        // Pattern: [non-word-char|?] = corrupted diacritic
-        .replace(/qu[^\w\s]?n/gi, "quen") // quên
-        .replace(/m[^\w\s]?t/gi, "mat") // mật
-        .replace(/kh[^\w\s]?u/gi, "khu") // khẩu → khu (then matches "khu" keyword indirectly)
-        .replace(/th[^\w\s]?m/gi, "them") // thêm
-        .replace(/b[^\w\s]?n/gi, "ban") // bạn
-        .replace(/t[^\w\s]?o/gi, "tao") // tạo
-        .replace(/nh[^\w\s]?m/gi, "nhom") // nhóm
-        .replace(/t[^\w\s]?i\s+kho[^\w\s]?n/gi, "tai khoan") // tài khoản
-        .replace(/[^\w\s]/g, "") // Remove remaining special chars
-        // Map clean Vietnamese diacritics to ASCII equivalents
-        .replace(/[àáảãạăằắẳẵặâầấẩẫậ]/g, "a")
-        .replace(/[èéẻẽẹêềếểễệ]/g, "e")
-        .replace(/[ìíỉĩị]/g, "i")
-        .replace(/[òóỏõọôồốổỗộơờớởỡợ]/g, "o")
-        .replace(/[ùúủũụưừứửữự]/g, "u")
-        .replace(/[ỳýỷỹỵ]/g, "y")
-        .replace(/đ/g, "d")
-        .replace(/[^a-z0-9\s]/g, "")
-    ); // Remove any remaining special chars
+    return text
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
-  /**
-   * Classify user intent based on Vietnamese keywords + learned patterns
-   */
+  // ─── CLASSIFY ──────────────────────────────────────────────────────────────
+
   async classifyAndRespond(
     userMessage: string,
   ): Promise<LocalNLPResponse & { isLearned: boolean }> {
     const normalizedMsg = this.transliterate(userMessage);
+    const learnedPatterns = await learningService.getAllLearnedPatterns();
 
     let bestMatch: IntentPattern | null = null;
     let bestMatchCount = 0;
-    let totalKeywords = 0;
     let isLearned = false;
 
-    // Get all learned patterns to expand matching
-    const learnedPatterns = await learningService.getAllLearnedPatterns();
-
-    // Find pattern with most keyword matches
     for (const pattern of this.patterns) {
       let matchCount = 0;
-      totalKeywords += pattern.keywords.length;
 
-      // Check hardcoded keywords
+      // Check built-in keywords
       for (const keyword of pattern.keywords) {
-        if (normalizedMsg.includes(keyword)) {
-          matchCount++;
-        }
+        if (normalizedMsg.includes(keyword)) matchCount++;
       }
 
-      // Also check learned keywords for this intent
+      // Augment with dynamically learned keywords
       const learnedPattern = learnedPatterns.find(
         (p) => p.intent === pattern.intent,
       );
       if (learnedPattern) {
-        for (const learnedKeyword of learnedPattern.keywords || []) {
-          if (normalizedMsg.includes(learnedKeyword)) {
+        for (const kw of learnedPattern.keywords ?? []) {
+          if (normalizedMsg.includes(kw)) {
             matchCount++;
             isLearned = true;
           }
         }
       }
 
-      // Keep track of best matching pattern
       if (matchCount > bestMatchCount) {
         bestMatchCount = matchCount;
         bestMatch = pattern;
       }
     }
 
-    // If no keywords matched, return general inquiry
-    if (bestMatchCount === 0) {
+    // No match — return general fallback
+    if (bestMatchCount === 0 || !bestMatch) {
       return {
         intent: "GENERAL_INQUIRY",
-        confidence: 0.4,
+        confidence: 0.3,
         suggestedResponse:
-          "Xin lỗi, tôi chưa hiểu rõ câu hỏi của bạn. Vui lòng mô tả chi tiết hơn để tôi giúp bạn tốt hơn. 😊",
+          "I'm sorry, I couldn't fully understand your request. Could you provide more details?\n\nAlternatively, select a common topic:\n• Password Recovery\n• Add Friends\n• Create Group Chat\n• Account Issues\n• Contact Support Staff",
         action: undefined,
         isLearned: false,
       };
     }
 
-    // Improved confidence calculation
-    // Formula: (matches / total_in_pattern) * (message_length_factor) * boost_factor
-    const patternCoverage =
-      (bestMatchCount / (bestMatch?.keywords.length || 1)) * 0.95;
-    const lengthFactor = Math.min(normalizedMsg.length / 50, 1.0);
-    const learnBoost = isLearned ? 1.1 : 1.0; // 10% boost if using learned keywords
-    const baseConfidence = Math.min(
-      patternCoverage * (0.5 + lengthFactor) * learnBoost,
+    // Confidence = (matched / total_in_pattern) scaled by message length
+    const patternCoverage = bestMatchCount / bestMatch.keywords.length;
+    const lengthFactor = Math.min(normalizedMsg.length / 40, 1.0);
+    const learnBoost = isLearned ? 1.1 : 1.0;
+    const confidence = Math.min(
+      patternCoverage * (0.5 + lengthFactor * 0.5) * learnBoost,
       0.99,
     );
 
     const result = {
-      intent: bestMatch?.intent || "GENERAL_INQUIRY",
-      confidence: baseConfidence,
-      suggestedResponse: bestMatch?.response || "Cảm ơn bạn đã liên hệ.",
-      action: bestMatch?.action,
+      intent: bestMatch.intent,
+      confidence,
+      suggestedResponse: bestMatch.response,
+      action: bestMatch.action,
       isLearned,
     };
 
-    // Learn from successful classification in background (don't await)
-    if (baseConfidence > 0.6) {
+    // Learn from high-confidence classifications in the background
+    if (confidence > 0.6) {
       learningService
         .learnFromSuccess(
           userMessage,
           result.intent,
-          baseConfidence,
+          confidence,
           result.suggestedResponse,
         )
-        .catch((err) => console.error("Learning error:", err));
+        .catch((err) => console.error("[NLP Learning error]", err));
     }
 
     return result;

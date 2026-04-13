@@ -223,3 +223,40 @@ chatbotRoutes.get(
     }
   },
 );
+
+// DELETE /chatbot/conversations/:conversationId - Delete a single conversation
+chatbotRoutes.delete(
+  "/conversations/:conversationId" as any,
+  authMiddleware as any,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { conversationId } = req.params as { conversationId: string };
+      const userId = req.auth?.userId;
+
+      if (!userId) {
+        throw new HttpError(401, "unauthorized");
+      }
+
+      await chatbotService.deleteConversation(userId, conversationId);
+
+      res.status(200).json({
+        message: "conversation_deleted",
+        data: { conversationId },
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message === "Conversation not found") {
+          return next(new HttpError(404, "conversation_not_found"));
+        }
+
+        if (error.message === "Forbidden to delete this conversation") {
+          return next(new HttpError(403, "forbidden"));
+        }
+      }
+
+      next(error);
+    }
+  },
+);
+
+// Dev bulk-delete endpoint removed intentionally to avoid abuse.

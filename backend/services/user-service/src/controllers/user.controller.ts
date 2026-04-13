@@ -143,18 +143,4 @@ export class UserController {
       next(error);
     }
   }
-
-  static async listAllDev(req: Request, res: Response, next: NextFunction) {
-    try {
-      // Dev mode only - list all users
-      if (process.env.NODE_ENV === "production") {
-        throw new HttpError(404, "not_found");
-      }
-
-      const data = await userService.listUsers(1, 1000);
-      res.status(200).json({ data });
-    } catch (error) {
-      next(error);
-    }
-  }
 }

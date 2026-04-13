@@ -5,11 +5,9 @@ import io, { Socket } from "socket.io-client";
 import { useAuth } from "../contexts/auth";
 import { getAuthToken } from "../lib/auth";
 
-const rawChatServiceUrl = process.env.NEXT_PUBLIC_CHAT_SERVICE_URL;
-const CHAT_SERVICE_URL =
-  rawChatServiceUrl && /^https?:\/\//i.test(rawChatServiceUrl)
-    ? rawChatServiceUrl
-    : "http://localhost:3002";
+// Use API Gateway for Socket.io connections (not direct service)
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
 
 export const useSocket = () => {
   const { user } = useAuth();
@@ -17,20 +15,22 @@ export const useSocket = () => {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // Nếu user chưa đăng nhập, không kết nối
+    // Cannot connect without authenticated user
     if (!user) {
       return;
     }
 
-    // Lấy auth token từ localStorage (được lưu khi login)
+    // Get auth token from localStorage (saved during login)
     const token = getAuthToken();
     if (!token) {
       console.error("No auth token found");
       return;
     }
 
-    // Kết nối tới Chat Service (port 3002) với authentication
-    socketRef.current = io(CHAT_SERVICE_URL, {
+    // Connect to API Gateway (NOT direct to chat-service)
+    // Socket.io is proxied through the gateway
+    socketRef.current = io(API_BASE_URL, {
+      path: "/socket.io/",
       auth: {
         token: token,
       },

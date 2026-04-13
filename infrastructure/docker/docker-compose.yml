@@ -51,11 +51,10 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      NODE_ENV: development
       PORT: 3001
       DATABASE_URL: postgres://zalo:zalo@postgres:5432/zalo_user
       GOOGLE_CLIENT_ID: ""
-      ADMIN_EMAILS: admin@example.com
+      ADMIN_EMAILS: ""
       JWT_SECRET: super-strong-jwt-secret
       JWT_EXPIRES_IN: 7d
       JWT_ISSUER: zalo-lite-user-service
@@ -63,7 +62,7 @@ services:
       BCRYPT_ROUNDS: 10
       RATE_LIMIT_WINDOW_MS: 60000
       RATE_LIMIT_MAX: 200
-      CORS_ORIGINS: http://localhost:3000,http://localhost:3003
+      CORS_ORIGINS: http://localhost:3000
     ports:
       - "3001:3001"
       - "50051:50051"
@@ -88,7 +87,6 @@ services:
       dynamodb-local:
         condition: service_started
     environment:
-      NODE_ENV: development
       PORT: 3002
       REDIS_URL: redis://redis:6379
       DYNAMODB_ENDPOINT: http://dynamodb-local:8000
@@ -137,7 +135,7 @@ services:
       AWS_REGION: ap-southeast-1
       AWS_ACCESS_KEY_ID: dummy
       AWS_SECRET_ACCESS_KEY: dummy
-      USER_SERVICE_BASE_URL: user-service
+      USER_SERVICE_BASE_URL: http://user-service:3001
       CHAT_SERVICE_BASE_URL: http://chat-service:3002
       JWT_SECRET: super-strong-jwt-secret
       JWT_ISSUER: zalo-lite-user-service
@@ -148,6 +146,7 @@ services:
       TABLE_FAQ: chatbot_faq
       TABLE_NOTIFICATIONS: chatbot_notifications
       TABLE_ANALYTICS: chatbot_analytics
+      AUTO_CLOSE_INACTIVE_HOURS: 24
       REDIS_NOTIFICATION_CHANNEL: notifications:broadcast
       CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002
       ENABLE_AI_ENGINE: "true"
@@ -161,41 +160,36 @@ services:
       retries: 3
       start_period: 20s
 
-  web:
+  api-gateway:
     build:
-      context: ../../frontend/web
+      context: ../../backend/api-gateway
       dockerfile: Dockerfile
-    container_name: zalo-web
+    container_name: zalo-api-gateway
     restart: unless-stopped
     depends_on:
-      - user-service
-      - chat-service
+      user-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+      chatbot-service:
+        condition: service_healthy
     environment:
-      NODE_ENV: production
-      PORT: 3000
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
-      NEXT_PUBLIC_USER_SERVICE_URL: http://localhost:3001
-      NEXT_PUBLIC_CHAT_SERVICE_URL: http://localhost:3002
+      PORT: 3004
+      USER_SERVICE_URL: http://user-service:3001
+      CHAT_SERVICE_URL: http://chat-service:3002
+      CHATBOT_SERVICE_URL: http://chatbot-service:3003
+      JWT_SECRET: super-strong-jwt-secret
+      JWT_ISSUER: zalo-lite-user-service
+      JWT_AUDIENCE: zalo-lite-clients
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003
     ports:
-      - "3000:3000"
-
-  web:
-    build:
-      context: ../../frontend/web
-      dockerfile: Dockerfile
-    container_name: zalo-web
-    restart: unless-stopped
-    depends_on:
-      - user-service
-      - chat-service
-    environment:
-      NODE_ENV: production
-      PORT: 3000
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
-      NEXT_PUBLIC_USER_SERVICE_URL: http://localhost:3001
-      NEXT_PUBLIC_CHAT_SERVICE_URL: http://localhost:3002
-    ports:
-      - "3000:3000"
+      - "3004:3004"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3004/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   postgres_data:

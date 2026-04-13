@@ -11,13 +11,12 @@ import FriendsView from "../app/components/FriendsView";
 import HistoryView from "../app/components/HistoryView";
 import ProfileView from "../app/components/ProfileView";
 import StatsView from "../app/components/StatsView";
-import { getAuthToken } from "../app/lib/auth";
 
 export default function DashboardLayout() {
   const router = useRouter();
   const { user, isLoading } = useAuth();
   const [currentView, setCurrentView] = useState("chat");
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadCount] = useState(0);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -51,11 +50,12 @@ export default function DashboardLayout() {
 
       {/* Hiển thị Component động dựa vào State */}
       <div className="flex-1 flex overflow-hidden">
-        {currentView === "chat" && (
-          <ChatView onUnreadCountChange={setUnreadCount} />
-        )}
+        {currentView === "chat" && <ChatView />}
+        {currentView === "chatbot" && <ChatbotView />}
         {currentView === "history" && <HistoryView />}
         {currentView === "stats" && <StatsView />}
+        {currentView === "friends" && <FriendsView />}
+        {currentView === "profile" && <ProfileView />}
       </div>
     </div>
   );

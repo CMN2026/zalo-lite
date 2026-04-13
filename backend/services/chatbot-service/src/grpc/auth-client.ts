@@ -39,7 +39,10 @@ export class AuthServiceGRPCClient {
   private channel: grpc.Channel;
 
   constructor() {
-    const userServiceUrl = `${env.USER_SERVICE_BASE_URL || "localhost"}:50051`;
+    const baseUrl = env.USER_SERVICE_BASE_URL || "localhost:3001";
+    // gRPC needs bare host, no http(s):// scheme and no port (we always use 50051)
+    const host = baseUrl.replace(/^https?:\/\//, "").split(":")[0];
+    const userServiceUrl = `${host}:50051`;
 
     this.channel = new grpc.Channel(
       userServiceUrl,

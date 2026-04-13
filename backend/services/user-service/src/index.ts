@@ -8,9 +8,13 @@ import { authRoutes } from "./routes/auth.routes.js";
 import { userRoutes } from "./routes/user.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { AuthService } from "./services/auth.service.js";
+import { startGRPCServer, stopGRPCServer } from "./grpc/auth-server.js";
+import type { Server as GrpcServer } from "@grpc/grpc-js";
 
 const app = express();
 const authService = new AuthService();
+let grpcServer: GrpcServer | undefined;
+const startTime = Date.now();
 
 app.disable("x-powered-by");
 app.use(helmet());
@@ -93,13 +97,10 @@ const seedDevUsers = async () => {
   }
 };
 
-app.listen(env.PORT, async () => {
-  await seedDevUsers();
-  console.log(`user-service listening on ${env.PORT}`);
-});
-
 async function start() {
   try {
+    await seedDevUsers();
+
     // Start gRPC server
     grpcServer = await startGRPCServer(50051);
 
@@ -114,3 +115,20 @@ async function start() {
 }
 
 start();
+
+// Graceful shutdown
+const shutdown = async (signal: string) => {
+  console.log(`${signal} received, shutting down gracefully...`);
+  if (grpcServer) {
+    await stopGRPCServer(grpcServer);
+  }
+  process.exit(0);
+};
+
+process.on("SIGTERM", () => {
+  void shutdown("SIGTERM");
+});
+
+process.on("SIGINT", () => {
+  void shutdown("SIGINT");
+});

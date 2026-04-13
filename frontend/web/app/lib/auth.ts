@@ -1,11 +1,5 @@
-const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 const API_BASE_URL =
-  rawApiBaseUrl && /^https?:\/\//i.test(rawApiBaseUrl)
-    ? rawApiBaseUrl
-    : "http://localhost:3001";
-
-export const AUTH_TOKEN_KEY = "auth-token";
-export const AUTH_USER_KEY = "current-user";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
 
 export type AuthUser = {
   id: string;
@@ -46,9 +40,12 @@ function isValidationErrorResponse(
 }
 
 export async function login(identifier: string, password: string) {
-  return post<AuthResponse<{ token: string; user: AuthUser }>>("/auth/login", {
-    body: { identifier, password },
-  });
+  return post<AuthResponse<{ token: string; user: AuthUser }>>(
+    "/api/auth/login",
+    {
+      body: { identifier, password },
+    },
+  );
 }
 
 export async function register(input: {
@@ -59,15 +56,46 @@ export async function register(input: {
   avatarUrl?: string | null;
 }) {
   return post<AuthResponse<{ token: string; user: AuthUser }>>(
-    "/auth/register",
+    "/api/auth/register",
     {
       body: input,
     },
   );
 }
 
+export const AUTH_TOKEN_KEY = "token";
+export const AUTH_USER_KEY = "user";
+
+export function saveAuthSession(token: string, user: AuthUser) {
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+}
+
+export function getAuthToken() {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export function getSavedAuthUser(): AuthUser | null {
+  const rawUser = localStorage.getItem(AUTH_USER_KEY);
+  if (!rawUser) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawUser) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
+export function clearAuthSession() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_USER_KEY);
+}
+
 async function post<T>(path: string, options: RequestOptions): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const url = `${API_BASE_URL}${path}`;
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -105,25 +133,4 @@ async function post<T>(path: string, options: RequestOptions): Promise<T> {
   }
 
   return payload as T;
-}
-
-export function saveAuthSession(token: string, user: AuthUser) {
-  localStorage.setItem(AUTH_TOKEN_KEY, token);
-  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
-
-  // Keep legacy keys for compatibility with older flows.
-  localStorage.setItem("token", token);
-  localStorage.setItem("user", JSON.stringify(user));
-}
-
-export function getAuthToken(): string | null {
-  return localStorage.getItem(AUTH_TOKEN_KEY);
-}
-
-export function clearAuthSession() {
-  localStorage.removeItem(AUTH_TOKEN_KEY);
-  localStorage.removeItem(AUTH_USER_KEY);
-  localStorage.removeItem("current-user-id");
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
 }

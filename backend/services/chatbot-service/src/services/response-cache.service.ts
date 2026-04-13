@@ -6,6 +6,7 @@
 import { redisClient } from "../config/redis.js";
 
 export interface CachedResponse {
+  originalMessage: string;
   intent: string;
   response: string;
   confidence: number;
@@ -53,7 +54,7 @@ export class ResponseCacheService {
         if (!cached) continue;
 
         const cachedData = JSON.parse(cached) as CachedResponse;
-        const similarity = this.similarityScore(userMessage, cached);
+        const similarity = this.similarityScore(userMessage, cachedData.originalMessage);
 
         // If similarity above threshold and better than current best
         if (
@@ -92,6 +93,7 @@ export class ResponseCacheService {
     try {
       const cacheKey = `chatbot:response:${intent}:${Date.now()}`;
       const cacheData: CachedResponse = {
+        originalMessage: userMessage,
         intent,
         response,
         confidence,
