@@ -138,7 +138,7 @@ io.on("connection", async (socket) => {
         payload.conversation_id,
       );
       const receiverIds = members
-        .map((member) => member.user_id)
+        .map((member) => member.userId)
         .filter((memberId) => memberId !== userId);
 
       socket.emit("message:send_ack", {
@@ -235,7 +235,7 @@ io.on("connection", async (socket) => {
         const members = await conversationRepository.getConversationMembers(
           payload.conversation_id,
         );
-        const isMember = members.some((m) => m.user_id === userId);
+        const isMember = members.some((m) => m.userId === userId);
 
         if (!isMember) {
           socket.emit("join_conversation_error", {
@@ -314,7 +314,7 @@ async function bootstrap() {
           message.conversation_id,
         );
         members.forEach((member) => {
-          io.to(`user_${member.user_id}`).emit("message:receive", message);
+          io.to(`user_${member.userId}`).emit("message:receive", message);
         });
       } catch (error) {
         console.error("Failed to fan-out message to user rooms", error);

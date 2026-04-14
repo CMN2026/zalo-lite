@@ -11,7 +11,6 @@ export type ConversationWithMembers = Conversation & {
   memberIds: string[];
 };
 
-
 export class ConversationService {
   private readonly conversationRepository = new ConversationRepository();
   private readonly messageRepository = new MessageRepository();
@@ -44,7 +43,7 @@ export class ConversationService {
       {
         type: input.type,
         name: input.name ?? null,
-        created_by: creatorId,
+        createdBy: creatorId,
       },
       uniqueMembers,
     );
@@ -65,7 +64,7 @@ export class ConversationService {
           await this.conversationRepository.getConversationMembers(
             conversation.id,
           );
-        const hasOtherUser = members.some((m) => m.user_id === otherUserId);
+        const hasOtherUser = members.some((m) => m.userId === otherUserId);
         if (hasOtherUser) {
           return conversation;
         }
@@ -92,7 +91,7 @@ export class ConversationService {
 
         return {
           ...conversation,
-          memberIds: members.map((member) => member.user_id),
+          memberIds: members.map((member) => member.userId),
         };
       }),
     );
@@ -120,7 +119,7 @@ export class ConversationService {
     const membersWithProfile = await Promise.all(
       members.map(async (member) => {
         try {
-          const profile = await this.userClient.getUserById(member.user_id);
+          const profile = await this.userClient.getUserById(member.userId);
           return { ...member, profile };
         } catch {
           return { ...member, profile: null };
@@ -165,22 +164,22 @@ export class ConversationService {
       throw new HttpError(400, "cannot_leave_group_with_two_or_fewer_members");
     }
 
-    const currentMember = members.find((m) => m.user_id === userId);
+    const currentMember = members.find((m) => m.userId === userId);
     const isOwner = currentMember?.role === "owner";
 
     await this.conversationRepository.removeMember(conversationId, userId);
 
     if (isOwner) {
-      const remaining = members.filter((m) => m.user_id !== userId);
+      const remaining = members.filter((m) => m.userId !== userId);
       const nextOwner = remaining.sort(
         (a, b) =>
-          new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime(),
+          new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime(),
       )[0];
 
       if (nextOwner) {
         await this.conversationRepository.updateMemberRole(
           conversationId,
-          nextOwner.user_id,
+          nextOwner.userId,
           "owner",
         );
       }
@@ -197,7 +196,7 @@ export class ConversationService {
 
     const existingMembers =
       await this.conversationRepository.getConversationMembers(conversationId);
-    const existingIds = new Set(existingMembers.map((m) => m.user_id));
+    const existingIds = new Set(existingMembers.map((m) => m.userId));
     const newMemberIds = memberIds.filter((id) => !existingIds.has(id));
 
     if (newMemberIds.length === 0) {
@@ -206,7 +205,7 @@ export class ConversationService {
 
     await this.conversationRepository.addMembers(conversationId, newMemberIds);
 
-    return { added_count: newMemberIds.length };
+    return { addedCount: newMemberIds.length };
   }
 
   async removeMemberFromGroup(
@@ -223,7 +222,7 @@ export class ConversationService {
 
     const members =
       await this.conversationRepository.getConversationMembers(conversationId);
-    const isMember = members.some((m) => m.user_id === targetUserId);
+    const isMember = members.some((m) => m.userId === targetUserId);
     if (!isMember) {
       throw new HttpError(404, "target_not_a_member");
     }
@@ -237,7 +236,7 @@ export class ConversationService {
   async assertMember(conversationId: string, userId: string) {
     const members =
       await this.conversationRepository.getConversationMembers(conversationId);
-    const isMember = members.some((item) => item.user_id === userId);
+    const isMember = members.some((item) => item.userId === userId);
     if (!isMember) {
       throw new HttpError(403, "not_a_conversation_member");
     }
@@ -259,7 +258,7 @@ export class ConversationService {
   private async assertOwner(conversationId: string, userId: string) {
     const members =
       await this.conversationRepository.getConversationMembers(conversationId);
-    const member = members.find((m) => m.user_id === userId);
+    const member = members.find((m) => m.userId === userId);
     if (!member || member.role !== "owner") {
       throw new HttpError(403, "only_owner_can_perform_this_action");
     }

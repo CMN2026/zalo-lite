@@ -10,8 +10,8 @@ conversationRoutes.post(
   [
     body("type").isIn(["direct", "group"]),
     body("name").optional().isLength({ min: 1, max: 100 }),
-    body("member_ids").isArray({ min: 1 }),
-    body("member_ids.*").isString(),
+    body("memberIds").isArray({ min: 1 }),
+    body("memberIds.*").isString(),
     validateRequest,
   ],
   ConversationController.create,
@@ -19,7 +19,7 @@ conversationRoutes.post(
 
 conversationRoutes.post(
   "/direct",
-  [body("user_id").isString().notEmpty(), validateRequest],
+  [body("userId").isString().notEmpty(), validateRequest],
   ConversationController.getOrCreateDirect,
 );
 
@@ -57,8 +57,8 @@ conversationRoutes.post(
   "/:id/members",
   [
     param("id").isUUID(),
-    body("member_ids").isArray({ min: 1 }),
-    body("member_ids.*").isUUID(),
+    body("memberIds").isArray({ min: 1 }),
+    body("memberIds.*").isUUID(),
     validateRequest,
   ],
   ConversationController.addMembers,
@@ -66,11 +66,7 @@ conversationRoutes.post(
 
 conversationRoutes.delete(
   "/:id/members/:userId",
-  [
-    param("id").isUUID(),
-    param("userId").isUUID(),
-    validateRequest,
-  ],
+  [param("id").isUUID(), param("userId").isUUID(), validateRequest],
   ConversationController.removeMember,
 );
 

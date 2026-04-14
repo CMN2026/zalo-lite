@@ -79,7 +79,7 @@ export const setupFileServer = (app: Express) => {
           typeof req.query.token === "string" ? req.query.token : undefined;
         const token = bearerToken ?? queryToken;
 
-        const userId = token ? verifyToken(token).user_id : undefined;
+        const userId = token ? verifyToken(token).userId : undefined;
         if (!userId) {
           return res.status(401).json({ message: "Unauthorized" });
         }
@@ -88,7 +88,7 @@ export const setupFileServer = (app: Express) => {
 
         const members =
           await conversationRepository.getConversationMembers(conversationId);
-        const isMember = members.some((member) => member.user_id === userId);
+        const isMember = members.some((member) => member.userId === userId);
 
         if (!isMember) {
           return res.status(403).json({ message: "Forbidden" });
