@@ -1,13 +1,15 @@
-import {
-  PutCommand,
-  QueryCommand,
-  DeleteCommand,
-  GetCommand,
-  ScanCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { PutCommand, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
 import { dynamo } from "../config/dynamodb.js";
 import { env } from "../config/env.js";
+
+export type MessageReactionKey = "vui" | "buon" | "phan_no" | "wow";
+
+export type MessageReaction = {
+  user_id: string;
+  reaction: MessageReactionKey;
+  created_at: string;
+};
 
 export type Message = {
   conversation_id: string;
@@ -18,6 +20,11 @@ export type Message = {
   content: string;
   read_by?: string[];
   deleted_at?: string;
+  reply_to_message_id?: string;
+  recalled_at?: string;
+  recalled_by?: string;
+  reactions?: MessageReaction[];
+  deleted_for_user_ids?: string[];
 };
 
 export class MessageRepository {
@@ -26,6 +33,7 @@ export class MessageRepository {
     sender_id: string;
     type: string;
     content: string;
+    reply_to_message_id?: string;
   }): Promise<Message> {
     const message: Message = {
       conversation_id: input.conversation_id,
@@ -35,6 +43,9 @@ export class MessageRepository {
       type: input.type,
       content: input.content,
       read_by: [input.sender_id], // Sender has read their own message
+      reply_to_message_id: input.reply_to_message_id,
+      reactions: [],
+      deleted_for_user_ids: [],
     };
 
     await dynamo.send(
@@ -49,19 +60,31 @@ export class MessageRepository {
 
   async getById(messageId: string): Promise<Message | null> {
     try {
-      const response = await dynamo.send(
-        new QueryCommand({
-          TableName: env.TABLE_MESSAGES,
-          IndexName: "id-index", // Assuming there's an index on id
-          KeyConditionExpression: "id = :id",
-          ExpressionAttributeValues: {
-            ":id": messageId,
-          },
-        }),
-      );
+      let exclusiveStartKey: Record<string, unknown> | undefined;
 
-      const item = (response.Items?.[0] as Message | undefined) ?? null;
-      return item && !item.deleted_at ? item : null;
+      do {
+        const response = await dynamo.send(
+          new ScanCommand({
+            TableName: env.TABLE_MESSAGES,
+            FilterExpression: "id = :id",
+            ExpressionAttributeValues: {
+              ":id": messageId,
+            },
+            ExclusiveStartKey: exclusiveStartKey,
+          }),
+        );
+
+        const item = (response.Items?.[0] as Message | undefined) ?? null;
+        if (item && !item.deleted_at) {
+          return item;
+        }
+
+        exclusiveStartKey = response.LastEvaluatedKey as
+          | Record<string, unknown>
+          | undefined;
+      } while (exclusiveStartKey);
+
+      return null;
     } catch {
       return null;
     }
@@ -70,6 +93,8 @@ export class MessageRepository {
   async listByConversationId(
     conversationId: string,
     limit = 50,
+    viewerUserId?: string,
+    clearedAt?: string | null,
   ): Promise<Message[]> {
     const response = await dynamo.send(
       new QueryCommand({
@@ -83,8 +108,27 @@ export class MessageRepository {
       }),
     );
 
+    const clearedAtMs = clearedAt ? new Date(clearedAt).getTime() : null;
+
     const messages = ((response.Items as Message[] | undefined) ?? [])
-      .filter((m) => !m.deleted_at)
+      .filter((m) => {
+        if (m.deleted_at) {
+          return false;
+        }
+
+        if (
+          viewerUserId &&
+          (m.deleted_for_user_ids ?? []).includes(viewerUserId)
+        ) {
+          return false;
+        }
+
+        if (clearedAtMs !== null) {
+          return new Date(m.created_at).getTime() > clearedAtMs;
+        }
+
+        return true;
+      })
       .reverse();
 
     return messages;
@@ -98,15 +142,10 @@ export class MessageRepository {
     for (const message of messages) {
       if (!message.read_by?.includes(userId)) {
         const readBy = [...(message.read_by ?? []), userId];
-        await dynamo.send(
-          new PutCommand({
-            TableName: env.TABLE_MESSAGES,
-            Item: {
-              ...message,
-              read_by: readBy,
-            },
-          }),
-        );
+        await this.updateMessage({
+          ...message,
+          read_by: readBy,
+        });
       }
     }
   }
@@ -125,6 +164,61 @@ export class MessageRepository {
         }),
       );
     }
+  }
+
+  async recall(messageId: string, userId: string): Promise<Message | null> {
+    const message = await this.getById(messageId);
+    if (!message) {
+      return null;
+    }
+
+    const recalled: Message = {
+      ...message,
+      type: "text",
+      content: "Tin nhan da duoc thu hoi",
+      recalled_at: new Date().toISOString(),
+      recalled_by: userId,
+      reactions: [],
+      reply_to_message_id: undefined,
+      deleted_for_user_ids: [],
+    };
+
+    await this.updateMessage(recalled);
+    return recalled;
+  }
+
+  async setReaction(
+    messageId: string,
+    userId: string,
+    reaction?: MessageReactionKey,
+  ): Promise<Message | null> {
+    const message = await this.getById(messageId);
+    if (!message) {
+      return null;
+    }
+
+    const kept = (message.reactions ?? []).filter(
+      (item) => item.user_id !== userId,
+    );
+
+    const nextReactions = reaction
+      ? [
+          ...kept,
+          {
+            user_id: userId,
+            reaction,
+            created_at: new Date().toISOString(),
+          },
+        ]
+      : kept;
+
+    const updated: Message = {
+      ...message,
+      reactions: nextReactions,
+    };
+
+    await this.updateMessage(updated);
+    return updated;
   }
 
   async search(conversationId: string, query: string): Promise<Message[]> {
@@ -170,5 +264,36 @@ export class MessageRepository {
       total: messages.length,
       byType,
     };
+  }
+
+  async deleteForUser(
+    messageId: string,
+    userId: string,
+  ): Promise<Message | null> {
+    const message = await this.getById(messageId);
+    if (!message) {
+      return null;
+    }
+
+    const deletedForUserIds = Array.from(
+      new Set([...(message.deleted_for_user_ids ?? []), userId]),
+    );
+
+    const updated: Message = {
+      ...message,
+      deleted_for_user_ids: deletedForUserIds,
+    };
+
+    await this.updateMessage(updated);
+    return updated;
+  }
+
+  private async updateMessage(message: Message): Promise<void> {
+    await dynamo.send(
+      new PutCommand({
+        TableName: env.TABLE_MESSAGES,
+        Item: message,
+      }),
+    );
   }
 }

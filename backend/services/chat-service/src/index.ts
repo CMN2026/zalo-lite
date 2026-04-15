@@ -132,13 +132,17 @@ io.on("connection", async (socket) => {
         sender_id: userId,
         type: payload.type ?? "text",
         content: payload.content,
+        reply_to_message_id:
+          typeof payload.reply_to_message_id === "string"
+            ? payload.reply_to_message_id
+            : undefined,
       });
 
       const members = await conversationRepository.getConversationMembers(
         payload.conversation_id,
       );
       const receiverIds = members
-        .map((member) => member.user_id)
+        .map((member) => member.userId)
         .filter((memberId) => memberId !== userId);
 
       socket.emit("message:send_ack", {
@@ -169,8 +173,37 @@ io.on("connection", async (socket) => {
           type: message.type,
         });
       });
+
+      if (message.reply_to_message_id) {
+        const repliedMessage = await messageService.getMessageById(
+          message.reply_to_message_id,
+        );
+
+        if (
+          repliedMessage &&
+          repliedMessage.sender_id &&
+          repliedMessage.sender_id !== userId
+        ) {
+          io.to(`user_${repliedMessage.sender_id}`).emit("notification:reply", {
+            conversation_id: payload.conversation_id,
+            message_id: message.id,
+            reply_to_message_id: message.reply_to_message_id,
+            sender_id: userId,
+          });
+        }
+      }
     } catch (error) {
-      socket.emit("message:send_ack", { ok: false, error: String(error) });
+      const errorMessage =
+        error instanceof Error ? error.message : "message_send_failed";
+
+      socket.emit("message:send_ack", {
+        ok: false,
+        error: errorMessage,
+        conversation_id:
+          typeof payload?.conversation_id === "string"
+            ? payload.conversation_id
+            : undefined,
+      });
     }
   });
 
@@ -205,17 +238,51 @@ io.on("connection", async (socket) => {
   // DELETE MESSAGE EVENT
   socket.on("message:delete", async (payload) => {
     try {
-      await messageService.deleteMessage(payload.message_id, userId);
+      const deleted = await messageService.deleteMessage(
+        payload.message_id,
+        userId,
+      );
 
-      socket
-        .to(`conversation_${payload.conversation_id}`)
-        .emit("message:deleted", {
-          message_id: payload.message_id,
-          conversation_id: payload.conversation_id,
-          timestamp: Date.now(),
-        });
+      socket.emit("message:delete_ack", {
+        ok: true,
+        message_id: deleted.id,
+        conversation_id: deleted.conversation_id,
+      });
     } catch (error) {
       socket.emit("message:delete_error", { error: String(error) });
+    }
+  });
+
+  socket.on("message:recall", async (payload) => {
+    try {
+      const recalled = await messageService.recallMessage(
+        payload.message_id,
+        userId,
+      );
+      socket.emit("message:recall_ack", {
+        ok: true,
+        message_id: recalled.id,
+        conversation_id: recalled.conversation_id,
+      });
+    } catch (error) {
+      socket.emit("message:recall_error", { error: String(error) });
+    }
+  });
+
+  socket.on("message:react", async (payload) => {
+    try {
+      const updated = await messageService.reactToMessage(
+        payload.message_id,
+        userId,
+        payload.reaction,
+      );
+      socket.emit("message:reaction_ack", {
+        ok: true,
+        message_id: updated.id,
+        conversation_id: updated.conversation_id,
+      });
+    } catch (error) {
+      socket.emit("message:reaction_error", { error: String(error) });
     }
   });
 
@@ -235,7 +302,7 @@ io.on("connection", async (socket) => {
         const members = await conversationRepository.getConversationMembers(
           payload.conversation_id,
         );
-        const isMember = members.some((m) => m.user_id === userId);
+        const isMember = members.some((m) => m.userId === userId);
 
         if (!isMember) {
           socket.emit("join_conversation_error", {
@@ -314,7 +381,7 @@ async function bootstrap() {
           message.conversation_id,
         );
         members.forEach((member) => {
-          io.to(`user_${member.user_id}`).emit("message:receive", message);
+          io.to(`user_${member.userId}`).emit("message:receive", message);
         });
       } catch (error) {
         console.error("Failed to fan-out message to user rooms", error);
@@ -339,16 +406,92 @@ async function bootstrap() {
 
   // Subscribe to message delete events
   await redisSubscriber.subscribe(
-    `${env.REDIS_MESSAGE_CHANNEL}:delete`,
+    `${env.REDIS_MESSAGE_CHANNEL}:delete_for_user`,
     (text) => {
       const data = JSON.parse(text) as {
         messageId: string;
         conversationId: string;
+        userId: string;
       };
+      io.to(`user_${data.userId}`).emit("message:deleted", {
+        message_id: data.messageId,
+        conversation_id: data.conversationId,
+        user_id: data.userId,
+      });
+    },
+  );
+
+  await redisSubscriber.subscribe(
+    `${env.REDIS_MESSAGE_CHANNEL}:recall`,
+    async (text) => {
+      const data = JSON.parse(text) as {
+        messageId: string;
+        conversationId: string;
+        recalledAt?: string;
+        recalledBy?: string;
+      };
+      const payload = {
+        message_id: data.messageId,
+        conversation_id: data.conversationId,
+        recalled_at: data.recalledAt,
+        recalled_by: data.recalledBy,
+      };
+
       io.to(`conversation_${data.conversationId}`).emit(
-        "message:deleted",
-        data,
+        "message:recalled",
+        payload,
       );
+
+      try {
+        const members = await conversationRepository.getConversationMembers(
+          data.conversationId,
+        );
+        members.forEach((member) => {
+          io.to(`user_${member.userId}`).emit("message:recalled", payload);
+        });
+      } catch (error) {
+        console.error("Failed to fan-out recalled event to user rooms", error);
+      }
+    },
+  );
+
+  await redisSubscriber.subscribe(
+    `${env.REDIS_MESSAGE_CHANNEL}:reaction`,
+    async (text) => {
+      const data = JSON.parse(text) as {
+        messageId: string;
+        conversationId: string;
+        reactions: Array<{
+          user_id: string;
+          reaction: string;
+          created_at: string;
+        }>;
+      };
+
+      const payload = {
+        message_id: data.messageId,
+        conversation_id: data.conversationId,
+        reactions: data.reactions,
+      };
+
+      io.to(`conversation_${data.conversationId}`).emit(
+        "message:reaction_updated",
+        payload,
+      );
+
+      try {
+        const members = await conversationRepository.getConversationMembers(
+          data.conversationId,
+        );
+        members.forEach((member) => {
+          io.to(`user_${member.userId}`).emit(
+            "message:reaction_updated",
+            payload,
+          );
+        });
+      } catch (error) {
+        console.error("Failed to fan-out reaction event to user rooms", error);
+      }
     },
   );
 

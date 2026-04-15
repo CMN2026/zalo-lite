@@ -2,7 +2,6 @@ import { HttpError } from "../utils/http-error.js";
 import {
   ConversationRepository,
   type Conversation,
-  type ConversationMember,
 } from "../repositories/conversation.repository.js";
 import { MessageRepository } from "../repositories/message.repository.js";
 import { UserClientService } from "./user-client.service.js";
@@ -11,12 +10,11 @@ export type ConversationWithMembers = Conversation & {
   memberIds: string[];
 };
 
-
 export class ConversationService {
   private readonly conversationRepository = new ConversationRepository();
   private readonly messageRepository = new MessageRepository();
   private readonly userClient = new UserClientService(
-    process.env.USER_SERVICE_URL || "http://localhost:3000",
+    process.env.USER_SERVICE_BASE_URL || "http://localhost:3001",
   );
 
   async createConversation(
@@ -29,6 +27,11 @@ export class ConversationService {
       const withoutCreator = uniqueMembers.filter((id) => id !== creatorId);
       if (withoutCreator.length !== 1) {
         throw new HttpError(400, "direct_conversation_requires_one_receiver");
+      }
+
+      const receiverId = withoutCreator[0];
+      if (!(await this.userClient.isFriend(creatorId, receiverId))) {
+        throw new HttpError(403, "direct_conversation_requires_friendship");
       }
     }
 
@@ -44,7 +47,7 @@ export class ConversationService {
       {
         type: input.type,
         name: input.name ?? null,
-        created_by: creatorId,
+        createdBy: creatorId,
       },
       uniqueMembers,
     );
@@ -54,9 +57,15 @@ export class ConversationService {
     userId: string,
     otherUserId: string,
   ): Promise<Conversation> {
+    if (!(await this.userClient.isFriend(userId, otherUserId))) {
+      throw new HttpError(403, "direct_conversation_requires_friendship");
+    }
+
     // Get all conversations for the user
-    const userConversations =
-      await this.conversationRepository.listByUserId(userId);
+    const userConversations = await this.conversationRepository.listByUserId(
+      userId,
+      true,
+    );
 
     // Find existing direct conversation with the other user
     for (const conversation of userConversations) {
@@ -65,8 +74,12 @@ export class ConversationService {
           await this.conversationRepository.getConversationMembers(
             conversation.id,
           );
-        const hasOtherUser = members.some((m) => m.user_id === otherUserId);
+        const hasOtherUser = members.some((m) => m.userId === otherUserId);
         if (hasOtherUser) {
+          await this.conversationRepository.restoreConversationForUser(
+            conversation.id,
+            userId,
+          );
           return conversation;
         }
       }
@@ -80,6 +93,8 @@ export class ConversationService {
   }
 
   async getConversations(userId: string): Promise<ConversationWithMembers[]> {
+    await this.ensureDirectConversationsForFriends(userId);
+
     const conversations =
       await this.conversationRepository.listByUserId(userId);
 
@@ -92,17 +107,74 @@ export class ConversationService {
 
         return {
           ...conversation,
-          memberIds: members.map((member) => member.user_id),
+          memberIds: members.map((member) => member.userId),
         };
       }),
     );
 
-    return conversationsWithMembers;
+    const directByFriendId = new Map<string, ConversationWithMembers>();
+    const groups: ConversationWithMembers[] = [];
+
+    for (const conversation of conversationsWithMembers) {
+      if (conversation.type !== "direct") {
+        groups.push(conversation);
+        continue;
+      }
+
+      const friendId = conversation.memberIds.find((id) => id !== userId);
+      if (!friendId) {
+        continue;
+      }
+
+      const existing = directByFriendId.get(friendId);
+      if (!existing) {
+        directByFriendId.set(friendId, conversation);
+        continue;
+      }
+
+      const existingTimestamp =
+        existing.lastMessageAt ??
+        existing.createdAt ??
+        "1970-01-01T00:00:00.000Z";
+      const currentTimestamp =
+        conversation.lastMessageAt ??
+        conversation.createdAt ??
+        "1970-01-01T00:00:00.000Z";
+
+      if (
+        new Date(currentTimestamp).getTime() >
+        new Date(existingTimestamp).getTime()
+      ) {
+        directByFriendId.set(friendId, conversation);
+      }
+    }
+
+    return [...groups, ...directByFriendId.values()];
   }
 
   async getMessages(userId: string, conversationId: string, limit: number) {
     await this.assertMember(conversationId, userId);
-    return this.messageRepository.listByConversationId(conversationId, limit);
+    const member = await this.conversationRepository.getMember(
+      conversationId,
+      userId,
+    );
+
+    return this.messageRepository.listByConversationId(
+      conversationId,
+      limit,
+      userId,
+      member?.clearedAt ?? null,
+    );
+  }
+
+  async hideConversationForUser(userId: string, conversationId: string) {
+    await this.assertMember(conversationId, userId);
+
+    await this.conversationRepository.hideConversationForUser(
+      conversationId,
+      userId,
+      new Date().toISOString(),
+    );
   }
 
   async getConversationDetail(userId: string, conversationId: string) {
@@ -120,7 +192,7 @@ export class ConversationService {
     const membersWithProfile = await Promise.all(
       members.map(async (member) => {
         try {
-          const profile = await this.userClient.getUserById(member.user_id);
+          const profile = await this.userClient.getUserById(member.userId);
           return { ...member, profile };
         } catch {
           return { ...member, profile: null };
@@ -165,22 +237,22 @@ export class ConversationService {
       throw new HttpError(400, "cannot_leave_group_with_two_or_fewer_members");
     }
 
-    const currentMember = members.find((m) => m.user_id === userId);
+    const currentMember = members.find((m) => m.userId === userId);
     const isOwner = currentMember?.role === "owner";
 
     await this.conversationRepository.removeMember(conversationId, userId);
 
     if (isOwner) {
-      const remaining = members.filter((m) => m.user_id !== userId);
+      const remaining = members.filter((m) => m.userId !== userId);
       const nextOwner = remaining.sort(
         (a, b) =>
-          new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime(),
+          new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime(),
       )[0];
 
       if (nextOwner) {
         await this.conversationRepository.updateMemberRole(
           conversationId,
-          nextOwner.user_id,
+          nextOwner.userId,
           "owner",
         );
       }
@@ -197,7 +269,7 @@ export class ConversationService {
 
     const existingMembers =
       await this.conversationRepository.getConversationMembers(conversationId);
-    const existingIds = new Set(existingMembers.map((m) => m.user_id));
+    const existingIds = new Set(existingMembers.map((m) => m.userId));
     const newMemberIds = memberIds.filter((id) => !existingIds.has(id));
 
     if (newMemberIds.length === 0) {
@@ -223,7 +295,7 @@ export class ConversationService {
 
     const members =
       await this.conversationRepository.getConversationMembers(conversationId);
-    const isMember = members.some((m) => m.user_id === targetUserId);
+    const isMember = members.some((m) => m.userId === targetUserId);
     if (!isMember) {
       throw new HttpError(404, "target_not_a_member");
     }
@@ -237,7 +309,7 @@ export class ConversationService {
   async assertMember(conversationId: string, userId: string) {
     const members =
       await this.conversationRepository.getConversationMembers(conversationId);
-    const isMember = members.some((item) => item.user_id === userId);
+    const isMember = members.some((item) => item.userId === userId);
     if (!isMember) {
       throw new HttpError(403, "not_a_conversation_member");
     }
@@ -259,9 +331,63 @@ export class ConversationService {
   private async assertOwner(conversationId: string, userId: string) {
     const members =
       await this.conversationRepository.getConversationMembers(conversationId);
-    const member = members.find((m) => m.user_id === userId);
+    const member = members.find((m) => m.userId === userId);
     if (!member || member.role !== "owner") {
       throw new HttpError(403, "only_owner_can_perform_this_action");
     }
+  }
+
+  private async ensureDirectConversationsForFriends(userId: string) {
+    let friends: Array<{ id: string }> = [];
+    try {
+      friends = await this.userClient.listFriends(userId);
+    } catch {
+      // Keep conversation listing available even when user-service is degraded.
+      return;
+    }
+
+    if (friends.length === 0) {
+      return;
+    }
+
+    const existingConversations =
+      await this.conversationRepository.listByUserId(userId, true);
+    const directConversationByFriendId = new Set<string>();
+
+    for (const conversation of existingConversations) {
+      if (conversation.type !== "direct") {
+        continue;
+      }
+
+      const members = await this.conversationRepository.getConversationMembers(
+        conversation.id,
+      );
+
+      const friendMember = members.find((member) => member.userId !== userId);
+      if (friendMember) {
+        directConversationByFriendId.add(friendMember.userId);
+      }
+    }
+
+    const missingFriendIds = friends
+      .map((item) => item.id)
+      .filter((friendId) => !directConversationByFriendId.has(friendId));
+
+    if (missingFriendIds.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      missingFriendIds.map((friendId) =>
+        this.conversationRepository.createConversation(
+          {
+            type: "direct",
+            name: null,
+            createdBy: userId,
+          },
+          [userId, friendId],
+        ),
+      ),
+    );
   }
 }

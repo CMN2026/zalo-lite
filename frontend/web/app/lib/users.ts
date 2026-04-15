@@ -1,5 +1,5 @@
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
 
 export type ProfileUser = {
   id: string;
@@ -24,6 +24,16 @@ export type FriendRequest = {
   createdAt?: string;
 };
 
+export type FriendshipStatus = {
+  userId: string;
+  otherUserId: string;
+  status: "PENDING" | "ACCEPTED" | "REJECTED" | "BLOCKED" | null;
+  isBlocked: boolean;
+  blockedByUserId: string | null;
+  friendshipId: string | null;
+  targetUser?: ProfileUser;
+};
+
 type ApiResponse<T> = {
   message?: string;
   data: T;
@@ -33,6 +43,11 @@ type ApiErrorBody = {
   message?: string;
   errors?: Array<{ field: string; message: string }>;
 };
+
+type ApiRequestError = Error &
+  ApiErrorBody & {
+    status?: number;
+  };
 
 type RequestOptions = {
   method?: "GET" | "PATCH" | "POST";
@@ -99,6 +114,69 @@ export async function listFriends() {
   return request<ApiResponse<ProfileUser[]>>("/users/friends");
 }
 
+export async function getFriendshipStatus(otherUserId: string) {
+  try {
+    return await request<ApiResponse<FriendshipStatus>>(
+      `/users/friendships/${otherUserId}`,
+    );
+  } catch (error) {
+    const typed = error as ApiRequestError;
+    if (typed.status !== 404) {
+      throw error;
+    }
+
+    return request<ApiResponse<FriendshipStatus>>(
+      `/users/friendship/${otherUserId}`,
+    );
+  }
+}
+
+export async function blockFriendship(otherUserId: string) {
+  try {
+    return await request<ApiResponse<FriendshipStatus>>(
+      `/users/friendships/${otherUserId}/block`,
+      {
+        method: "POST",
+      },
+    );
+  } catch (error) {
+    const typed = error as ApiRequestError;
+    if (typed.status !== 404) {
+      throw error;
+    }
+
+    return request<ApiResponse<FriendshipStatus>>(
+      `/users/friendship/${otherUserId}/block`,
+      {
+        method: "POST",
+      },
+    );
+  }
+}
+
+export async function unblockFriendship(otherUserId: string) {
+  try {
+    return await request<ApiResponse<FriendshipStatus>>(
+      `/users/friendships/${otherUserId}/unblock`,
+      {
+        method: "POST",
+      },
+    );
+  } catch (error) {
+    const typed = error as ApiRequestError;
+    if (typed.status !== 404) {
+      throw error;
+    }
+
+    return request<ApiResponse<FriendshipStatus>>(
+      `/users/friendship/${otherUserId}/unblock`,
+      {
+        method: "POST",
+      },
+    );
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestOptions = {},
@@ -108,8 +186,17 @@ async function request<T>(
     throw buildError({ message: "missing_local_session" });
   }
 
-  const response = await fetch(`${API_BASE_URL}/api${path}`, {
-    method: options.method ?? "GET",
+  const method = options.method ?? "GET";
+
+  let requestPath = path;
+  if (method === "GET") {
+    const separator = path.includes("?") ? "&" : "?";
+    requestPath = `${path}${separator}_ts=${Date.now()}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api${requestPath}`, {
+    method,
+    cache: method === "GET" ? "no-store" : "default",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
@@ -117,21 +204,33 @@ async function request<T>(
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
-  const payload = (await response.json()) as unknown;
+  let payload: unknown = null;
+  try {
+    payload = (await response.json()) as unknown;
+  } catch {
+    payload = null;
+  }
 
   if (!response.ok) {
-    throw buildError(payload);
+    throw buildError(payload, response.status);
   }
 
   return payload as T;
 }
 
-function buildError(payload: unknown) {
-  const error = new Error("request_failed") as Error & ApiErrorBody;
+function buildError(payload: unknown, status?: number): ApiRequestError {
+  const error = new Error("request_failed") as ApiRequestError;
+  error.status = status;
   if (payload && typeof payload === "object") {
     const body = payload as ApiErrorBody;
     error.message = body.message ?? "request_failed";
     error.errors = body.errors;
+    return error;
   }
+
+  if (typeof status === "number") {
+    error.message = `http_${status}`;
+  }
+
   return error;
 }

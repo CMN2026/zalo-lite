@@ -8,7 +8,11 @@ interface MessageInputProps {
   onSendFile: (file: File, caption?: string) => void;
   isLoading?: boolean;
   isConnected?: boolean;
+  disabled?: boolean;
+  disabledMessage?: string;
   isAdminView?: boolean;
+  replyToMessagePreview?: string;
+  onCancelReply?: () => void;
 }
 
 export default function MessageInput({
@@ -16,7 +20,11 @@ export default function MessageInput({
   onSendFile,
   isLoading = false,
   isConnected = true,
+  disabled = false,
+  disabledMessage,
   isAdminView = false,
+  replyToMessagePreview,
+  onCancelReply,
 }: MessageInputProps) {
   const [message, setMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -79,7 +87,7 @@ export default function MessageInput({
   };
 
   const handleSendMessage = () => {
-    if (safeMessage.trim() && !isLoading) {
+    if (safeMessage.trim() && !isLoading && !disabled) {
       onSendMessage(safeMessage.trim());
       setMessage("");
       setShowEmojiPicker(false);
@@ -111,6 +119,16 @@ export default function MessageInput({
         "image/png",
         "image/gif",
         "image/webp",
+        "video/mp4",
+        "video/quicktime",
+        "video/webm",
+        "video/x-msvideo",
+        "video/x-matroska",
+        "video/3gpp",
+        "video/3gpp2",
+        "video/mpeg",
+        "video/x-ms-wmv",
+        "video/ogg",
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -133,7 +151,7 @@ export default function MessageInput({
   };
 
   const handleSendFile = async () => {
-    if (selectedFile && !isUploading) {
+    if (selectedFile && !isUploading && !disabled) {
       setIsUploading(true);
       try {
         onSendFile(selectedFile, safeMessage.trim() || undefined);
@@ -156,6 +174,9 @@ export default function MessageInput({
     if (file.type.startsWith("image/")) {
       return "🖼️";
     }
+    if (file.type.startsWith("video/")) {
+      return "🎬";
+    }
     if (file.type === "application/pdf") {
       return "📄";
     }
@@ -175,6 +196,30 @@ export default function MessageInput({
       }`}
       ref={emojiPickerRef}
     >
+      {disabled && (
+        <div className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          {disabledMessage ?? "Bạn không thể nhắn trong cuộc trò chuyện này."}
+        </div>
+      )}
+
+      {replyToMessagePreview && (
+        <div className="mb-2 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-blue-700">Đang trả lời</p>
+            <p className="truncate text-xs text-blue-600">
+              {replyToMessagePreview}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancelReply}
+            className="rounded-md p-1 text-blue-600 hover:bg-blue-100"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {showEmojiPicker && (
         <div className="absolute bottom-full left-4 mb-2 w-72 max-w-[calc(100%-2rem)] rounded-xl border border-slate-200 bg-white p-3 shadow-xl z-20">
           <div className="grid grid-cols-8 gap-1">
@@ -243,7 +288,7 @@ export default function MessageInput({
             </button>
             <button
               onClick={handleSendFile}
-              disabled={isUploading || !isConnected}
+              disabled={isUploading || !isConnected || disabled}
               className="flex-1 px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {isUploading ? (
@@ -254,7 +299,7 @@ export default function MessageInput({
               ) : (
                 <>
                   <Send className="w-4 h-4" />
-                  Gửi File
+                  Gửi tệp
                 </>
               )}
             </button>
@@ -270,7 +315,7 @@ export default function MessageInput({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={!isConnected}
+            disabled={!isConnected || disabled}
             className="text-slate-400 hover:text-slate-600 disabled:opacity-50 transition-colors"
             title="Đính kèm file"
           >
@@ -294,15 +339,17 @@ export default function MessageInput({
             value={safeMessage}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isConnected ? "Type your message..." : "Connecting..."}
-            disabled={!isConnected}
+            placeholder={isConnected ? "Nhập tin nhắn..." : "Đang kết nối..."}
+            disabled={!isConnected || disabled}
             className="flex-1 bg-transparent outline-none text-sm px-2 disabled:opacity-50 disabled:cursor-not-allowed"
           />
 
           {/* Send button */}
           <button
             onClick={handleSendMessage}
-            disabled={!safeMessage.trim() || isLoading || !isConnected}
+            disabled={
+              !safeMessage.trim() || isLoading || !isConnected || disabled
+            }
             className={`transition-colors ${
               isAdminView
                 ? "w-9 h-9 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-100 flex items-center justify-center"
@@ -325,8 +372,9 @@ export default function MessageInput({
         ref={fileInputRef}
         type="file"
         onChange={handleFileSelect}
+        disabled={disabled}
         className="hidden"
-        accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+        accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.webm,.avi,.mkv,.3gp,.3g2,.mpeg,.mpg,.wmv,.ogv,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
       />
     </div>
   );

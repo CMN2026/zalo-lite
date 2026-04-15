@@ -2,14 +2,16 @@ import type { Express, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { v4 as uuidv4 } from "uuid";
 import { verifyToken } from "../utils/jwt.js";
 import { ConversationRepository } from "../repositories/conversation.repository.js";
 
 const conversationRepository = new ConversationRepository();
 
-// Create uploads directory if not exists
-const uploadsDir = path.join(process.cwd(), "uploads");
+// Use a stable uploads path relative to the service location (not cwd).
+const serviceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const uploadsDir = path.join(serviceRoot, "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -40,11 +42,27 @@ const fileFilter = (
     "image/png",
     "image/gif",
     "image/webp",
+    "image/heic",
+    "image/heif",
+    "video/mp4",
+    "video/quicktime",
+    "video/webm",
+    "video/x-msvideo",
+    "video/x-matroska",
+    "video/3gpp",
+    "video/3gpp2",
+    "video/mpeg",
+    "video/x-ms-wmv",
+    "video/ogg",
     "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.ms-excel",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.rar",
+    "application/x-rar-compressed",
+    "application/x-7z-compressed",
+    "application/octet-stream",
     "text/plain",
     "application/zip",
   ];
@@ -88,13 +106,17 @@ export const setupFileServer = (app: Express) => {
 
         const members =
           await conversationRepository.getConversationMembers(conversationId);
-        const isMember = members.some((member) => member.user_id === userId);
+        const isMember = members.some((member) => member.userId === userId);
 
         if (!isMember) {
           return res.status(403).json({ message: "Forbidden" });
         }
 
         const filepath = path.join(uploadsDir, conversationId, filename);
+
+        if (!fs.existsSync(filepath)) {
+          return res.status(404).json({ message: "file_not_found" });
+        }
 
         // Security: verify file exists and is within allowed directory
         const realPath = fs.realpathSync(filepath);

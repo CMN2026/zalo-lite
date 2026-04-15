@@ -12,7 +12,8 @@ const avatarUrlValidator = (value: unknown) => {
   }
 
   const isHttpUrl = /^https?:\/\/\S+$/i.test(value);
-  const isImageDataUrl = /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(value);
+  const isImageDataUrl =
+    /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(value);
 
   if (!isHttpUrl && !isImageDataUrl) {
     throw new Error("avatarUrl_must_be_valid_url_or_image_data");
@@ -47,10 +48,7 @@ userRoutes.patch(
 
 userRoutes.patch(
   "/me/avatar",
-  [
-    body("avatarUrl").trim().custom(avatarUrlValidator),
-    validateRequest,
-  ],
+  [body("avatarUrl").trim().custom(avatarUrlValidator), validateRequest],
   UserController.updateAvatar,
 );
 
@@ -89,4 +87,37 @@ userRoutes.post(
 );
 
 userRoutes.get("/friends", UserController.listFriends);
+userRoutes.get(
+  "/friendships/:otherUserId",
+  [param("otherUserId").isUUID(), validateRequest],
+  UserController.getFriendshipStatus,
+);
+// Backward-compatible alias for older frontend bundles.
+userRoutes.get(
+  "/friendship/:otherUserId",
+  [param("otherUserId").isUUID(), validateRequest],
+  UserController.getFriendshipStatus,
+);
+userRoutes.post(
+  "/friendships/:otherUserId/block",
+  [param("otherUserId").isUUID(), validateRequest],
+  UserController.blockFriendship,
+);
+// Backward-compatible alias for older frontend bundles.
+userRoutes.post(
+  "/friendship/:otherUserId/block",
+  [param("otherUserId").isUUID(), validateRequest],
+  UserController.blockFriendship,
+);
+userRoutes.post(
+  "/friendships/:otherUserId/unblock",
+  [param("otherUserId").isUUID(), validateRequest],
+  UserController.unblockFriendship,
+);
+// Backward-compatible alias for older frontend bundles.
+userRoutes.post(
+  "/friendship/:otherUserId/unblock",
+  [param("otherUserId").isUUID(), validateRequest],
+  UserController.unblockFriendship,
+);
 userRoutes.get("/admin/list", UserController.listUsersForAdmin);

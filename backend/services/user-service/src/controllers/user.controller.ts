@@ -124,6 +124,57 @@ export class UserController {
     }
   }
 
+  static async getFriendshipStatus(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.getFriendshipStatus(
+        userId,
+        req.params.otherUserId,
+      );
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async blockFriendship(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.blockFriendship(
+        userId,
+        req.params.otherUserId,
+      );
+      res.status(200).json({ message: "friendship_blocked", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async unblockFriendship(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.unblockFriendship(
+        userId,
+        req.params.otherUserId,
+      );
+      res.status(200).json({ message: "friendship_unblocked", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async listUsersForAdmin(
     req: Request,
     res: Response,
