@@ -109,7 +109,7 @@ export default function CreateGroupModal({
         group_requires_at_least_three_members:
           "Nhóm cần ít nhất 3 thành viên (bao gồm bạn).",
         missing_local_session: "Vui lòng đăng nhập lại.",
-        invalid_or_expired_token: "Phiên đặng nhập đã hết hạn.",
+        invalid_or_expired_token: "Phiên đăng nhập đã hết hạn.",
       };
       setError(labels[message] ?? "Có lỗi xảy ra. Vui lòng thử lại.");
     } finally {
@@ -121,7 +121,7 @@ export default function CreateGroupModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-100 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
@@ -135,8 +135,12 @@ export default function CreateGroupModal({
               <Users className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800">Tạo nhóm chat</h2>
-              <p className="text-xs text-slate-500">Chọn bạn bè để thêm vào nhóm</p>
+              <h2 className="text-lg font-bold text-slate-800">
+                Tạo nhóm chat
+              </h2>
+              <p className="text-xs text-slate-500">
+                Chọn bạn bè để thêm vào nhóm
+              </p>
             </div>
           </div>
           <button
@@ -230,8 +234,9 @@ export default function CreateGroupModal({
                 return (
                   <label
                     key={friend.id}
-                    className={`flex items-center gap-3 px-6 py-3 cursor-pointer transition-colors ${isSelected ? "bg-blue-50/50" : "hover:bg-slate-50"
-                      }`}
+                    className={`flex items-center gap-3 px-6 py-3 cursor-pointer transition-colors ${
+                      isSelected ? "bg-blue-50/50" : "hover:bg-slate-50"
+                    }`}
                   >
                     <input
                       type="checkbox"

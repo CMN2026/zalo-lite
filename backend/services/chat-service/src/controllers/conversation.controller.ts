@@ -23,7 +23,9 @@ export class ConversationController {
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
       const creatorId = req.auth?.userId ?? "";
-      const memberIds = req.body.memberIds;
+      const memberIds = Array.isArray(req.body.memberIds)
+        ? req.body.memberIds
+        : req.body.member_ids;
       const data = await conversationService.createConversation(creatorId, {
         ...req.body,
         memberIds,
@@ -108,10 +110,22 @@ export class ConversationController {
     }
   }
 
+  static async hideForMe(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.auth?.userId ?? "";
+      await conversationService.hideConversationForUser(userId, req.params.id);
+      res.status(200).json({ message: "conversation_hidden_for_user" });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async addMembers(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.auth?.userId ?? "";
-      const memberIds = req.body.memberIds;
+      const memberIds = Array.isArray(req.body.memberIds)
+        ? req.body.memberIds
+        : req.body.member_ids;
       const data = await conversationService.addMembersToGroup(
         userId,
         req.params.id,
@@ -144,7 +158,9 @@ export class ConversationController {
   ) {
     try {
       const userId = req.auth?.userId ?? "";
-      const otherUserId = req.body.userId;
+      const otherUserId =
+        (typeof req.body.userId === "string" && req.body.userId) ||
+        (typeof req.body.user_id === "string" && req.body.user_id);
 
       if (!otherUserId) {
         return res.status(400).json({ error: "userId is required" });
@@ -167,5 +183,3 @@ export class ConversationController {
     }
   }
 }
-
-

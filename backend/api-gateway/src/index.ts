@@ -55,6 +55,7 @@ declare global {
 
 const app = express();
 const httpServer = http.createServer(app);
+const isProduction = process.env.NODE_ENV === "production";
 
 // Socket.io server - proxies to chat-service
 const io = new SocketIOServer(httpServer, {
@@ -77,7 +78,8 @@ app.use(
 app.use(
   rateLimit({
     windowMs: 60_000,
-    max: 300,
+    max: isProduction ? 300 : 3000,
+    skip: (req) => req.method === "OPTIONS",
     standardHeaders: true,
     legacyHeaders: false,
   }),
@@ -112,6 +114,19 @@ function buildProxy(
     // Allow us to modify the request before it's sent upstream
     on: {
       proxyReq(proxyReq, req) {
+        const contentTypeHeader = req.headers["content-type"];
+        const contentType = Array.isArray(contentTypeHeader)
+          ? contentTypeHeader[0]
+          : contentTypeHeader;
+
+        if (
+          typeof contentType === "string" &&
+          contentType.toLowerCase().startsWith("multipart/form-data")
+        ) {
+          // Multipart payload must remain stream-based; re-serializing can corrupt boundaries.
+          return;
+        }
+
         // Re-stream body that was already parsed by express.json().
         fixRequestBody(proxyReq, req as unknown as Request);
       },
@@ -277,6 +292,8 @@ io.on("connection", (socket: Socket) => {
     "message:typing",
     "message:read",
     "message:delete",
+    "message:recall",
+    "message:react",
   ];
 
   clientToUpstreamEvents.forEach((eventName) => {
@@ -294,7 +311,13 @@ io.on("connection", (socket: Socket) => {
     "message:typing",
     "message:read_receipt",
     "message:deleted",
+    "message:delete_ack",
+    "message:recalled",
+    "message:reaction_updated",
+    "message:recall_ack",
+    "message:reaction_ack",
     "notification:new_message",
+    "notification:reply",
     "user:online",
     "user:joined_conversation",
     "user:left_conversation",
@@ -304,6 +327,8 @@ io.on("connection", (socket: Socket) => {
     "leave_conversation_error",
     "message:read_error",
     "message:delete_error",
+    "message:recall_error",
+    "message:reaction_error",
   ];
 
   upstreamToClientEvents.forEach((eventName) => {

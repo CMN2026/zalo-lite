@@ -25,6 +25,8 @@ export type ConversationMember = {
   userId: string;
   role: string;
   joinedAt: string;
+  hiddenAt?: string | null;
+  clearedAt?: string | null;
 };
 
 // Helper mapper functions to centralise formatting
@@ -42,6 +44,8 @@ const mapMember = (item: any): ConversationMember => ({
   userId: item.user_id,
   role: item.role,
   joinedAt: item.joined_at,
+  hiddenAt: item.hidden_at ?? null,
+  clearedAt: item.cleared_at ?? null,
 });
 
 export class ConversationRepository {
@@ -84,6 +88,8 @@ export class ConversationRepository {
               user_id: userId,
               role: userId === payload.createdBy ? "owner" : "member",
               joined_at: new Date().toISOString(),
+              hidden_at: null,
+              cleared_at: null,
             },
           }),
         ),
@@ -128,7 +134,10 @@ export class ConversationRepository {
     return (result.Items || []).map(mapMember);
   }
 
-  async listByUserId(userId: string): Promise<Conversation[]> {
+  async listByUserId(
+    userId: string,
+    includeHidden = false,
+  ): Promise<Conversation[]> {
     // Strict validation - must be non-empty string
     const normalizedUserId = String(userId ?? "").trim();
     if (!normalizedUserId || normalizedUserId.length === 0) {
@@ -190,8 +199,12 @@ export class ConversationRepository {
       membershipItems = (fallback.Items || []).map(mapMember);
     }
 
+    const visibleMembershipItems = includeHidden
+      ? membershipItems
+      : membershipItems.filter((item) => !item.hiddenAt);
+
     const conversationIds =
-      membershipItems.map((item) => item.conversationId) ?? [];
+      visibleMembershipItems.map((item) => item.conversationId) ?? [];
 
     if (conversationIds.length === 0) {
       return [];
@@ -277,6 +290,99 @@ export class ConversationRepository {
     );
   }
 
+  async getMember(
+    conversationId: string,
+    userId: string,
+  ): Promise<ConversationMember | null> {
+    const result = await dynamo.send(
+      new GetCommand({
+        TableName: env.TABLE_CONVERSATION_MEMBERS,
+        Key: {
+          conversation_id: conversationId,
+          user_id: userId,
+        },
+      }),
+    );
+
+    return result.Item ? mapMember(result.Item) : null;
+  }
+
+  async hideConversationForUser(
+    conversationId: string,
+    userId: string,
+    clearedAt?: string,
+  ): Promise<void> {
+    const hiddenAt = new Date().toISOString();
+
+    if (clearedAt) {
+      await dynamo.send(
+        new UpdateCommand({
+          TableName: env.TABLE_CONVERSATION_MEMBERS,
+          Key: {
+            conversation_id: conversationId,
+            user_id: userId,
+          },
+          UpdateExpression:
+            "SET hidden_at = :hiddenAt, cleared_at = :clearedAt",
+          ExpressionAttributeValues: {
+            ":hiddenAt": hiddenAt,
+            ":clearedAt": clearedAt,
+          },
+        }),
+      );
+      return;
+    }
+
+    await dynamo.send(
+      new UpdateCommand({
+        TableName: env.TABLE_CONVERSATION_MEMBERS,
+        Key: {
+          conversation_id: conversationId,
+          user_id: userId,
+        },
+        UpdateExpression: "SET hidden_at = :hiddenAt",
+        ExpressionAttributeValues: {
+          ":hiddenAt": hiddenAt,
+        },
+      }),
+    );
+  }
+
+  async restoreConversationForUser(
+    conversationId: string,
+    userId: string,
+  ): Promise<void> {
+    await dynamo.send(
+      new UpdateCommand({
+        TableName: env.TABLE_CONVERSATION_MEMBERS,
+        Key: {
+          conversation_id: conversationId,
+          user_id: userId,
+        },
+        UpdateExpression: "REMOVE hidden_at",
+      }),
+    );
+  }
+
+  async restoreConversationForMembers(conversationId: string): Promise<void> {
+    const members = await this.getConversationMembers(conversationId);
+
+    await Promise.all(
+      members.map((member) =>
+        dynamo.send(
+          new UpdateCommand({
+            TableName: env.TABLE_CONVERSATION_MEMBERS,
+            Key: {
+              conversation_id: conversationId,
+              user_id: member.userId,
+            },
+            UpdateExpression: "REMOVE hidden_at",
+          }),
+        ),
+      ),
+    );
+  }
+
   async addMembers(
     conversationId: string,
     userIds: string[],
@@ -293,6 +399,8 @@ export class ConversationRepository {
               user_id: userId,
               role,
               joined_at: now,
+              hidden_at: null,
+              cleared_at: null,
             },
           }),
         ),

@@ -4,7 +4,7 @@
  */
 
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import {
   discoverUsers,
+  getMe,
   listFriends,
   listIncomingFriendRequests,
   respondFriendRequest,
@@ -24,6 +25,7 @@ type TabId = "friends" | "search" | "requests";
 
 export default function FriendsView() {
   const [activeTab, setActiveTab] = useState<TabId>("friends");
+  const [currentPhone, setCurrentPhone] = useState("");
   const [friends, setFriends] = useState<ProfileUser[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<FriendRequest[]>([]);
   const [searchResults, setSearchResults] = useState<ProfileUser[]>([]);
@@ -54,31 +56,71 @@ export default function FriendsView() {
   useEffect(() => {
     void refreshFriends();
     void refreshRequests();
+    void loadCurrentUser();
   }, []);
 
-  async function refreshFriends() {
-    setLoadingFriends(true);
-    setError("");
+  async function loadCurrentUser() {
+    try {
+      const response = await getMe();
+      setCurrentPhone(response.data.phone ?? "");
+    } catch {
+      setCurrentPhone("");
+    }
+  }
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void refreshRequests({ silent: true });
+
+      if (activeTab === "friends") {
+        void refreshFriends({ silent: true });
+      }
+    }, 4000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [activeTab]);
+
+  async function refreshFriends(options?: { silent?: boolean }) {
+    const silent = Boolean(options?.silent);
+    if (!silent) {
+      setLoadingFriends(true);
+      setError("");
+    }
+
     try {
       const response = await listFriends();
       setFriends(response.data);
     } catch (err) {
-      setError(getFriendlyError(err));
+      if (!silent) {
+        setError(getFriendlyError(err));
+      }
     } finally {
-      setLoadingFriends(false);
+      if (!silent) {
+        setLoadingFriends(false);
+      }
     }
   }
 
-  async function refreshRequests() {
-    setLoadingRequests(true);
-    setError("");
+  async function refreshRequests(options?: { silent?: boolean }) {
+    const silent = Boolean(options?.silent);
+    if (!silent) {
+      setLoadingRequests(true);
+      setError("");
+    }
+
     try {
       const response = await listIncomingFriendRequests();
       setIncomingRequests(response.data);
     } catch (err) {
-      setError(getFriendlyError(err));
+      if (!silent) {
+        setError(getFriendlyError(err));
+      }
     } finally {
-      setLoadingRequests(false);
+      if (!silent) {
+        setLoadingRequests(false);
+      }
     }
   }
 
@@ -120,7 +162,11 @@ export default function FriendsView() {
     try {
       await sendFriendRequest(user.phone, requestMessage || undefined);
       setNotice(`Friend request sent to ${user.fullName}.`);
-      setSearchResults((current) => current.filter((item) => item.id !== user.id));
+      setSearchResults((current) =>
+        current.filter((item) => item.id !== user.id),
+      );
+      await refreshFriends();
+      await refreshRequests();
     } catch (err) {
       setError(getFriendlyError(err));
     } finally {
@@ -128,7 +174,10 @@ export default function FriendsView() {
     }
   }
 
-  async function handleRespond(request: FriendRequest, action: "accept" | "reject") {
+  async function handleRespond(
+    request: FriendRequest,
+    action: "accept" | "reject",
+  ) {
     setBusyId(request.id);
     setError("");
     setNotice("");
@@ -138,7 +187,11 @@ export default function FriendsView() {
       setIncomingRequests((current) =>
         current.filter((item) => item.id !== request.id),
       );
-      setNotice(action === "accept" ? "Friend request accepted." : "Friend request rejected.");
+      setNotice(
+        action === "accept"
+          ? "Friend request accepted."
+          : "Friend request rejected.",
+      );
       if (action === "accept") {
         void refreshFriends();
       }
@@ -155,8 +208,14 @@ export default function FriendsView() {
         <div>
           <h1 className="text-2xl font-bold">Friends</h1>
           <p className="text-slate-500 text-sm mt-1">
-            Search by phone number, manage invitations, and keep your contact list current.
+            Search by phone number, manage invitations, and keep your contact
+            list current.
           </p>
+          {currentPhone && (
+            <p className="text-xs text-slate-400 mt-1">
+              Signed in phone: {currentPhone}
+            </p>
+          )}
         </div>
         <div className="flex bg-white border border-slate-200 rounded-lg p-1">
           <TabButton
