@@ -1,10 +1,15 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../utils/jwt.js";
+import { HttpError } from "../utils/http-error.js";
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+export function authMiddleware(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) {
   const token = extractToken(req);
   if (!token) {
-    return res.status(401).json({ message: "missing_bearer_token" });
+    return next(new HttpError(401, "missing_bearer_token"));
   }
 
   try {
@@ -12,7 +17,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     req.auth = payload;
     return next();
   } catch {
-    return res.status(401).json({ message: "invalid_or_expired_token" });
+    return next(new HttpError(401, "invalid_or_expired_token"));
   }
 }
 

@@ -1,5 +1,16 @@
 "use client";
+
+import type { ReactNode } from "react";
 import Link from "next/link";
+
+type AuthCardProps = {
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+  footerText: string;
+  footerLink: string;
+  footerLinkText: string;
+};
 
 export default function AuthCard({
   title,
@@ -8,29 +19,24 @@ export default function AuthCard({
   footerText,
   footerLink,
   footerLinkText,
-}: any) {
+}: AuthCardProps) {
   return (
-    <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-md">
-      <div className="text-center mb-6">
-        <div className="w-12 h-12 mx-auto bg-blue-500 rounded-xl flex items-center justify-center text-white text-xl">
-          +
+    <div className="w-full max-w-md overflow-hidden rounded-[28px] border border-white/70 bg-white/90 p-8 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.45)] backdrop-blur">
+      <div className="mb-8 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-900 to-slate-700 text-white shadow-lg shadow-slate-900/20">
+          ZL
         </div>
-        <h1 className="text-2xl font-bold mt-4">{title}</h1>
-        <p className="text-gray-500 text-sm">{subtitle}</p>
+        <h1 className="mt-5 text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-500">{subtitle}</p>
       </div>
 
       {children}
 
-      <div className="mt-6 text-center text-sm">
-        {footerText} 
-        <Link href={footerLink} className="text-blue-600 font-medium">
+      <div className="mt-6 text-center text-sm text-slate-500">
+        {footerText}{" "}
+        <Link href={footerLink} className="font-semibold text-slate-900 hover:underline">
           {footerLinkText}
         </Link>
-      </div>
-
-      <div className="mt-4 flex gap-2">
-        <button className="flex-1 bg-gray-100 py-2 rounded-lg">Google</button>
-        <button className="flex-1 bg-gray-100 py-2 rounded-lg">Facebook</button>
       </div>
     </div>
   );

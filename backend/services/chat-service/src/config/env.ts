@@ -15,6 +15,7 @@ type Env = {
   TABLE_MESSAGES: string;
   TABLE_FRIEND_REQUESTS: string;
   TABLE_FRIENDSHIPS: string;
+  CORS_ORIGINS: string[];
 };
 
 function getEnv(name: string, fallback?: string): string {
@@ -25,12 +26,22 @@ function getEnv(name: string, fallback?: string): string {
   return value;
 }
 
+function parseCorsOrigins(value: string): string[] {
+  return value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 export const env: Env = {
   PORT: Number(getEnv("PORT", "3002")),
   REDIS_URL: getEnv("REDIS_URL", "redis://redis:6379"),
   DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT,
   AWS_REGION: getEnv("AWS_REGION", "ap-southeast-1"),
-  USER_SERVICE_BASE_URL: getEnv("USER_SERVICE_BASE_URL", "http://user-service:3001"),
+  USER_SERVICE_BASE_URL: getEnv(
+    "USER_SERVICE_BASE_URL",
+    "http://user-service:3001",
+  ),
   JWT_SECRET: getEnv("JWT_SECRET"),
   JWT_ISSUER: getEnv("JWT_ISSUER", "zalo-lite-user-service"),
   JWT_AUDIENCE: getEnv("JWT_AUDIENCE", "zalo-lite-clients"),
@@ -38,8 +49,14 @@ export const env: Env = {
   RATE_LIMIT_MAX: Number(getEnv("RATE_LIMIT_MAX", "300")),
   REDIS_MESSAGE_CHANNEL: getEnv("REDIS_MESSAGE_CHANNEL", "chat:messages"),
   TABLE_CONVERSATIONS: getEnv("TABLE_CONVERSATIONS", "conversations"),
-  TABLE_CONVERSATION_MEMBERS: getEnv("TABLE_CONVERSATION_MEMBERS", "conversation_members"),
+  TABLE_CONVERSATION_MEMBERS: getEnv(
+    "TABLE_CONVERSATION_MEMBERS",
+    "conversation_members",
+  ),
   TABLE_MESSAGES: getEnv("TABLE_MESSAGES", "messages"),
   TABLE_FRIEND_REQUESTS: getEnv("TABLE_FRIEND_REQUESTS", "friend_requests"),
   TABLE_FRIENDSHIPS: getEnv("TABLE_FRIENDSHIPS", "friendships"),
+  CORS_ORIGINS: parseCorsOrigins(
+    getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3004"),
+  ),
 };

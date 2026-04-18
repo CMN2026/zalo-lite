@@ -1,8 +1,12 @@
 {
   "name": "chatbot-service",
   "version": "1.0.0",
-  "main": "index.js",
+  "type": "module",
+  "main": "dist/index.js",
   "scripts": {
+    "build": "tsc",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -10,12 +14,24 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.515.0",
+    "@aws-sdk/lib-dynamodb": "^3.515.0",
+    "@grpc/grpc-js": "^1.10.9",
+    "@grpc/proto-loader": "^0.7.13",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.0",
+    "helmet": "^7.1.0",
+    "redis": "^4.6.12",
+    "socket.io": "^4.7.2",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.9",
+    "@types/uuid": "^9.0.7",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
   }

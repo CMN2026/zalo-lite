@@ -7,13 +7,13 @@ export const friendRoutes = Router();
 
 friendRoutes.post(
   "/request",
-  [body("receiver_id").isUUID(), validateRequest],
+  [body("receiver_id").isString(), validateRequest],
   FriendController.request,
 );
 
 friendRoutes.post(
   "/accept",
-  [body("request_id").isUUID(), validateRequest],
+  [body("request_id").isString(), validateRequest],
   FriendController.accept,
 );
 
