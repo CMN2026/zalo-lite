@@ -366,28 +366,24 @@ async function bootstrap() {
   await ensureTables();
   await connectRedis();
 
-  // Subscribe to message channel for real-time broadcasting
-  await redisSubscriber.subscribe(
-    env.REDIS_MESSAGE_CHANNEL,
-    async (messageText) => {
-      const message = JSON.parse(messageText) as { conversation_id: string };
-      io.to(`conversation_${message.conversation_id}`).emit(
-        "message:receive",
-        message,
-      );
+  await redisSubscriber.subscribe(env.REDIS_MESSAGE_CHANNEL, (messageText) => {
+    const message = JSON.parse(messageText) as {
+      conversation_id: string;
+      created_at: string;
+      id: string;
+      sender_id: string;
+      type: string;
+      content: string;
+    };
 
-      try {
-        const members = await conversationRepository.getConversationMembers(
-          message.conversation_id,
-        );
-        members.forEach((member) => {
-          io.to(`user_${member.userId}`).emit("message:receive", message);
-        });
-      } catch (error) {
-        console.error("Failed to fan-out message to user rooms", error);
-      }
-    },
-  );
+    void messageService
+      .persistIncomingMessage(message)
+      .catch((error) => {
+        console.error("Failed to persist broadcasted message", error);
+      });
+
+    io.to(`conversation_${message.conversation_id}`).emit("receive_message", message);
+  });
 
   // Subscribe to message read events
   await redisSubscriber.subscribe(
