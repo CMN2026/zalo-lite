@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,540 +6,439 @@ import {
   TouchableOpacity,
   ScrollView,
   FlatList,
-  Image,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  StyleSheet,
+  SafeAreaView,
+  Alert,
 } from "react-native";
-import { ThemedView } from "@/components/themed-view";
-import { ThemedText } from "@/components/themed-text";
+import { API_BASE_URL } from "../../lib/api";
+import { getAuthToken } from "../../lib/auth";
 
+// ── Types ──────────────────────────────────────────────────────────────────
 interface ChatMessage {
   id: string;
   content: string;
-  type: "user" | "bot";
-  timestamp: Date;
-  status?: "sending" | "sent" | "error";
+  senderId: string;
+  type?: string;
+  senderName?: string;
+  createdAt: number | string | Date;
+  confidence?: number;
 }
 
 interface Conversation {
-  id: string;
-  title: string;
-  lastMessage: string;
-  timestamp: Date;
-  unread: number;
-  avatar: string;
+  conversationId: string;
+  title?: string;
+  createdAt: number | string | Date;
+  messages: ChatMessage[];
+  status?: "waiting_response" | "needs_staff" | "resolved" | "active" | "closed";
+  userId: string;
+  lastMessageAt?: number | string | Date;
 }
 
-// Mock data
-const mockConversations: Conversation[] = [
-  {
-    id: "1",
-    title: "Support Bot",
-    lastMessage: "How can I help you today?",
-    timestamp: new Date(Date.now() - 3600000),
-    unread: 0,
-    avatar: "https://via.placeholder.com/40?text=Support",
-  },
-  {
-    id: "2",
-    title: "Sales Assistant",
-    lastMessage: "Tell me about our products",
-    timestamp: new Date(Date.now() - 7200000),
-    unread: 2,
-    avatar: "https://via.placeholder.com/40?text=Sales",
-  },
-  {
-    id: "3",
-    title: "FAQ Bot",
-    lastMessage: "What would you like to know?",
-    timestamp: new Date(Date.now() - 86400000),
-    unread: 0,
-    avatar: "https://via.placeholder.com/40?text=FAQ",
-  },
-];
+const QUICK_SUGGESTIONS = [
+  { id: "password", label: "Quên mật khẩu", text: "Tôi quên mật khẩu, cần đặt lại" },
+  { id: "add_friend", label: "Thêm bạn bè", text: "Tôi muốn biết cách thêm bạn bè" },
+  { id: "create_group", label: "Tạo nhóm chat", text: "Tôi cần hỗ trợ tạo nhóm chat" },
+  { id: "account", label: "Vấn đề tài khoản", text: "Tài khoản của tôi đang gặp vấn đề" },
+  { id: "payment", label: "Thanh toán", text: "Tôi có câu hỏi về phí sử dụng" },
+  { id: "staff", label: "Gặp nhân viên", text: "Tôi muốn nói chuyện với nhân viên" },
+] as const;
 
-const mockMessages: Record<string, ChatMessage[]> = {
-  "1": [
-    {
-      id: "m1",
-      content: "Hi! How can I help you today?",
-      type: "bot",
-      timestamp: new Date(Date.now() - 300000),
-      status: "sent",
-    },
-    {
-      id: "m2",
-      content: "I have a question about my account",
-      type: "user",
-      timestamp: new Date(Date.now() - 240000),
-      status: "sent",
-    },
-    {
-      id: "m3",
-      content:
-        "Sure! I'd be happy to help. What's your question about your account?",
-      type: "bot",
-      timestamp: new Date(Date.now() - 200000),
-      status: "sent",
-    },
-  ],
-  "2": [
-    {
-      id: "m1",
-      content: "Welcome! Which product would you like to learn about?",
-      type: "bot",
-      timestamp: new Date(Date.now() - 7200000),
-      status: "sent",
-    },
-  ],
-  "3": [
-    {
-      id: "m1",
-      content: "Hello! What would you like to know?",
-      type: "bot",
-      timestamp: new Date(Date.now() - 86400000),
-      status: "sent",
-    },
-  ],
-};
-
-interface ConversationListItemProps {
-  conversation: Conversation;
-  isActive: boolean;
-  onPress: () => void;
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function formatTime(date: number | string | Date | undefined): string {
+  if (!date) return "";
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 }
 
-const ConversationListItem = ({
-  conversation,
-  isActive,
-  onPress,
-}: ConversationListItemProps) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={[styles.conversationItem, isActive && styles.conversationItemActive]}
-  >
-    <Image
-      source={{ uri: conversation.avatar }}
-      style={styles.conversationAvatar}
-    />
-    <View style={styles.conversationContent}>
-      <View style={styles.conversationHeader}>
-        <Text style={styles.conversationTitle}>{conversation.title}</Text>
-        <Text style={styles.conversationTime}>
-          {conversation.timestamp.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </Text>
-      </View>
-      <Text style={styles.conversationMessage} numberOfLines={1}>
-        {conversation.lastMessage}
-      </Text>
-    </View>
-    {conversation.unread > 0 && (
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>{conversation.unread}</Text>
-      </View>
-    )}
-  </TouchableOpacity>
-);
-
-interface MessageItemProps {
-  message: ChatMessage;
+function statusLabel(s?: Conversation["status"]): string {
+  if (s === "needs_staff") return "Cần nhân viên";
+  if (s === "resolved" || s === "closed") return "Đã xử lý";
+  return "Đang hỗ trợ";
 }
 
-const MessageItem = ({ message }: MessageItemProps) => {
-  const isUser = message.type === "user";
+function getConversationTitle(conv: Conversation): string {
+  if (conv.title?.trim()) return conv.title;
+  const firstUser = conv.messages?.find((m) => m.senderId !== "chatbot");
+  if (!firstUser?.content) return "Hỗ trợ khách hàng";
+  const t = firstUser.content;
+  return t.length > 32 ? `${t.slice(0, 32)}…` : t;
+}
 
-  return (
-    <View
-      style={[styles.messageContainer, isUser && styles.messageContainerUser]}
-    >
-      <View style={[styles.messageBubble, isUser && styles.messageBubbleUser]}>
-        <Text style={[styles.messageText, isUser && styles.messageTextUser]}>
-          {message.content}
-        </Text>
-        <Text style={[styles.messageTime, isUser && styles.messageTimeUser]}>
-          {message.timestamp.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </Text>
-      </View>
-    </View>
-  );
-};
+function getLastPreview(conv: Conversation): string {
+  if (!conv.messages?.length) return "Chưa có tin nhắn";
+  const last = conv.messages.at(-1);
+  if (!last) return "Chưa có tin nhắn";
+  const prefix = last.senderId === "chatbot" ? "Bot: " : "Bạn: ";
+  const text = last.content.length > 38 ? `${last.content.slice(0, 38)}…` : last.content;
+  return `${prefix}${text}`;
+}
 
+// ── Component ────────────────────────────────────────────────────────────────
 export default function ChatbotScreen() {
-  const [activeChatId, setActiveChatId] = useState("1");
-  const [messages, setMessages] = useState<ChatMessage[]>(
-    mockMessages["1"] || [],
-  );
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [botTyping, setBotTyping] = useState(false);
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [loadingConvs, setLoadingConvs] = useState(true);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [showList, setShowList] = useState(false);
+
   const scrollViewRef = useRef<ScrollView>(null);
-  const [showConversationList, setShowConversationList] = useState(false);
 
-  const activeChat =
-    mockConversations.find((c) => c.id === activeChatId) ||
-    mockConversations[0];
+  const getHeaders = useCallback(async () => {
+    const token = await getAuthToken();
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token ?? ""}`,
+    };
+  }, []);
 
-  const scrollToBottom = () => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
-  };
+  const fetchConversations = useCallback(async (): Promise<Conversation[] | null> => {
+    try {
+      const headers = await getHeaders();
+      const res = await fetch(`${API_BASE_URL}/api/chatbot/conversations`, { headers });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data.data as Conversation[]) ?? [];
+    } catch { return null; }
+  }, [getHeaders]);
+
+  const fetchMessages = useCallback(async (convId: string) => {
+    setLoadingMsgs(true);
+    try {
+      const headers = await getHeaders();
+      const res = await fetch(`${API_BASE_URL}/api/chatbot/conversations/${convId}/history`, { headers });
+      if (!res.ok) return;
+      const data = await res.json();
+      setMessages(data.data?.messages ?? []);
+    } catch { /* ignore */ } finally { setLoadingMsgs(false); }
+  }, [getHeaders]);
+
+  const postMessage = useCallback(async (text: string, convId: string | null): Promise<string | null> => {
+    const headers = await getHeaders();
+    const body: Record<string, unknown> = { message: text };
+    if (convId) body.conversationId = convId;
+
+    const res = await fetch(`${API_BASE_URL}/api/chatbot/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({})) as { message?: string };
+      throw new Error(payload.message ?? `Lỗi ${res.status}`);
+    }
+
+    const data = await res.json();
+    return (data.data?.conversationId as string) ?? null;
+  }, [getHeaders]);
+
+  const handleSend = useCallback(async (text: string, targetConvId?: string | null) => {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+
+    setSending(true);
+    setBotTyping(true);
+    setSendError(null);
+
+    const optMsg: ChatMessage = {
+      id: `opt-${Date.now()}`,
+      content: trimmed,
+      senderId: "me",
+      type: "user",
+      createdAt: Date.now(),
+    };
+    setMessages((prev) => [...prev, optMsg]);
+    setInputValue("");
+
+    try {
+      const convId = targetConvId === undefined ? activeId : targetConvId;
+      const resultConvId = await postMessage(trimmed, convId);
+      const resolvedConvId = resultConvId ?? convId;
+      if (resolvedConvId && !activeId) setActiveId(resolvedConvId);
+
+      const freshConvs = await fetchConversations();
+      if (freshConvs) setConversations(freshConvs);
+      if (resolvedConvId) await fetchMessages(resolvedConvId);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Không thể gửi tin nhắn.");
+      setMessages((prev) => prev.filter((m) => m.id !== optMsg.id));
+    } finally {
+      setSending(false);
+      setBotTyping(false);
+    }
+  }, [activeId, sending, postMessage, fetchConversations, fetchMessages]);
+
+  const handleSelectConv = useCallback(async (convId: string) => {
+    setActiveId(convId);
+    setSendError(null);
+    setShowList(false);
+    await fetchMessages(convId);
+  }, [fetchMessages]);
+
+  const handleNewConv = useCallback(() => {
+    setActiveId(null);
+    setMessages([]);
+    setInputValue("");
+    setSendError(null);
+    setShowList(false);
+  }, []);
+
+  const handleDeleteConv = useCallback(async (convId: string) => {
+    Alert.alert("Xác nhận", "Xóa cuộc trò chuyện này?", [
+      { text: "Huỷ", style: "cancel" },
+      {
+        text: "Xóa", style: "destructive", onPress: async () => {
+          try {
+            const headers = await getHeaders();
+            const res = await fetch(`${API_BASE_URL}/api/chatbot/conversations/${convId}`, {
+              method: "DELETE", headers,
+            });
+            if (!res.ok) throw new Error("delete_failed");
+            setConversations((prev) => prev.filter((c) => c.conversationId !== convId));
+            if (activeId === convId) { setActiveId(null); setMessages([]); }
+          } catch { Alert.alert("Lỗi", "Không thể xóa. Vui lòng thử lại."); }
+        }
+      }
+    ]);
+  }, [activeId, getHeaders]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    setLoadingConvs(true);
+    fetchConversations().then((convs) => {
+      if (convs) {
+        setConversations(convs);
+        const active = convs.find((c) =>
+          ["waiting_response", "needs_staff", "active"].includes(c.status ?? "")
+        );
+        if (active) { setActiveId(active.conversationId); fetchMessages(active.conversationId); }
+      }
+      setLoadingConvs(false);
+    });
+  }, []);
 
-  const handleConversationChange = (chatId: string) => {
-    setActiveChatId(chatId);
-    setMessages(mockMessages[chatId] || []);
-    setInputValue("");
-    setShowConversationList(false);
-  };
+  useEffect(() => {
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+  }, [messages, botTyping]);
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
-
-    const userMessage: ChatMessage = {
-      id: `m${Date.now()}`,
-      content: inputValue,
-      type: "user",
-      timestamp: new Date(),
-      status: "sending",
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInputValue("");
-    setIsLoading(true);
-
-    setTimeout(() => {
-      const botMessage: ChatMessage = {
-        id: `m${Date.now() + 1}`,
-        content: `I understand. You mentioned: "${userMessage.content}". I'm processing your request...`,
-        type: "bot",
-        timestamp: new Date(),
-        status: "sent",
-      };
-
-      setMessages((prev) => [
-        ...prev.map((m) =>
-          m.id === userMessage.id ? { ...m, status: "sent" } : m,
-        ),
-        botMessage,
-      ]);
-      setIsLoading(false);
-    }, 1000);
-  };
+  const activeConv = conversations.find((c) => c.conversationId === activeId);
+  const isResolved = activeConv?.status === "resolved" || activeConv?.status === "closed";
+  const needsStaff = activeConv?.status === "needs_staff";
 
   return (
-    <ThemedView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.keyboardAvoidingView}
-      >
-        {showConversationList ? (
-          // Conversation List View
-          <View style={styles.fullScreen}>
-            <View style={styles.header}>
-              <Text style={styles.headerTitle}>AI Chatbots</Text>
-              <Text style={styles.headerSubtitle}>Your conversations</Text>
-            </View>
-            <FlatList
-              data={mockConversations}
-              renderItem={({ item }) => (
-                <ConversationListItem
-                  conversation={item}
-                  isActive={item.id === activeChatId}
-                  onPress={() => handleConversationChange(item.id)}
-                />
-              )}
-              keyExtractor={(item) => item.id}
-            />
+    <SafeAreaView className="flex-1 bg-white">
+      {/* Header */}
+      <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
+        <View>
+          <Text className="font-bold text-slate-900">Hỗ trợ khách hàng</Text>
+          <Text className="text-[11px] text-slate-400">Trả lời 24/7</Text>
+        </View>
+        <View className="flex-row gap-2">
+          <TouchableOpacity
+            onPress={() => setShowList(!showList)}
+            className="bg-slate-100 px-3 py-1.5 rounded-lg"
+          >
+            <Text className="text-slate-700 text-xs font-semibold">Lịch sử</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleNewConv} className="bg-blue-600 px-3 py-1.5 rounded-lg">
+            <Text className="text-white text-xs font-semibold">+ Mới</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Conversation list overlay */}
+      {showList && (
+        <View className="absolute top-[64px] left-0 right-0 bottom-0 bg-white z-50">
+          <View className="px-4 py-3 border-b border-slate-100">
+            <Text className="font-bold text-slate-800">Lịch sử trò chuyện</Text>
           </View>
-        ) : (
-          // Chat View
-          <View style={styles.fullScreen}>
-            {/* Chat Header */}
-            <View style={styles.chatHeader}>
-              <TouchableOpacity
-                onPress={() => setShowConversationList(true)}
-                style={styles.chatHeaderButton}
-              >
-                <Image
-                  source={{ uri: activeChat.avatar }}
-                  style={styles.chatHeaderAvatar}
-                />
-                <View>
-                  <Text style={styles.chatHeaderTitle}>{activeChat.title}</Text>
-                  <Text style={styles.chatHeaderSubtitle}>Always online</Text>
-                </View>
-              </TouchableOpacity>
+          {loadingConvs ? (
+            <View className="flex-1 items-center justify-center">
+              <ActivityIndicator size="large" color="#2563EB" />
             </View>
-
-            {/* Messages */}
-            {messages.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Image
-                  source={{ uri: activeChat.avatar }}
-                  style={styles.emptyStateImage}
-                />
-                <Text style={styles.emptyStateText}>No messages yet</Text>
-              </View>
-            ) : (
-              <ScrollView
-                ref={scrollViewRef}
-                style={styles.messagesContainer}
-                onContentSizeChange={() => scrollToBottom()}
-              >
-                {messages.map((message) => (
-                  <MessageItem key={message.id} message={message} />
-                ))}
-                {isLoading && (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color="#0066FF" />
-                  </View>
-                )}
-              </ScrollView>
-            )}
-
-            {/* Input Area */}
-            <View style={styles.inputArea}>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Type your message..."
-                  placeholderTextColor="#999"
-                  value={inputValue}
-                  onChangeText={setInputValue}
-                  onSubmitEditing={handleSendMessage}
-                  editable={!isLoading}
-                />
-                <TouchableOpacity
-                  onPress={handleSendMessage}
-                  disabled={!inputValue.trim() || isLoading}
-                  style={[
-                    styles.sendButton,
-                    (!inputValue.trim() || isLoading) &&
-                      styles.sendButtonDisabled,
-                  ]}
-                >
-                  <Text style={styles.sendButtonText}>Send</Text>
-                </TouchableOpacity>
-              </View>
+          ) : conversations.length === 0 ? (
+            <View className="flex-1 items-center justify-center">
+              <Text className="text-slate-400 text-sm">Chưa có cuộc trò chuyện nào</Text>
             </View>
+          ) : (
+            <FlatList
+              data={conversations}
+              keyExtractor={(item) => item.conversationId}
+              renderItem={({ item }) => {
+                const isActive = activeId === item.conversationId;
+                return (
+                  <TouchableOpacity
+                    onPress={() => handleSelectConv(item.conversationId)}
+                    className={`px-4 py-3 border-b border-slate-50 flex-row items-center ${isActive ? "bg-blue-50" : ""}`}
+                  >
+                    <View className="flex-1">
+                      <Text className={`text-sm font-semibold ${isActive ? "text-blue-700" : "text-slate-800"}`} numberOfLines={1}>
+                        {getConversationTitle(item)}
+                      </Text>
+                      <Text className="text-xs text-slate-500 mt-0.5" numberOfLines={1}>{getLastPreview(item)}</Text>
+                      <View className={`mt-1 self-start px-2 py-0.5 rounded-full ${item.status === "needs_staff" ? "bg-amber-100" : item.status === "resolved" || item.status === "closed" ? "bg-emerald-100" : "bg-sky-100"}`}>
+                        <Text className={`text-[10px] font-medium ${item.status === "needs_staff" ? "text-amber-700" : item.status === "resolved" || item.status === "closed" ? "text-emerald-700" : "text-sky-700"}`}>
+                          {statusLabel(item.status)}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteConv(item.conversationId)}
+                      className="p-2 ml-2"
+                    >
+                      <Text className="text-slate-400 text-lg">✕</Text>
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          )}
+        </View>
+      )}
+
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
+        {/* Status notices */}
+        {needsStaff && (
+          <View className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <Text className="text-xs font-semibold text-amber-800">Đang chuyển đến nhân viên hỗ trợ</Text>
+            <Text className="text-[11px] text-amber-600 mt-0.5">Bạn vẫn có thể tiếp tục nhắn tin.</Text>
           </View>
         )}
+        {isResolved && (
+          <View className="mx-4 mt-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex-row items-center justify-between">
+            <View>
+              <Text className="text-xs font-semibold text-emerald-800">Cuộc trò chuyện đã được xử lý</Text>
+              <Text className="text-[11px] text-emerald-600">Cảm ơn bạn đã liên hệ.</Text>
+            </View>
+            <TouchableOpacity onPress={handleNewConv} className="bg-emerald-100 px-3 py-1.5 rounded-lg">
+              <Text className="text-emerald-700 text-xs font-semibold">Cuộc mới</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Messages area */}
+        {activeId === null ? (
+          /* Welcome / Quick suggestions */
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+            <View className="w-14 h-14 rounded-2xl bg-blue-600 items-center justify-center mb-4">
+              <Text className="text-white text-2xl">💬</Text>
+            </View>
+            <Text className="text-2xl font-bold text-slate-900 mb-1">Xin chào!</Text>
+            <Text className="text-slate-500 text-sm mb-7 text-center">
+              Tôi là trợ lý hỗ trợ khách hàng của Zalo-Lite.{"\n"}Bạn đang gặp vấn đề gì?
+            </Text>
+            <View className="w-full">
+              {[0, 2, 4].map((i) => (
+                <View key={i} className="flex-row gap-3 mb-3">
+                  {QUICK_SUGGESTIONS.slice(i, i + 2).map((s) => (
+                    <TouchableOpacity
+                      key={s.id}
+                      onPress={() => handleSend(s.text, null)}
+                      disabled={sending}
+                      className="flex-1 bg-white border border-slate-200 rounded-xl p-3"
+                    >
+                      <Text className="text-sm font-medium text-slate-700">{s.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        ) : loadingMsgs ? (
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator size="large" color="#2563EB" />
+          </View>
+        ) : (
+          <ScrollView
+            ref={scrollViewRef}
+            className="flex-1 px-4 py-4"
+            onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+          >
+            {messages.map((msg) => {
+              const isUser = msg.senderId !== "chatbot";
+              return (
+                <View key={msg.id} className={`flex-row items-end mb-4 ${isUser ? "justify-end" : "justify-start"}`}>
+                  {!isUser && (
+                    <View className="w-7 h-7 rounded-full bg-blue-600 items-center justify-center mr-2 mb-1">
+                      <Text className="text-white text-[10px] font-bold">AI</Text>
+                    </View>
+                  )}
+                  <View className={`max-w-[75%] ${isUser ? "items-end" : "items-start"}`}>
+                    {!isUser && (
+                      <Text className="text-[10px] text-slate-400 mb-0.5 ml-1">Trợ lý AI</Text>
+                    )}
+                    <View className={`px-4 py-2.5 rounded-2xl ${isUser ? "bg-blue-600 rounded-br-sm" : "bg-slate-100 rounded-bl-sm"}`}>
+                      <Text className={`text-sm leading-relaxed ${isUser ? "text-white" : "text-slate-800"}`}>
+                        {msg.content}
+                      </Text>
+                    </View>
+                    <Text className="text-[10px] text-slate-400 mt-0.5">{formatTime(msg.createdAt)}</Text>
+                  </View>
+                  {isUser && (
+                    <View className="w-7 h-7 rounded-full bg-slate-200 items-center justify-center ml-2 mb-1">
+                      <Text className="text-slate-500 text-[10px] font-bold">TÔI</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+
+            {botTyping && (
+              <View className="flex-row items-end justify-start mb-4">
+                <View className="w-7 h-7 rounded-full bg-blue-600 items-center justify-center mr-2">
+                  <Text className="text-white text-[10px] font-bold">AI</Text>
+                </View>
+                <View className="bg-slate-100 rounded-2xl rounded-bl-sm px-4 py-3 flex-row gap-1.5">
+                  <View className="w-1.5 h-1.5 bg-slate-400 rounded-full" />
+                  <View className="w-1.5 h-1.5 bg-slate-400 rounded-full" />
+                  <View className="w-1.5 h-1.5 bg-slate-400 rounded-full" />
+                </View>
+              </View>
+            )}
+          </ScrollView>
+        )}
+
+        {/* Input bar */}
+        <View className="border-t border-slate-200 bg-white px-4 py-3">
+          {sendError && <Text className="text-xs text-red-500 mb-2">{sendError}</Text>}
+          {isResolved ? (
+            <View className="flex-row items-center justify-center gap-2 py-2">
+              <Text className="text-sm text-slate-400">Cuộc trò chuyện đã kết thúc.</Text>
+              <TouchableOpacity onPress={handleNewConv}>
+                <Text className="text-blue-600 font-semibold text-sm">Bắt đầu mới</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View className="flex-row gap-2 items-end">
+              <TextInput
+                value={inputValue}
+                onChangeText={setInputValue}
+                placeholder={activeId ? "Nhập tin nhắn..." : "Nhập câu hỏi để bắt đầu..."}
+                editable={!sending}
+                multiline
+                className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white"
+                style={{ maxHeight: 100 }}
+              />
+              <TouchableOpacity
+                onPress={() => handleSend(inputValue, activeId ?? null)}
+                disabled={!inputValue.trim() || sending}
+                className={`bg-blue-600 px-4 py-2.5 rounded-xl ${(!inputValue.trim() || sending) ? "bg-slate-200" : ""}`}
+              >
+                <Text className={`font-semibold text-sm ${(!inputValue.trim() || sending) ? "text-slate-400" : "text-white"}`}>
+                  {sending ? "..." : "Gửi"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
       </KeyboardAvoidingView>
-    </ThemedView>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  fullScreen: {
-    flex: 1,
-  },
-  // Conversation List Styles
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: "#64748B",
-  },
-  conversationItem: {
-    flexDirection: "row",
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-    alignItems: "center",
-  },
-  conversationItemActive: {
-    backgroundColor: "#EFF6FF",
-    borderLeftWidth: 4,
-    borderLeftColor: "#0066FF",
-  },
-  conversationAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginRight: 12,
-  },
-  conversationContent: {
-    flex: 1,
-  },
-  conversationHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  conversationTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  conversationTime: {
-    fontSize: 12,
-    color: "#94A3B8",
-  },
-  conversationMessage: {
-    fontSize: 12,
-    color: "#64748B",
-  },
-  badge: {
-    backgroundColor: "#0066FF",
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: 8,
-  },
-  badgeText: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  // Chat Header Styles
-  chatHeader: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    backgroundColor: "#FFFFFF",
-  },
-  chatHeaderButton: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  chatHeaderAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 12,
-  },
-  chatHeaderTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  chatHeaderSubtitle: {
-    fontSize: 12,
-    color: "#64748B",
-    marginTop: 2,
-  },
-  // Messages Styles
-  messagesContainer: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  messageContainer: {
-    marginVertical: 6,
-    flexDirection: "row",
-    justifyContent: "flex-start",
-  },
-  messageContainerUser: {
-    justifyContent: "flex-end",
-  },
-  messageBubble: {
-    maxWidth: "80%",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
-    borderWidth: 1,
-    borderRadius: 16,
-    borderTopLeftRadius: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  messageBubbleUser: {
-    backgroundColor: "#0066FF",
-    borderColor: "#0066FF",
-  },
-  messageText: {
-    fontSize: 14,
-    color: "#1E293B",
-  },
-  messageTextUser: {
-    color: "#FFFFFF",
-  },
-  messageTime: {
-    fontSize: 11,
-    color: "#94A3B8",
-    marginTop: 4,
-  },
-  messageTimeUser: {
-    color: "#D4E6F7",
-  },
-  loadingContainer: {
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  emptyStateImage: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    opacity: 0.3,
-    marginBottom: 12,
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: "#94A3B8",
-  },
-  // Input Styles
-  inputArea: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
-    backgroundColor: "#FFFFFF",
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "#F1F5F9",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: "#1E293B",
-  },
-  sendButton: {
-    backgroundColor: "#0066FF",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  sendButtonDisabled: {
-    backgroundColor: "#CBD5E1",
-  },
-  sendButtonText: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-    fontSize: 14,
-  },
-});

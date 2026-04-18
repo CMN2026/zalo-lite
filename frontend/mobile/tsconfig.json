@@ -3,7 +3,9 @@
   "compilerOptions": {
     "strict": true,
     "moduleResolution": "bundler",
-    "ignoreDeprecations": ["6.0"],
+    "ignoreDeprecations": [
+      "6.0"
+    ],
     "paths": {
       "@/*": [
         "./*"
@@ -14,6 +16,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "expo-env.d.ts",
+    "nativewind-env.d.ts"
   ]
 }
