@@ -1389,7 +1389,18 @@ export default function ChatView({
     };
 
     const handleMessageReceive = (payload: unknown) => {
-      const incoming = enrichMessage(payload as Message);
+      const rawIncoming = payload as Message;
+      const normalizedConversationId = normalizeConversationId(
+        rawIncoming.conversation_id,
+      );
+      if (!normalizedConversationId) {
+        return;
+      }
+
+      const incoming = enrichMessage({
+        ...rawIncoming,
+        conversation_id: normalizedConversationId,
+      });
 
       setConversations((prev) =>
         prev.map((conv) => {
@@ -1595,6 +1606,7 @@ export default function ChatView({
     };
 
     on("message:send_ack", handleSendAck);
+    on("receive_message", handleMessageReceive);
     on("message:receive", handleMessageReceive);
     on("message:typing", handleTyping);
     on("message:read_receipt", handleReadReceipt);
@@ -1611,6 +1623,7 @@ export default function ChatView({
 
     return () => {
       off("message:send_ack", handleSendAck);
+      off("receive_message", handleMessageReceive);
       off("message:receive", handleMessageReceive);
       off("message:typing", handleTyping);
       off("message:read_receipt", handleReadReceipt);

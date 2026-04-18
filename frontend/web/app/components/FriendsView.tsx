@@ -23,7 +23,11 @@ import {
 
 type TabId = "friends" | "search" | "requests";
 
-export default function FriendsView() {
+interface FriendsViewProps {
+  onStartChat?: (friend: ProfileUser) => Promise<void>;
+}
+
+export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>) {
   const [activeTab, setActiveTab] = useState<TabId>("friends");
   const [currentPhone, setCurrentPhone] = useState("");
   const [friends, setFriends] = useState<ProfileUser[]>([]);
@@ -36,6 +40,7 @@ export default function FriendsView() {
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [searching, setSearching] = useState(false);
   const [busyId, setBusyId] = useState("");
+  const [openingChatId, setOpeningChatId] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -202,6 +207,24 @@ export default function FriendsView() {
     }
   }
 
+  async function handleOpenChat(friend: ProfileUser) {
+    if (!onStartChat) {
+      return;
+    }
+
+    setOpeningChatId(friend.id);
+    setError("");
+    setNotice("");
+
+    try {
+      await onStartChat(friend);
+    } catch {
+      setError("Unable to open chat right now. Please try again.");
+    } finally {
+      setOpeningChatId("");
+    }
+  }
+
   return (
     <div className="flex-1 overflow-y-auto bg-slate-50 p-8 h-full font-sans text-slate-800">
       <div className="flex items-center justify-between mb-6">
@@ -284,9 +307,19 @@ export default function FriendsView() {
                   user={friend}
                   meta={friend.phone ?? "No phone number"}
                   action={
-                    <span className="bg-green-50 text-green-700 text-xs font-semibold px-3 py-1 rounded-full">
-                      Friend
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-green-50 text-green-700 text-xs font-semibold px-3 py-1 rounded-full">
+                        Friend
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleOpenChat(friend)}
+                        disabled={!onStartChat || openingChatId === friend.id}
+                        className="bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full disabled:opacity-60"
+                      >
+                        {openingChatId === friend.id ? "Opening..." : "Nhắn tin"}
+                      </button>
+                    </div>
                   }
                 />
               ))}

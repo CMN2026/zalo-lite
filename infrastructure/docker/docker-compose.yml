@@ -37,9 +37,13 @@ services:
     image: amazon/dynamodb-local:latest
     container_name: zalo-dynamodb-local
     restart: unless-stopped
-    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    user: root
+    working_dir: /home/dynamodblocal
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ./data"
     ports:
       - "8000:8000"
+    volumes:
+      - dynamodb_data:/home/dynamodblocal/data
 
   user-service:
     build:
@@ -194,3 +198,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  dynamodb_data:

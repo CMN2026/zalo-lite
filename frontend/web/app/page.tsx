@@ -19,6 +19,7 @@ import FriendsView from "../app/components/FriendsView";
 import HistoryView from "../app/components/HistoryView";
 import ProfileView from "../app/components/ProfileView";
 import StatsView from "../app/components/StatsView";
+import type { ProfileUser } from "./lib/users";
 
 type TopupNotification = {
   id: string;
@@ -135,6 +136,46 @@ export default function DashboardLayout() {
   const handleFocusedConversationChange = useCallback(
     (conversationId: string | null) => {
       setFocusedConversationId(conversationId);
+    },
+    [],
+  );
+
+  const handleStartChatFromFriends = useCallback(
+    async (friend: ProfileUser) => {
+      const token = getAuthToken();
+      if (!token) {
+        throw new Error("missing_local_session");
+      }
+
+      const response = await fetchWithTimeout(
+        `${API_BASE_URL}/api/conversations/direct`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ userId: friend.id }),
+        },
+        7000,
+      );
+
+      let conversationId = "";
+
+      if (response.ok) {
+        const payload = (await response.json()) as {
+          data?: { id?: string };
+          id?: string;
+        };
+        conversationId = payload.data?.id ?? payload.id ?? "";
+      }
+
+      if (!conversationId) {
+        throw new Error("cannot_open_conversation");
+      }
+
+      setCurrentView("chat");
+      setPendingJump({ conversationId });
     },
     [],
   );
@@ -510,7 +551,9 @@ export default function DashboardLayout() {
         {currentView === "chatbot" && <ChatbotView />}
         {currentView === "history" && <HistoryView />}
         {currentView === "stats" && <StatsView />}
-        {currentView === "friends" && <FriendsView />}
+        {currentView === "friends" && (
+          <FriendsView onStartChat={handleStartChatFromFriends} />
+        )}
         {currentView === "profile" && <ProfileView />}
       </div>
     </div>

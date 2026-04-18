@@ -163,43 +163,29 @@ export default function FriendsScreen() {
     setOpeningChatId(friend.id);
     try {
       const token = await getAuthToken();
-      // Try to find or create direct conversation
-      const res = await fetch(`${API_BASE_URL}/api/conversations`, {
+      const res = await fetch(`${API_BASE_URL}/api/conversations/direct`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token ?? ""}`,
         },
-        body: JSON.stringify({ memberIds: [friend.id], type: "direct" }),
+        body: JSON.stringify({ userId: friend.id }),
       });
 
       let conversationId: string | null = null;
       if (res.ok) {
         const data = await res.json();
         conversationId = data.data?.id ?? data.id ?? null;
-      } else if (res.status === 409 || res.status === 400) {
-        // Conversation already exists — fetch conversations list to find it
-        const listRes = await fetch(`${API_BASE_URL}/api/conversations`, {
-          headers: { Authorization: `Bearer ${token ?? ""}` },
-        });
-        if (listRes.ok) {
-          const listData = await listRes.json();
-          const convs = (listData.data ?? []) as any[];
-          const existing = convs.find(
-            (c: any) =>
-              c.type === "direct" &&
-              Array.isArray(c.memberIds) &&
-              c.memberIds.includes(friend.id)
-          );
-          conversationId = existing?.id ?? null;
-        }
       }
 
       if (conversationId) {
         // Navigate to Chat tab and pass the conversationId as param
         router.navigate({
-          pathname: "/(tabs)/",
-          params: { openConversationId: conversationId },
+          pathname: "/",
+          params: {
+            openConversationId: conversationId,
+            openConversationNonce: Date.now().toString(),
+          },
         });
       } else {
         setError("Không thể mở cuộc trò chuyện. Vui lòng thử lại.");
