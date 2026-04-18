@@ -114,7 +114,21 @@ async function bootstrap() {
 	await connectRedis();
 
 	await redisSubscriber.subscribe(env.REDIS_MESSAGE_CHANNEL, (messageText) => {
-		const message = JSON.parse(messageText) as { conversation_id: string };
+		const message = JSON.parse(messageText) as {
+			conversation_id: string;
+			created_at: string;
+			id: string;
+			sender_id: string;
+			type: string;
+			content: string;
+		};
+
+		void messageService
+			.persistIncomingMessage(message)
+			.catch((error) => {
+				console.error("Failed to persist broadcasted message", error);
+			});
+
 		io.to(`conversation_${message.conversation_id}`).emit("receive_message", message);
 	});
 

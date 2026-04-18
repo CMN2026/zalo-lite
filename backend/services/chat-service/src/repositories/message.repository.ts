@@ -13,6 +13,17 @@ export type Message = {
 };
 
 export class MessageRepository {
+  async save(message: Message): Promise<Message> {
+    await dynamo.send(
+      new PutCommand({
+        TableName: env.TABLE_MESSAGES,
+        Item: message,
+      }),
+    );
+
+    return message;
+  }
+
   async create(input: {
     conversation_id: string;
     sender_id: string;
@@ -28,14 +39,7 @@ export class MessageRepository {
       content: input.content,
     };
 
-    await dynamo.send(
-      new PutCommand({
-        TableName: env.TABLE_MESSAGES,
-        Item: message,
-      }),
-    );
-
-    return message;
+    return this.save(message);
   }
 
   async listByConversationId(conversationId: string, limit = 50): Promise<Message[]> {

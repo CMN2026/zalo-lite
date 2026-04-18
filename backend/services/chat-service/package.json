@@ -21,7 +21,7 @@
   "description": "Chat service with realtime messaging and friend system",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.896.0",
-    "@aws-sdk/lib-dynamodb": "^3.896.0",
+    "@aws-sdk/lib-dynamodb": "^3.1032.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",

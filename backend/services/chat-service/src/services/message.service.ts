@@ -1,7 +1,7 @@
 import { redisPublisher } from "../config/redis.js";
 import { env } from "../config/env.js";
 import { retry } from "../utils/retry.js";
-import { MessageRepository } from "../repositories/message.repository.js";
+import { MessageRepository, type Message } from "../repositories/message.repository.js";
 import { ConversationRepository } from "../repositories/conversation.repository.js";
 import { ConversationService } from "./conversation.service.js";
 
@@ -33,5 +33,15 @@ export class MessageService {
     );
 
     return message;
+  }
+
+  async persistIncomingMessage(message: Message): Promise<Message> {
+    const savedMessage = await this.messageRepository.save(message);
+    await this.conversationRepository.updateLastMessageAt(
+      savedMessage.conversation_id,
+      savedMessage.created_at,
+    );
+
+    return savedMessage;
   }
 }
