@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="NONE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="2af4e69a-5ec3-4571-a53f-057fd30683e6" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/services/chat-service/src/repositories/conversation.repository.ts" beforeDir="false" afterPath="$PROJECT_DIR$/services/chat-service/src/repositories/conversation.repository.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/chat-service/src/services/conversation.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/services/chat-service/src/services/conversation.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/mobile/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/mobile/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/mobile/app/(tabs)/_layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/mobile/app/(tabs)/_layout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/mobile/app/(tabs)/friends.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/mobile/app/(tabs)/friends.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/mobile/app/(tabs)/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/mobile/app/(tabs)/index.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/web/app/components/FriendsView.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/web/app/components/FriendsView.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/web/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/web/app/page.tsx" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ClangdSettings">
+    <option name="formatViaClangd" value="false" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 2
+}</component>
+  <component name="ProjectId" id="3CWhJ8EAP5KlnZDJiiDxrOs93ZE" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "git-widget-placeholder": "baovippro",
+    "last_opened_file_path": "D:/DATA/IUH/HK8/CNM/zalo-lite/frontend/mobile"
+  }
+}]]></component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="2af4e69a-5ec3-4571-a53f-057fd30683e6" name="Changes" comment="" />
+      <created>1776507158925</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1776507158925</updated>
+    </task>
+    <servers />
+  </component>
+</project>

@@ -19,6 +19,17 @@ export default function TabLayout() {
     >
       <Tabs.Screen
         name="index"
+        listeners={({ navigation }) => ({
+          tabPress: (event) => {
+            // Always return to conversation list when user taps the Messages tab.
+            event.preventDefault();
+            navigation.navigate("index", {
+              showConversationListNonce: Date.now().toString(),
+              openConversationId: undefined,
+              openConversationNonce: undefined,
+            });
+          },
+        })}
         options={{
           title: "Tin nhắn",
           tabBarIcon: ({ color }) => (

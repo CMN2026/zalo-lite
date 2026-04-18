@@ -359,7 +359,8 @@ export class ConversationRepository {
           conversation_id: conversationId,
           user_id: userId,
         },
-        UpdateExpression: "REMOVE hidden_at",
+        // Remove both flags so a restored conversation shows full history again.
+        UpdateExpression: "REMOVE hidden_at, cleared_at",
       }),
     );
   }

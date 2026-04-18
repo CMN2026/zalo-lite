@@ -67,22 +67,35 @@ export class ConversationService {
       true,
     );
 
-    // Find existing direct conversation with the other user
+    // Find all existing direct conversations with the other user.
+    const matchedDirectConversations: Conversation[] = [];
     for (const conversation of userConversations) {
-      if (conversation.type === "direct") {
-        const members =
-          await this.conversationRepository.getConversationMembers(
-            conversation.id,
-          );
-        const hasOtherUser = members.some((m) => m.userId === otherUserId);
-        if (hasOtherUser) {
-          await this.conversationRepository.restoreConversationForUser(
-            conversation.id,
-            userId,
-          );
-          return conversation;
-        }
+      if (conversation.type !== "direct") {
+        continue;
       }
+
+      const members = await this.conversationRepository.getConversationMembers(
+        conversation.id,
+      );
+      const hasOtherUser = members.some((m) => m.userId === otherUserId);
+      if (hasOtherUser) {
+        matchedDirectConversations.push(conversation);
+      }
+    }
+
+    if (matchedDirectConversations.length > 0) {
+      // Prefer the most recently active conversation to avoid returning stale duplicates.
+      const selected = matchedDirectConversations.sort((a, b) => {
+        const aTs = a.lastMessageAt ?? a.createdAt;
+        const bTs = b.lastMessageAt ?? b.createdAt;
+        return new Date(bTs).getTime() - new Date(aTs).getTime();
+      })[0];
+
+      await this.conversationRepository.restoreConversationForUser(
+        selected.id,
+        userId,
+      );
+      return selected;
     }
 
     // Create new direct conversation if it doesn't exist
