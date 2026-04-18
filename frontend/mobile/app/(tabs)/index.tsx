@@ -408,9 +408,11 @@ export default function ChatsScreen() {
       );
     };
 
+    on("receive_message", handler);
     on("message:receive", handler);
     on("notification:new_message", handler);
     return () => {
+      off("receive_message", handler);
       off("message:receive", handler);
       off("notification:new_message", handler);
     };

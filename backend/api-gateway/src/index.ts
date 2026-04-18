@@ -306,6 +306,7 @@ io.on("connection", (socket: Socket) => {
     "connect",
     "disconnect",
     "connect_error",
+    "receive_message",
     "message:receive",
     "message:send_ack",
     "message:typing",

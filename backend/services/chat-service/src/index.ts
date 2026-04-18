@@ -382,7 +382,9 @@ async function bootstrap() {
         console.error("Failed to persist broadcasted message", error);
       });
 
+    // Keep backward compatibility while standardizing on message:receive.
     io.to(`conversation_${message.conversation_id}`).emit("receive_message", message);
+    io.to(`conversation_${message.conversation_id}`).emit("message:receive", message);
   });
 
   // Subscribe to message read events
