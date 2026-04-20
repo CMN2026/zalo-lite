@@ -12,6 +12,7 @@ import {
   Bell,
   BellOff,
   Crown,
+  Ellipsis,
   Image as ImageIcon,
   Link2,
   LogOut,
@@ -19,7 +20,6 @@ import {
   ShieldBan,
   ShieldCheck,
   Trash2,
-  UserMinus,
   UserPlus,
   Users,
   X,
@@ -32,6 +32,7 @@ import {
   removeMemberFromConversation,
   type Conversation,
   type ConversationMember,
+  updateConversationMemberRole,
   updateConversation,
 } from "../lib/conversations";
 import {
@@ -166,6 +167,7 @@ export default function GroupDetailPanel({
   const [friends, setFriends] = useState<ProfileUser[]>([]);
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
   const [busyAction, setBusyAction] = useState("");
+  const [openMemberMenuId, setOpenMemberMenuId] = useState<string | null>(null);
 
   const [directPeerId, setDirectPeerId] = useState<string | null>(null);
   const [isBlocked, setIsBlocked] = useState(false);
@@ -191,6 +193,8 @@ export default function GroupDetailPanel({
   const members = useMemo(() => conversation?.members ?? [], [conversation]);
   const currentMember = members.find((m) => m.userId === currentUserId);
   const isOwner = currentMember?.role === "owner";
+  const canManageMembers =
+    currentMember?.role === "owner" || currentMember?.role === "admin";
 
   const directPeer = useMemo(() => {
     if (conversationType !== "direct") {
@@ -244,16 +248,24 @@ export default function GroupDetailPanel({
 
   const getMemberDisplayName = (member: ConversationMember) => {
     const memberId = getMemberId(member);
+
+    if (memberId === currentUserId && currentUser?.fullName) {
+      return currentUser.fullName;
+    }
+
     const fallbackName = memberId
       ? `Người dùng ${memberId.slice(0, 6)}`
       : "Người dùng không rõ";
-    const profile = member.profile;
+    const profile = member.profile as
+      | (ConversationMember["profile"] & { full_name?: string | null })
+      | undefined;
     const lookupByProfileId =
       typeof profile?.id === "string" ? userLookup?.[profile.id] : undefined;
     const lookupByMemberId = memberId ? userLookup?.[memberId] : undefined;
     const lookup = lookupByProfileId ?? lookupByMemberId;
     const candidate =
       profile?.fullName ||
+      profile?.full_name ||
       lookup?.fullName ||
       profile?.email ||
       lookup?.email ||
@@ -292,6 +304,47 @@ export default function GroupDetailPanel({
     void loadDetail();
   }, [loadDetail]);
 
+  useEffect(() => {
+    function handleConversationChanged(event: Event) {
+      const customEvent = event as CustomEvent<{ conversationId?: string }>;
+      if (customEvent.detail?.conversationId !== conversationId) {
+        return;
+      }
+
+      void loadDetail();
+    }
+
+    window.addEventListener(
+      "conversation:changed",
+      handleConversationChanged as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        "conversation:changed",
+        handleConversationChanged as EventListener,
+      );
+    };
+  }, [conversationId, loadDetail]);
+
+  useEffect(() => {
+    function handleDocumentClick(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      if (target.closest("[data-member-menu-root='true']")) {
+        return;
+      }
+
+      setOpenMemberMenuId(null);
+    }
+
+    document.addEventListener("mousedown", handleDocumentClick);
+    return () => {
+      document.removeEventListener("mousedown", handleDocumentClick);
+    };
+  }, []);
   useEffect(() => {
     if (conversationType !== "direct") {
       setDirectPeerId(null);
@@ -421,13 +474,8 @@ export default function GroupDetailPanel({
     try {
       await leaveConversation(conversationId);
       onConversationDeleted();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "";
-      if (message === "cannot_leave_group_with_two_or_fewer_members") {
-        setError("Không thể rời nhóm khi nhóm có ít hơn 3 thành viên.");
-      } else {
-        setError("Không thể rời nhóm.");
-      }
+    } catch {
+      setError("Không thể rời nhóm.");
     } finally {
       setBusyAction("");
     }
@@ -441,11 +489,56 @@ export default function GroupDetailPanel({
     setError("");
     try {
       await removeMemberFromConversation(conversationId, userId);
+      setOpenMemberMenuId(null);
       setNotice(`Đã xóa ${name} khỏi nhóm.`);
       void loadDetail();
       onConversationUpdated();
     } catch {
       setError("Không thể xóa thành viên.");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function handleUpdateMemberRole(
+    userId: string,
+    role: "member" | "admin" | "owner",
+  ) {
+    const member = members.find((m) => m.userId === userId);
+    const name = member ? getMemberDisplayName(member) : "thành viên";
+
+    const actionLabel =
+      role === "owner"
+        ? "chuyển quyền chủ nhóm"
+        : role === "admin"
+          ? "gán làm phó nhóm"
+          : "hạ quyền thành viên";
+
+    if (!globalThis.confirm(`Bạn có chắc muốn ${actionLabel} cho ${name}?`)) {
+      return;
+    }
+
+    setBusyAction(`role-${userId}-${role}`);
+    setError("");
+    try {
+      await updateConversationMemberRole(conversationId, userId, role);
+      setOpenMemberMenuId(null);
+      setNotice(
+        role === "owner"
+          ? `Đã chuyển quyền chủ nhóm cho ${name}.`
+          : role === "admin"
+            ? `Đã gán ${name} làm phó nhóm.`
+            : `Đã hạ ${name} về thành viên.`,
+      );
+      void loadDetail();
+      onConversationUpdated();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (message === "cannot_demote_owner_without_transferring_ownership") {
+        setError("Không thể hạ quyền chủ nhóm theo cách này.");
+      } else {
+        setError("Không thể cập nhật quyền thành viên.");
+      }
     } finally {
       setBusyAction("");
     }
@@ -694,13 +787,15 @@ export default function GroupDetailPanel({
         <div className="p-4 border-b border-slate-100">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-slate-700">Thành viên</h3>
-            <button
-              onClick={openAddMember}
-              className="text-blue-600 hover:text-blue-700 p-1 rounded hover:bg-blue-50 transition-colors"
-              title="Thêm thành viên"
-            >
-              <UserPlus className="w-4 h-4" />
-            </button>
+            {canManageMembers && (
+              <button
+                onClick={openAddMember}
+                className="text-blue-600 hover:text-blue-700 p-1 rounded hover:bg-blue-50 transition-colors"
+                title="Thêm thành viên"
+              >
+                <UserPlus className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           {showAddMember && (
@@ -769,6 +864,15 @@ export default function GroupDetailPanel({
               const avatarUrl = getMemberAvatar(member);
               const isSelf = memberId === currentUserId;
               const isOwnerMember = member.role === "owner";
+              const canOwnerManageRole =
+                isOwner && !isSelf && Boolean(memberId) && !isOwnerMember;
+              const canRemoveMember =
+                canManageMembers &&
+                !isSelf &&
+                Boolean(memberId) &&
+                (isOwner || member.role === "member");
+              const hasMemberActions = canOwnerManageRole || canRemoveMember;
+              const isMenuOpen = memberId && openMemberMenuId === memberId;
 
               return (
                 <div
@@ -801,21 +905,93 @@ export default function GroupDetailPanel({
                           <Crown className="w-3 h-3 text-amber-500" />
                           <span>Chủ nhóm</span>
                         </>
+                      ) : member.role === "admin" ? (
+                        <>
+                          <ShieldCheck className="w-3 h-3 text-blue-500" />
+                          <span>Phó nhóm</span>
+                        </>
                       ) : (
                         <span>Thành viên</span>
                       )}
                     </div>
                   </div>
-                  {isOwner && !isSelf && memberId && (
-                    <button
-                      onClick={() => handleRemoveMember(memberId)}
-                      disabled={busyAction === `remove-${memberId}`}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
-                      title="Xóa thành viên"
-                    >
-                      <UserMinus className="w-4 h-4" />
-                    </button>
-                  )}
+                  <div
+                    className="relative flex items-center"
+                    data-member-menu-root="true"
+                  >
+                    {hasMemberActions && memberId && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenMemberMenuId((current) =>
+                            current === memberId ? null : memberId,
+                          )
+                        }
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                        title="Mở tùy chọn"
+                        aria-expanded={Boolean(isMenuOpen)}
+                        aria-haspopup="menu"
+                      >
+                        <Ellipsis className="h-4 w-4" />
+                      </button>
+                    )}
+
+                    {isMenuOpen && memberId && (
+                      <div className="absolute right-0 top-8 z-20 min-w-33 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+                        {canOwnerManageRole && (
+                          <>
+                            {member.role === "member" ? (
+                              <button
+                                onClick={() =>
+                                  void handleUpdateMemberRole(memberId, "admin")
+                                }
+                                disabled={
+                                  busyAction === `role-${memberId}-admin`
+                                }
+                                className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-blue-700 transition-colors hover:bg-blue-50 disabled:opacity-50"
+                              >
+                                Gán phó nhóm
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  void handleUpdateMemberRole(
+                                    memberId,
+                                    "member",
+                                  )
+                                }
+                                disabled={
+                                  busyAction === `role-${memberId}-member`
+                                }
+                                className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50"
+                              >
+                                Gán thành viên
+                              </button>
+                            )}
+                            <button
+                              onClick={() =>
+                                void handleUpdateMemberRole(memberId, "owner")
+                              }
+                              disabled={busyAction === `role-${memberId}-owner`}
+                              className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
+                            >
+                              Chuyển chủ nhóm
+                            </button>
+                          </>
+                        )}
+
+                        {canRemoveMember && (
+                          <button
+                            onClick={() => handleRemoveMember(memberId)}
+                            disabled={busyAction === `remove-${memberId}`}
+                            className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            Xóa thành viên
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}

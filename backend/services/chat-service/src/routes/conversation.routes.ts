@@ -84,6 +84,17 @@ conversationRoutes.delete(
   ConversationController.removeMember,
 );
 
+conversationRoutes.patch(
+  "/:id/members/:userId/role",
+  [
+    param("id").isUUID(),
+    param("userId").isUUID(),
+    body("role").isIn(["member", "admin", "owner"]),
+    validateRequest,
+  ],
+  ConversationController.updateMemberRole,
+);
+
 conversationRoutes.get(
   "/:id/messages",
   [

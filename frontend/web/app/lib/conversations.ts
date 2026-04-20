@@ -100,6 +100,20 @@ export async function removeMemberFromConversation(id: string, userId: string) {
   );
 }
 
+export async function updateConversationMemberRole(
+  id: string,
+  userId: string,
+  role: "member" | "admin" | "owner",
+) {
+  return request<ApiResponse<{ userId: string; role: string }>>(
+    `/api/conversations/${id}/members/${userId}/role`,
+    {
+      method: "PATCH",
+      body: { role },
+    },
+  );
+}
+
 async function request<T>(
   path: string,
   options: RequestOptions = {},

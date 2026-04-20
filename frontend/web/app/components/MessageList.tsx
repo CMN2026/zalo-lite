@@ -2,7 +2,14 @@
 "use client";
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { Check, CheckCheck, Download } from "lucide-react";
+import {
+  Check,
+  CheckCheck,
+  Download,
+  Ellipsis,
+  Reply,
+  Trash2,
+} from "lucide-react";
 import { getAuthToken } from "../lib/auth";
 import { API_BASE_URL } from "../lib/api";
 
@@ -241,6 +248,17 @@ export default function MessageList({
     phan_no: "😡",
   };
 
+  const reactionOptions: Array<{
+    key: MessageReaction["reaction"];
+    emoji: string;
+    label: string;
+  }> = [
+    { key: "vui", emoji: "😀", label: "Vui" },
+    { key: "buon", emoji: "😢", label: "Buồn" },
+    { key: "wow", emoji: "😮", label: "Bất ngờ" },
+    { key: "phan_no", emoji: "😡", label: "Phẫn nộ" },
+  ];
+
   const getReactionSummary = (message: Message) => {
     const counter: Record<string, number> = {};
     for (const reaction of message.reactions ?? []) {
@@ -396,10 +414,10 @@ export default function MessageList({
                                 current === message.id ? null : message.id,
                               )
                             }
-                            className="mt-1 rounded-md px-1.5 py-0.5 text-[12px] text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            className="mt-1 flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                             aria-label="Mở thao tác tin nhắn"
                           >
-                            ...
+                            <Ellipsis className="h-4 w-4" />
                           </button>
                         )}
                       </div>
@@ -421,84 +439,64 @@ export default function MessageList({
 
                       {!isRecalled && activeActionMessageId === message.id && (
                         <div
-                          className={`mt-1 flex items-center gap-2 text-[11px] text-slate-400 flex-wrap ${isOwn ? "justify-end" : "justify-start"}`}
+                          className={`mt-2 flex max-w-70 flex-col gap-1.5 ${isOwn ? "items-end" : "items-start"}`}
                         >
-                          <button
-                            type="button"
-                            onClick={() => onReply?.(message)}
-                            className="hover:text-slate-600"
-                          >
-                            Trả lời
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onReact?.(
-                                message,
-                                myReaction === "vui" ? undefined : "vui",
-                              )
-                            }
-                            className="hover:text-slate-600"
-                          >
-                            😀
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onReact?.(
-                                message,
-                                myReaction === "buon" ? undefined : "buon",
-                              )
-                            }
-                            className="hover:text-slate-600"
-                          >
-                            😢
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onReact?.(
-                                message,
-                                myReaction === "wow" ? undefined : "wow",
-                              )
-                            }
-                            className="hover:text-slate-600"
-                          >
-                            😮
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onReact?.(
-                                message,
-                                myReaction === "phan_no"
-                                  ? undefined
-                                  : "phan_no",
-                              )
-                            }
-                            className="hover:text-slate-600"
-                          >
-                            😡
-                          </button>
-                          {isOwn && (
+                          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-1 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.5)]">
+                            {reactionOptions.map((option) => (
+                              <button
+                                key={`${message.id}-${option.key}`}
+                                type="button"
+                                onClick={() => {
+                                  setActiveActionMessageId(null);
+                                  onReact?.(
+                                    message,
+                                    myReaction === option.key
+                                      ? undefined
+                                      : option.key,
+                                  );
+                                }}
+                                className={`flex h-8 w-8 items-center justify-center rounded-full text-base transition-transform duration-150 hover:scale-110 ${
+                                  myReaction === option.key
+                                    ? "bg-blue-50 ring-1 ring-blue-200"
+                                    : "hover:bg-slate-100"
+                                }`}
+                                aria-label={`React ${option.label}`}
+                                title={option.label}
+                              >
+                                {option.emoji}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-600 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)]">
                             <button
                               type="button"
-                              onClick={() => onRecall?.(message)}
-                              className="hover:text-rose-500"
+                              onClick={() => onReply?.(message)}
+                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 transition hover:bg-slate-100 hover:text-slate-800"
                             >
-                              Thu hồi
+                              <Reply className="h-3.5 w-3.5" />
+                              Trả lời
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveActionMessageId(null);
-                              onDelete?.(message);
-                            }}
-                            className="hover:text-rose-500"
-                          >
-                            Xóa
-                          </button>
+                            {isOwn && (
+                              <button
+                                type="button"
+                                onClick={() => onRecall?.(message)}
+                                className="rounded-lg px-2 py-1 transition hover:bg-amber-50 hover:text-amber-600"
+                              >
+                                Thu hồi
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveActionMessageId(null);
+                                onDelete?.(message);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 transition hover:bg-rose-50 hover:text-rose-600"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Xóa
+                            </button>
+                          </div>
                         </div>
                       )}
 
@@ -694,10 +692,10 @@ export default function MessageList({
                                 current === message.id ? null : message.id,
                               )
                             }
-                            className="mt-1 rounded-md px-1.5 py-0.5 text-[12px] text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            className="mt-1 flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                             aria-label="Mở thao tác tin nhắn"
                           >
-                            ...
+                            <Ellipsis className="h-4 w-4" />
                           </button>
                         )}
                       </div>
@@ -719,84 +717,64 @@ export default function MessageList({
 
                       {!isRecalled && activeActionMessageId === message.id && (
                         <div
-                          className={`mt-1 flex items-center gap-2 text-[11px] text-slate-400 flex-wrap ${isOwn ? "justify-end" : "justify-start"}`}
+                          className={`mt-2 flex max-w-70 flex-col gap-1.5 ${isOwn ? "items-end" : "items-start"}`}
                         >
-                          <button
-                            type="button"
-                            onClick={() => onReply?.(message)}
-                            className="hover:text-slate-600"
-                          >
-                            Trả lời
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onReact?.(
-                                message,
-                                myReaction === "vui" ? undefined : "vui",
-                              )
-                            }
-                            className="hover:text-slate-600"
-                          >
-                            😀
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onReact?.(
-                                message,
-                                myReaction === "buon" ? undefined : "buon",
-                              )
-                            }
-                            className="hover:text-slate-600"
-                          >
-                            😢
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onReact?.(
-                                message,
-                                myReaction === "wow" ? undefined : "wow",
-                              )
-                            }
-                            className="hover:text-slate-600"
-                          >
-                            😮
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onReact?.(
-                                message,
-                                myReaction === "phan_no"
-                                  ? undefined
-                                  : "phan_no",
-                              )
-                            }
-                            className="hover:text-slate-600"
-                          >
-                            😡
-                          </button>
-                          {isOwn && (
+                          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-1 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.5)]">
+                            {reactionOptions.map((option) => (
+                              <button
+                                key={`${message.id}-file-${option.key}`}
+                                type="button"
+                                onClick={() => {
+                                  setActiveActionMessageId(null);
+                                  onReact?.(
+                                    message,
+                                    myReaction === option.key
+                                      ? undefined
+                                      : option.key,
+                                  );
+                                }}
+                                className={`flex h-8 w-8 items-center justify-center rounded-full text-base transition-transform duration-150 hover:scale-110 ${
+                                  myReaction === option.key
+                                    ? "bg-blue-50 ring-1 ring-blue-200"
+                                    : "hover:bg-slate-100"
+                                }`}
+                                aria-label={`React ${option.label}`}
+                                title={option.label}
+                              >
+                                {option.emoji}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-600 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)]">
                             <button
                               type="button"
-                              onClick={() => onRecall?.(message)}
-                              className="hover:text-rose-500"
+                              onClick={() => onReply?.(message)}
+                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 transition hover:bg-slate-100 hover:text-slate-800"
                             >
-                              Thu hồi
+                              <Reply className="h-3.5 w-3.5" />
+                              Trả lời
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveActionMessageId(null);
-                              onDelete?.(message);
-                            }}
-                            className="hover:text-rose-500"
-                          >
-                            Xóa
-                          </button>
+                            {isOwn && (
+                              <button
+                                type="button"
+                                onClick={() => onRecall?.(message)}
+                                className="rounded-lg px-2 py-1 transition hover:bg-amber-50 hover:text-amber-600"
+                              >
+                                Thu hồi
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveActionMessageId(null);
+                                onDelete?.(message);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 transition hover:bg-rose-50 hover:text-rose-600"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Xóa
+                            </button>
+                          </div>
                         </div>
                       )}
 

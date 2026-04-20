@@ -10,6 +10,8 @@ export type ConversationWithMembers = Conversation & {
   memberIds: string[];
 };
 
+type GroupRole = "owner" | "admin" | "member";
+
 export class ConversationService {
   private readonly conversationRepository = new ConversationRepository();
   private readonly messageRepository = new MessageRepository();
@@ -246,10 +248,6 @@ export class ConversationService {
     const members =
       await this.conversationRepository.getConversationMembers(conversationId);
 
-    if (members.length <= 2) {
-      throw new HttpError(400, "cannot_leave_group_with_two_or_fewer_members");
-    }
-
     const currentMember = members.find((m) => m.userId === userId);
     const isOwner = currentMember?.role === "owner";
 
@@ -278,7 +276,7 @@ export class ConversationService {
     memberIds: string[],
   ) {
     await this.assertGroupConversation(conversationId);
-    await this.assertMember(conversationId, userId);
+    await this.assertOwnerOrAdmin(conversationId, userId);
 
     const existingMembers =
       await this.conversationRepository.getConversationMembers(conversationId);
@@ -300,7 +298,7 @@ export class ConversationService {
     targetUserId: string,
   ) {
     await this.assertGroupConversation(conversationId);
-    await this.assertOwner(conversationId, userId);
+    await this.assertOwnerOrAdmin(conversationId, userId);
 
     if (userId === targetUserId) {
       throw new HttpError(400, "owner_cannot_remove_self");
@@ -308,6 +306,17 @@ export class ConversationService {
 
     const members =
       await this.conversationRepository.getConversationMembers(conversationId);
+    const requester = members.find((m) => m.userId === userId);
+    const target = members.find((m) => m.userId === targetUserId);
+
+    if (!target) {
+      throw new HttpError(404, "target_not_a_member");
+    }
+
+    if (requester?.role === "admin" && target.role !== "member") {
+      throw new HttpError(403, "admin_cannot_remove_owner_or_admin");
+    }
+
     const isMember = members.some((m) => m.userId === targetUserId);
     if (!isMember) {
       throw new HttpError(404, "target_not_a_member");
@@ -317,6 +326,68 @@ export class ConversationService {
       conversationId,
       targetUserId,
     );
+  }
+
+  async updateMemberRoleInGroup(
+    userId: string,
+    conversationId: string,
+    targetUserId: string,
+    role: GroupRole,
+  ) {
+    await this.assertGroupConversation(conversationId);
+    await this.assertOwner(conversationId, userId);
+
+    const members =
+      await this.conversationRepository.getConversationMembers(conversationId);
+    const requester = members.find((member) => member.userId === userId);
+    const target = members.find((member) => member.userId === targetUserId);
+
+    if (!requester || !target) {
+      throw new HttpError(404, "target_not_a_member");
+    }
+
+    if (target.role === role) {
+      return { userId: targetUserId, role };
+    }
+
+    if (target.role === "owner" && role !== "owner") {
+      throw new HttpError(
+        400,
+        "cannot_demote_owner_without_transferring_ownership",
+      );
+    }
+
+    if (role === "owner") {
+      if (targetUserId === userId) {
+        return { userId: targetUserId, role };
+      }
+
+      await this.conversationRepository.updateMemberRole(
+        conversationId,
+        requester.userId,
+        "admin",
+      );
+
+      await this.conversationRepository.updateMemberRole(
+        conversationId,
+        target.userId,
+        "owner",
+      );
+
+      return {
+        userId: target.userId,
+        role: "owner",
+        previousOwnerId: requester.userId,
+      };
+    }
+
+    await this.conversationRepository.updateMemberRole(
+      conversationId,
+      target.userId,
+      role,
+    );
+
+    return { userId: target.userId, role };
   }
 
   async assertMember(conversationId: string, userId: string) {
@@ -347,6 +418,15 @@ export class ConversationService {
     const member = members.find((m) => m.userId === userId);
     if (!member || member.role !== "owner") {
       throw new HttpError(403, "only_owner_can_perform_this_action");
+    }
+  }
+
+  private async assertOwnerOrAdmin(conversationId: string, userId: string) {
+    const members =
+      await this.conversationRepository.getConversationMembers(conversationId);
+    const member = members.find((m) => m.userId === userId);
+    if (!member || (member.role !== "owner" && member.role !== "admin")) {
+      throw new HttpError(403, "only_owner_or_admin_can_perform_this_action");
     }
   }
 
