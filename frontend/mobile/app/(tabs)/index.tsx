@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
   View,
   Text,
@@ -64,6 +70,18 @@ interface Conversation {
   unread: number;
 }
 
+interface GroupMember {
+  userId: string;
+  role: "owner" | "admin" | "member";
+  profile?: {
+    id?: string;
+    fullName?: string | null;
+    avatarUrl?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
+}
+
 const SYSTEM_GREETING = "Hai bạn đã trở thành bạn bè. Hãy gửi lời chào 👋";
 const REACTION_EMOJI: Record<MessageReaction["reaction"], string> = {
   vui: "😀",
@@ -80,7 +98,7 @@ async function authFetch(path: string, init: RequestInit = {}) {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token ?? ""}`,
-      ...(init.headers as object ?? {}),
+      ...((init.headers as object) ?? {}),
     },
   });
   if (!response.ok) throw new Error(`http_${response.status}`);
@@ -93,18 +111,28 @@ function formatTime(iso: string): string {
   if (isNaN(d.getTime())) return "";
   const now = new Date();
   const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
-  if (diffDays === 0) return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  if (diffDays === 0)
+    return d.toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   if (diffDays === 1) return "Hôm qua";
   return d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
 }
 
 /** Parse message content — may be plain text or JSON with a `file` attachment */
-function parseMessageContent(content: string): { text: string; file: FileAttachment | null } {
+function parseMessageContent(content: string): {
+  text: string;
+  file: FileAttachment | null;
+} {
   if (!content || !content.trim().startsWith("{")) {
     return { text: content, file: null };
   }
   try {
-    const parsed = JSON.parse(content) as { text?: string; file?: FileAttachment };
+    const parsed = JSON.parse(content) as {
+      text?: string;
+      file?: FileAttachment;
+    };
     return {
       text: parsed.text ?? "",
       file: parsed.file ?? null,
@@ -126,7 +154,10 @@ function buildFileUrl(path: string, token?: string | null): string {
   return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 }
 
-function getMessagePreview(content: string, recalledAt?: string | null): string {
+function getMessagePreview(
+  content: string,
+  recalledAt?: string | null,
+): string {
   if (recalledAt) {
     return "Tin nhắn đã được thu hồi";
   }
@@ -147,22 +178,41 @@ function ImageViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
   return (
     <Modal visible animationType="fade" transparent onRequestClose={onClose}>
       <TouchableOpacity
-        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.92)", justifyContent: "center", alignItems: "center" }}
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.92)",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
         activeOpacity={1}
         onPress={onClose}
       >
         <Image
           source={{ uri, headers: { Accept: "image/*" } }}
-          style={{ width: width - 16, height: height * 0.7, resizeMode: "contain" }}
+          style={{
+            width: width - 16,
+            height: height * 0.7,
+            resizeMode: "contain",
+          }}
         />
-        <Text style={{ color: "#94a3b8", marginTop: 12, fontSize: 13 }}>Nhấn để đóng</Text>
+        <Text style={{ color: "#94a3b8", marginTop: 12, fontSize: 13 }}>
+          Nhấn để đóng
+        </Text>
       </TouchableOpacity>
     </Modal>
   );
 }
 
 // ── File/Image Message Renderer ───────────────────────────────────────────────
-function FileMessage({ file, isMe, token }: { file: FileAttachment; isMe: boolean; token?: string | null }) {
+function FileMessage({
+  file,
+  isMe,
+  token,
+}: {
+  file: FileAttachment;
+  isMe: boolean;
+  token?: string | null;
+}) {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const url = buildFileUrl(file.path, token);
   const isImage = file.mimetype?.startsWith("image/");
@@ -170,17 +220,36 @@ function FileMessage({ file, isMe, token }: { file: FileAttachment; isMe: boolea
   if (isImage) {
     return (
       <>
-        <TouchableOpacity onPress={() => setPreviewUri(url)} activeOpacity={0.85}>
+        <TouchableOpacity
+          onPress={() => setPreviewUri(url)}
+          activeOpacity={0.85}
+        >
           <Image
             source={{ uri: url }}
-            style={{ width: 200, height: 200, borderRadius: 12, resizeMode: "cover" }}
-            onError={() => {/* ignore */}}
+            style={{
+              width: 200,
+              height: 200,
+              borderRadius: 12,
+              resizeMode: "cover",
+            }}
+            onError={() => {
+              /* ignore */
+            }}
           />
-          <Text style={{ fontSize: 11, marginTop: 4, color: isMe ? "#dbeafe" : "#64748b" }} numberOfLines={1}>
+          <Text
+            style={{
+              fontSize: 11,
+              marginTop: 4,
+              color: isMe ? "#dbeafe" : "#64748b",
+            }}
+            numberOfLines={1}
+          >
             {file.originalName ?? file.filename}
           </Text>
         </TouchableOpacity>
-        {previewUri && <ImageViewer uri={previewUri} onClose={() => setPreviewUri(null)} />}
+        {previewUri && (
+          <ImageViewer uri={previewUri} onClose={() => setPreviewUri(null)} />
+        )}
       </>
     );
   }
@@ -191,7 +260,11 @@ function FileMessage({ file, isMe, token }: { file: FileAttachment; isMe: boolea
       <Text style={{ fontSize: 22 }}>📎</Text>
       <View style={{ flex: 1 }}>
         <Text
-          style={{ fontSize: 13, fontWeight: "600", color: isMe ? "#fff" : "#1e293b" }}
+          style={{
+            fontSize: 13,
+            fontWeight: "600",
+            color: isMe ? "#fff" : "#1e293b",
+          }}
           numberOfLines={2}
         >
           {file.originalName ?? file.filename}
@@ -224,7 +297,9 @@ export default function ChatsScreen() {
   const openConversationNonce = Array.isArray(openConversationNonceParam)
     ? openConversationNonceParam[0]
     : openConversationNonceParam;
-  const showConversationListNonce = Array.isArray(showConversationListNonceParam)
+  const showConversationListNonce = Array.isArray(
+    showConversationListNonceParam,
+  )
     ? showConversationListNonceParam[0]
     : showConversationListNonceParam;
   const currentUserId = user?.id ?? "";
@@ -236,36 +311,106 @@ export default function ChatsScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [inputText, setInputText] = useState("");
+  const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
-  const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null);
+  const [activeActionMessageId, setActiveActionMessageId] = useState<
+    string | null
+  >(null);
+  const [showGroupManager, setShowGroupManager] = useState(false);
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  const [groupCandidates, setGroupCandidates] = useState<
+    Array<{ id: string; fullName: string }>
+  >([]);
+  const [selectedAddMemberIds, setSelectedAddMemberIds] = useState<string[]>(
+    [],
+  );
+  const [groupLoading, setGroupLoading] = useState(false);
+  const [groupBusyAction, setGroupBusyAction] = useState<string>("");
+  const [groupError, setGroupError] = useState<string>("");
   // userId → { fullName, avatarUrl } cache
-  const [userCache, setUserCache] = useState<Record<string, { fullName: string; avatarUrl?: string | null }>>({});
+  const [userCache, setUserCache] = useState<
+    Record<string, { fullName: string; avatarUrl?: string | null }>
+  >({});
 
   const scrollRef = useRef<ScrollView>(null);
-  const openChatRef = useRef<((conv: Conversation) => Promise<void>) | null>(null);
+  const openChatRef = useRef<((conv: Conversation) => Promise<void>) | null>(
+    null,
+  );
   const conversationsRef = useRef<Conversation[]>([]);
   const pendingAutoOpenConversationIdRef = useRef<string | null>(null);
   const forceOpenConversationIdRef = useRef<string | null>(null);
+  const typingUserTimeoutsRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
+  const localTypingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const localTypingActiveRef = useRef(false);
   const activeConv = conversations.find((c) => c.id === activeChatId);
+  const currentGroupMember = useMemo(
+    () => groupMembers.find((member) => member.userId === currentUserId),
+    [groupMembers, currentUserId],
+  );
+  const canManageGroupMembers =
+    currentGroupMember?.role === "owner" ||
+    currentGroupMember?.role === "admin";
+  const isGroupOwner = currentGroupMember?.role === "owner";
 
-  const updateConversationPreviewFromMessages = useCallback((conversationId: string, nextMessages: Message[]) => {
-    const lastMessage = nextMessages[nextMessages.length - 1];
-
-    setConversations((prev) =>
-      prev.map((conv) =>
-        conv.id === conversationId
-          ? {
-              ...conv,
-              preview: lastMessage
-                ? getMessagePreview(lastMessage.content, lastMessage.recalled_at)
-                : SYSTEM_GREETING,
-              time: lastMessage ? formatTime(lastMessage.created_at) : "",
-            }
-          : conv,
-      ),
-    );
+  const clearTypingUsers = useCallback(() => {
+    Object.values(typingUserTimeoutsRef.current).forEach((timer) => {
+      clearTimeout(timer);
+    });
+    typingUserTimeoutsRef.current = {};
+    setTypingUserIds([]);
   }, []);
+
+  const typingIndicatorText = useMemo(() => {
+    if (!activeConv || typingUserIds.length === 0) {
+      return null;
+    }
+
+    const typingNames = typingUserIds
+      .map((userId) => {
+        const cached = userCache[userId];
+        return cached?.fullName || "Ai đó";
+      })
+      .filter(Boolean);
+
+    if (typingNames.length === 0) {
+      return "Đang nhập...";
+    }
+
+    if (typingNames.length === 1) {
+      return `${typingNames[0]} đang nhập...`;
+    }
+
+    return `${typingNames.length} người đang nhập...`;
+  }, [activeConv, typingUserIds, userCache]);
+
+  const updateConversationPreviewFromMessages = useCallback(
+    (conversationId: string, nextMessages: Message[]) => {
+      const lastMessage = nextMessages[nextMessages.length - 1];
+
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.id === conversationId
+            ? {
+                ...conv,
+                preview: lastMessage
+                  ? getMessagePreview(
+                      lastMessage.content,
+                      lastMessage.recalled_at,
+                    )
+                  : SYSTEM_GREETING,
+                time: lastMessage ? formatTime(lastMessage.created_at) : "",
+              }
+            : conv,
+        ),
+      );
+    },
+    [],
+  );
 
   // ── Load user info (friends + chat-peers) for name resolution ────────────
   const loadUserCache = useCallback(async () => {
@@ -277,12 +422,18 @@ export default function ChatsScreen() {
         authFetch("/api/users/friends"),
       ]);
 
-      const cache: Record<string, { fullName: string; avatarUrl?: string | null }> = {};
+      const cache: Record<
+        string,
+        { fullName: string; avatarUrl?: string | null }
+      > = {};
       const applyUsers = (data: unknown) => {
         if (!Array.isArray(data)) return;
         for (const u of data) {
           if (u?.id && u.fullName) {
-            cache[u.id] = { fullName: u.fullName, avatarUrl: u.avatarUrl ?? null };
+            cache[u.id] = {
+              fullName: u.fullName,
+              avatarUrl: u.avatarUrl ?? null,
+            };
           }
         }
       };
@@ -296,99 +447,126 @@ export default function ChatsScreen() {
   }, []);
 
   // ── Load conversations ────────────────────────────────────────────────────
-  const loadConversations = useCallback(async (
-    autoOpenId?: string,
-    existingCache?: Record<string, { fullName: string; avatarUrl?: string | null }>
-  ) => {
-    try {
-      const cache = existingCache ?? userCache;
-      const res = await authFetch("/api/conversations");
-      const data = (res.data ?? []) as any[];
+  const loadConversations = useCallback(
+    async (
+      autoOpenId?: string,
+      existingCache?: Record<
+        string,
+        { fullName: string; avatarUrl?: string | null }
+      >,
+    ) => {
+      try {
+        const cache = existingCache ?? userCache;
+        const res = await authFetch("/api/conversations");
+        const data = (res.data ?? []) as any[];
 
-      const mapped: Conversation[] = data.map((conv: any) => {
-        const isGroup = conv.type === "group";
-        const peerId = isGroup
-          ? undefined
-          : (conv.memberIds as string[]).find((id: string) => id !== currentUserId);
+        const mapped: Conversation[] = data.map((conv: any) => {
+          const isGroup = conv.type === "group";
+          const peerId = isGroup
+            ? undefined
+            : (conv.memberIds as string[]).find(
+                (id: string) => id !== currentUserId,
+              );
 
-        // Resolve name from cache
-        const peerInfo = peerId ? cache[peerId] : undefined;
-        const resolvedName = isGroup
-          ? (conv.name || "Nhóm")
-          : (peerInfo?.fullName || conv.name || "Đang tải...");
+          // Resolve name from cache
+          const peerInfo = peerId ? cache[peerId] : undefined;
+          const resolvedName = isGroup
+            ? conv.name || "Nhóm"
+            : peerInfo?.fullName || conv.name || "Đang tải...";
 
-        const resolvedAvatar = isGroup
-          ? "https://api.dicebear.com/7.x/shapes/svg?seed=group"
-          : (peerInfo?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${peerId ?? conv.id}`);
+          const resolvedAvatar = isGroup
+            ? "https://api.dicebear.com/7.x/shapes/svg?seed=group"
+            : peerInfo?.avatarUrl ||
+              `https://api.dicebear.com/7.x/avataaars/svg?seed=${peerId ?? conv.id}`;
 
-        return {
-          id: conv.id,
-          name: resolvedName,
-          avatar: resolvedAvatar,
-          preview: conv.lastMessageAt ? "Đang tải..." : SYSTEM_GREETING,
-          time: conv.lastMessageAt ? formatTime(conv.lastMessageAt) : "",
-          lastMessageAt: conv.lastMessageAt ?? null,
-          online: false,
-          type: conv.type ?? "direct",
-          peerId,
-          unread: 0,
-        };
-      });
+          return {
+            id: conv.id,
+            name: resolvedName,
+            avatar: resolvedAvatar,
+            preview: conv.lastMessageAt ? "Đang tải..." : SYSTEM_GREETING,
+            time: conv.lastMessageAt ? formatTime(conv.lastMessageAt) : "",
+            lastMessageAt: conv.lastMessageAt ?? null,
+            online: false,
+            type: conv.type ?? "direct",
+            peerId,
+            unread: 0,
+          };
+        });
 
-      setConversations(mapped);
-      conversationsRef.current = mapped;
-      void hydrateConversationPreviews(mapped);
+        setConversations(mapped);
+        conversationsRef.current = mapped;
+        void hydrateConversationPreviews(mapped);
 
-      // Auto-open a specific conversation if requested
-      const targetId = autoOpenId ?? openConversationId;
-      if (targetId) {
-        const target = mapped.find((c) => c.id === targetId);
-        pendingAutoOpenConversationIdRef.current = targetId;
-        if (target && openChatRef.current) {
-          pendingAutoOpenConversationIdRef.current = null;
-          forceOpenConversationIdRef.current = target.id;
-          void openChatRef.current(target);
+        // Auto-open a specific conversation if requested
+        const targetId = autoOpenId ?? openConversationId;
+        if (targetId) {
+          const target = mapped.find((c) => c.id === targetId);
+          pendingAutoOpenConversationIdRef.current = targetId;
+          if (target && openChatRef.current) {
+            pendingAutoOpenConversationIdRef.current = null;
+            forceOpenConversationIdRef.current = target.id;
+            void openChatRef.current(target);
+          }
         }
+      } catch {
+        // silently handle
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      // silently handle
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUserId, openConversationId, userCache]);
+    },
+    [currentUserId, openConversationId, userCache],
+  );
 
-  const hydrateConversationPreviews = useCallback(async (items: Conversation[]) => {
-    const targets = items.filter((conv) => conv.lastMessageAt);
-    if (targets.length === 0) return;
+  const hydrateConversationPreviews = useCallback(
+    async (items: Conversation[]) => {
+      const targets = items.filter((conv) => conv.lastMessageAt);
+      if (targets.length === 0) return;
 
-    const results = await Promise.allSettled(
-      targets.map(async (conv) => {
-        const response = await authFetch(`/api/messages/${conv.id}?limit=1`);
-        const latest = Array.isArray(response.data) ? response.data[0] as Message | undefined : undefined;
-        if (!latest) return null;
+      const results = await Promise.allSettled(
+        targets.map(async (conv) => {
+          const response = await authFetch(`/api/messages/${conv.id}?limit=1`);
+          const latest = Array.isArray(response.data)
+            ? (response.data[0] as Message | undefined)
+            : undefined;
+          if (!latest) return null;
 
-        return {
-          id: conv.id,
-          preview: getMessagePreview(latest.content, latest.recalled_at),
-          time: formatTime(latest.created_at),
-        };
-      }),
-    );
+          return {
+            id: conv.id,
+            preview: getMessagePreview(latest.content, latest.recalled_at),
+            time: formatTime(latest.created_at),
+          };
+        }),
+      );
 
-    const updates = results
-      .filter((result): result is PromiseFulfilledResult<{ id: string; preview: string; time: string } | null> => result.status === "fulfilled")
-      .map((result) => result.value)
-      .filter((value): value is { id: string; preview: string; time: string } => value !== null);
+      const updates = results
+        .filter(
+          (
+            result,
+          ): result is PromiseFulfilledResult<{
+            id: string;
+            preview: string;
+            time: string;
+          } | null> => result.status === "fulfilled",
+        )
+        .map((result) => result.value)
+        .filter(
+          (value): value is { id: string; preview: string; time: string } =>
+            value !== null,
+        );
 
-    if (updates.length === 0) return;
+      if (updates.length === 0) return;
 
-    setConversations((prev) =>
-      prev.map((conv) => {
-        const update = updates.find((item) => item.id === conv.id);
-        return update ? { ...conv, preview: update.preview, time: update.time } : conv;
-      }),
-    );
-  }, []);
+      setConversations((prev) =>
+        prev.map((conv) => {
+          const update = updates.find((item) => item.id === conv.id);
+          return update
+            ? { ...conv, preview: update.preview, time: update.time }
+            : conv;
+        }),
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -399,7 +577,9 @@ export default function ChatsScreen() {
   // When openConversationId param arrives (from Friends tab navigation)
   useEffect(() => {
     if (!openConversationId) return;
-    const conv = conversationsRef.current.find((c) => c.id === openConversationId);
+    const conv = conversationsRef.current.find(
+      (c) => c.id === openConversationId,
+    );
     if (conv && openChatRef.current) {
       pendingAutoOpenConversationIdRef.current = null;
       forceOpenConversationIdRef.current = conv.id;
@@ -407,7 +587,12 @@ export default function ChatsScreen() {
     } else if (currentUserId) {
       loadConversations(openConversationId);
     }
-  }, [openConversationId, openConversationNonce, currentUserId, loadConversations]);
+  }, [
+    openConversationId,
+    openConversationNonce,
+    currentUserId,
+    loadConversations,
+  ]);
 
   useEffect(() => {
     const pendingConversationId = pendingAutoOpenConversationIdRef.current;
@@ -415,7 +600,9 @@ export default function ChatsScreen() {
       return;
     }
 
-    const target = conversationsRef.current.find((c) => c.id === pendingConversationId);
+    const target = conversationsRef.current.find(
+      (c) => c.id === pendingConversationId,
+    );
     if (!target) {
       return;
     }
@@ -426,49 +613,73 @@ export default function ChatsScreen() {
   }, [conversations]);
 
   // ── Open a chat ───────────────────────────────────────────────────────────
-  const openChat = useCallback(async (conv: Conversation) => {
-    const shouldForceReload = forceOpenConversationIdRef.current === conv.id;
-    forceOpenConversationIdRef.current = null;
-    if (activeChatId === conv.id && !shouldForceReload) return;
-    if (activeChatId) leave(activeChatId);
+  const openChat = useCallback(
+    async (conv: Conversation) => {
+      const shouldForceReload = forceOpenConversationIdRef.current === conv.id;
+      forceOpenConversationIdRef.current = null;
+      if (activeChatId === conv.id && !shouldForceReload) return;
+      if (activeChatId) leave(activeChatId);
 
-    setActiveChatId(conv.id);
-    setMessages([]);
-    setActiveActionMessageId(null);
-    setLoadingMsgs(true);
-    join(conv.id);
+      setActiveChatId(conv.id);
+      setMessages([]);
+      setActiveActionMessageId(null);
+      setLoadingMsgs(true);
+      join(conv.id);
 
-    setConversations((prev) =>
-      prev.map((c) => (c.id === conv.id ? { ...c, unread: 0 } : c))
-    );
-
-    try {
-      let msgs: Message[] = [];
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conv.id ? { ...c, unread: 0 } : c)),
+      );
 
       try {
-        const res = await authFetch(`/api/messages/${conv.id}?limit=200`);
-        msgs = (res.data ?? []) as Message[];
+        let msgs: Message[] = [];
+
+        try {
+          const res = await authFetch(`/api/messages/${conv.id}?limit=200`);
+          msgs = (res.data ?? []) as Message[];
+        } catch {
+          // Fallback for environments where message routes are exposed through conversation endpoints.
+          const fallback = await authFetch(
+            `/api/conversations/${conv.id}/messages?limit=200`,
+          );
+          msgs = (fallback.data ?? []) as Message[];
+        }
+
+        setMessages(msgs.reverse());
       } catch {
-        // Fallback for environments where message routes are exposed through conversation endpoints.
-        const fallback = await authFetch(`/api/conversations/${conv.id}/messages?limit=200`);
-        msgs = (fallback.data ?? []) as Message[];
+        setMessages([]);
+      } finally {
+        setLoadingMsgs(false);
+        setTimeout(
+          () => scrollRef.current?.scrollToEnd({ animated: false }),
+          100,
+        );
       }
+    },
+    [activeChatId, join, leave],
+  );
 
-      setMessages(msgs.reverse());
-    } catch {
-      setMessages([]);
-    } finally {
-      setLoadingMsgs(false);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 100);
-    }
-  }, [activeChatId, join, leave]);
-
-  useEffect(() => { openChatRef.current = openChat; }, [openChat]);
+  useEffect(() => {
+    openChatRef.current = openChat;
+  }, [openChat]);
 
   const closeActiveChat = useCallback(() => {
     if (activeChatId) {
       leave(activeChatId);
     }
+    if (localTypingStopTimerRef.current) {
+      clearTimeout(localTypingStopTimerRef.current);
+      localTypingStopTimerRef.current = null;
+    }
+
+    if (localTypingActiveRef.current && activeChatId) {
+      emit("message:typing", {
+        conversation_id: activeChatId,
+        is_typing: false,
+      });
+      localTypingActiveRef.current = false;
+    }
+
+    clearTypingUsers();
     forceOpenConversationIdRef.current = null;
     pendingAutoOpenConversationIdRef.current = null;
     setActiveChatId(null);
@@ -481,7 +692,143 @@ export default function ChatsScreen() {
       openConversationNonce: undefined,
       showConversationListNonce: undefined,
     });
-  }, [activeChatId, leave, router]);
+  }, [activeChatId, clearTypingUsers, emit, leave, router]);
+
+  const loadGroupManagementDetail = useCallback(async () => {
+    if (!activeChatId || activeConv?.type !== "group") return;
+
+    setGroupLoading(true);
+    setGroupError("");
+    try {
+      const detailRes = await authFetch(`/api/conversations/${activeChatId}`);
+      const members = (detailRes.data?.members ?? []) as GroupMember[];
+      setGroupMembers(members);
+
+      const memberIds = new Set(members.map((m) => m.userId));
+      const friendsRes = await authFetch("/api/users/friends");
+      const candidates = (
+        (friendsRes.data ?? []) as Array<{ id: string; fullName: string }>
+      ).filter((friend) => !memberIds.has(friend.id));
+      setGroupCandidates(candidates);
+    } catch {
+      setGroupError("Không thể tải dữ liệu quản lý nhóm.");
+    } finally {
+      setGroupLoading(false);
+    }
+  }, [activeChatId, activeConv?.type]);
+
+  const openGroupManager = useCallback(async () => {
+    setShowGroupManager(true);
+    setSelectedAddMemberIds([]);
+    await loadGroupManagementDetail();
+  }, [loadGroupManagementDetail]);
+
+  const handleAddMembersToGroup = useCallback(async () => {
+    if (!activeChatId || selectedAddMemberIds.length === 0) return;
+    setGroupBusyAction("add");
+    setGroupError("");
+    try {
+      await authFetch(`/api/conversations/${activeChatId}/members`, {
+        method: "POST",
+        body: JSON.stringify({ memberIds: selectedAddMemberIds }),
+      });
+      setSelectedAddMemberIds([]);
+      await loadGroupManagementDetail();
+      await loadConversations(activeChatId);
+    } catch {
+      setGroupError("Không thể thêm thành viên.");
+    } finally {
+      setGroupBusyAction("");
+    }
+  }, [
+    activeChatId,
+    selectedAddMemberIds,
+    loadGroupManagementDetail,
+    loadConversations,
+  ]);
+
+  const handleRemoveMemberFromGroup = useCallback(
+    async (targetUserId: string) => {
+      if (!activeChatId) return;
+      setGroupBusyAction(`remove-${targetUserId}`);
+      setGroupError("");
+      try {
+        await authFetch(
+          `/api/conversations/${activeChatId}/members/${targetUserId}`,
+          {
+            method: "DELETE",
+          },
+        );
+        await loadGroupManagementDetail();
+        await loadConversations(activeChatId);
+      } catch {
+        setGroupError("Không thể xóa thành viên khỏi nhóm.");
+      } finally {
+        setGroupBusyAction("");
+      }
+    },
+    [activeChatId, loadGroupManagementDetail, loadConversations],
+  );
+
+  const handleUpdateMemberRole = useCallback(
+    async (targetUserId: string, role: "member" | "admin" | "owner") => {
+      if (!activeChatId) return;
+      setGroupBusyAction(`role-${targetUserId}-${role}`);
+      setGroupError("");
+      try {
+        await authFetch(
+          `/api/conversations/${activeChatId}/members/${targetUserId}/role`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ role }),
+          },
+        );
+        await loadGroupManagementDetail();
+        await loadConversations(activeChatId);
+      } catch {
+        setGroupError("Không thể cập nhật quyền thành viên.");
+      } finally {
+        setGroupBusyAction("");
+      }
+    },
+    [activeChatId, loadGroupManagementDetail, loadConversations],
+  );
+
+  const handleLeaveGroup = useCallback(async () => {
+    if (!activeChatId) return;
+    setGroupBusyAction("leave");
+    setGroupError("");
+    try {
+      await authFetch(`/api/conversations/${activeChatId}/leave`, {
+        method: "POST",
+      });
+      setShowGroupManager(false);
+      closeActiveChat();
+      await loadConversations();
+    } catch {
+      setGroupError("Không thể rời nhóm.");
+    } finally {
+      setGroupBusyAction("");
+    }
+  }, [activeChatId, closeActiveChat, loadConversations]);
+
+  const handleDeleteGroup = useCallback(async () => {
+    if (!activeChatId) return;
+    setGroupBusyAction("delete");
+    setGroupError("");
+    try {
+      await authFetch(`/api/conversations/${activeChatId}`, {
+        method: "DELETE",
+      });
+      setShowGroupManager(false);
+      closeActiveChat();
+      await loadConversations();
+    } catch {
+      setGroupError("Không thể giải tán nhóm.");
+    } finally {
+      setGroupBusyAction("");
+    }
+  }, [activeChatId, closeActiveChat, loadConversations]);
 
   useEffect(() => {
     if (!showConversationListNonce) {
@@ -494,7 +841,11 @@ export default function ChatsScreen() {
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: (_event, gestureState) => {
-          return activeChatId !== null && gestureState.x0 <= 28 && gestureState.y0 > 72;
+          return (
+            activeChatId !== null &&
+            gestureState.x0 <= 28 &&
+            gestureState.y0 > 72
+          );
         },
         onMoveShouldSetPanResponder: (_event, gestureState) => {
           return (
@@ -506,7 +857,8 @@ export default function ChatsScreen() {
           );
         },
         onPanResponderRelease: (_event, gestureState) => {
-          const shouldClose = gestureState.dx > 70 && Math.abs(gestureState.dy) < 60;
+          const shouldClose =
+            gestureState.dx > 70 && Math.abs(gestureState.dy) < 60;
           if (shouldClose) {
             closeActiveChat();
           }
@@ -519,6 +871,19 @@ export default function ChatsScreen() {
   const sendMessage = useCallback(async () => {
     const text = inputText.trim();
     if (!text || !activeChatId || sending) return;
+
+    if (localTypingStopTimerRef.current) {
+      clearTimeout(localTypingStopTimerRef.current);
+      localTypingStopTimerRef.current = null;
+    }
+
+    if (localTypingActiveRef.current) {
+      emit("message:typing", {
+        conversation_id: activeChatId,
+        is_typing: false,
+      });
+      localTypingActiveRef.current = false;
+    }
 
     setSending(true);
     setInputText("");
@@ -538,7 +903,11 @@ export default function ChatsScreen() {
     try {
       await authFetch("/api/messages", {
         method: "POST",
-        body: JSON.stringify({ conversation_id: activeChatId, content: text, type: "text" }),
+        body: JSON.stringify({
+          conversation_id: activeChatId,
+          content: text,
+          type: "text",
+        }),
       });
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -546,130 +915,279 @@ export default function ChatsScreen() {
     } finally {
       setSending(false);
     }
-  }, [inputText, activeChatId, currentUserId, sending]);
+  }, [activeChatId, currentUserId, emit, inputText, sending]);
 
-  const setMessageReactions = useCallback((messageId: string, reactions: MessageReaction[]) => {
-    setMessages((prev) =>
-      prev.map((item) => (item.id === messageId ? { ...item, reactions } : item)),
-    );
-  }, []);
+  useEffect(() => {
+    if (!activeChatId || !isConnected) {
+      if (localTypingStopTimerRef.current) {
+        clearTimeout(localTypingStopTimerRef.current);
+        localTypingStopTimerRef.current = null;
+      }
 
-  const markMessageRecalled = useCallback((messageId: string, recalledAt?: string, recalledBy?: string) => {
-    if (!activeChatId) return;
+      if (localTypingActiveRef.current) {
+        localTypingActiveRef.current = false;
+      }
 
-    setMessages((prev) => {
-      const next = prev.map((item) =>
-        item.id === messageId
-          ? {
-              ...item,
-              content: "Tin nhắn đã được thu hồi",
-              recalled_at: recalledAt ?? new Date().toISOString(),
-              recalled_by: recalledBy ?? currentUserId,
-              reactions: [],
-            }
-          : item,
-      );
-
-      updateConversationPreviewFromMessages(activeChatId, next);
-      return next;
-    });
-    setActiveActionMessageId((current) => (current === messageId ? null : current));
-  }, [activeChatId, currentUserId, updateConversationPreviewFromMessages]);
-
-  const removeMessageForCurrentUser = useCallback((messageId: string) => {
-    if (!activeChatId) return;
-
-    setMessages((prev) => {
-      const next = prev.filter((item) => item.id !== messageId);
-      updateConversationPreviewFromMessages(activeChatId, next);
-      return next;
-    });
-    setActiveActionMessageId((current) => (current === messageId ? null : current));
-  }, [activeChatId, updateConversationPreviewFromMessages]);
-
-  const handleRecallMessage = useCallback(async (message: Message) => {
-    if (message.sender_id !== currentUserId) {
-      Alert.alert("Không thể thu hồi", "Bạn chỉ có thể thu hồi tin nhắn của chính mình.");
       return;
     }
 
-    try {
-      const response = await authFetch(`/api/messages/${message.id}/recall`, {
-        method: "PATCH",
+    const hasText = inputText.trim().length > 0;
+
+    if (hasText && !localTypingActiveRef.current) {
+      emit("message:typing", {
+        conversation_id: activeChatId,
+        is_typing: true,
       });
-      const recalled = response.data as Message | undefined;
-      markMessageRecalled(
-        message.id,
-        recalled?.recalled_at ?? undefined,
-        recalled?.recalled_by ?? undefined,
+      localTypingActiveRef.current = true;
+    }
+
+    if (localTypingStopTimerRef.current) {
+      clearTimeout(localTypingStopTimerRef.current);
+      localTypingStopTimerRef.current = null;
+    }
+
+    if (hasText) {
+      localTypingStopTimerRef.current = setTimeout(() => {
+        if (!localTypingActiveRef.current) {
+          return;
+        }
+
+        emit("message:typing", {
+          conversation_id: activeChatId,
+          is_typing: false,
+        });
+        localTypingActiveRef.current = false;
+      }, 3000);
+      return;
+    }
+
+    if (localTypingActiveRef.current) {
+      emit("message:typing", {
+        conversation_id: activeChatId,
+        is_typing: false,
+      });
+      localTypingActiveRef.current = false;
+    }
+  }, [activeChatId, emit, inputText, isConnected]);
+
+  useEffect(() => {
+    clearTypingUsers();
+  }, [activeChatId, clearTypingUsers]);
+
+  useEffect(() => {
+    const handleTyping = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+        conversationId?: unknown;
+        user_id?: unknown;
+        userId?: unknown;
+        is_typing?: unknown;
+      };
+
+      const conversationIdRaw = data.conversation_id ?? data.conversationId;
+      const conversationId =
+        typeof conversationIdRaw === "string" ? conversationIdRaw.trim() : "";
+      const senderIdRaw = data.user_id ?? data.userId;
+      const senderId =
+        typeof senderIdRaw === "string" ? senderIdRaw.trim() : "";
+      const isTyping = data.is_typing !== false;
+
+      if (!conversationId || !activeChatId || conversationId !== activeChatId) {
+        return;
+      }
+
+      if (!senderId || senderId === currentUserId) {
+        return;
+      }
+
+      const existingTimer = typingUserTimeoutsRef.current[senderId];
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        delete typingUserTimeoutsRef.current[senderId];
+      }
+
+      if (!isTyping) {
+        setTypingUserIds((prev) => prev.filter((id) => id !== senderId));
+        return;
+      }
+
+      setTypingUserIds((prev) =>
+        prev.includes(senderId) ? prev : [...prev, senderId],
       );
-    } catch {
-      emit("message:recall", {
-        message_id: message.id,
-        conversation_id: message.conversation_id,
-      });
-      markMessageRecalled(message.id);
-    }
-  }, [currentUserId, emit, markMessageRecalled]);
 
-  const handleDeleteMessage = useCallback(async (message: Message) => {
-    try {
-      await authFetch(`/api/messages/${message.id}`, { method: "DELETE" });
-      removeMessageForCurrentUser(message.id);
-    } catch {
-      emit("message:delete", {
-        message_id: message.id,
-        conversation_id: message.conversation_id,
-      });
-      removeMessageForCurrentUser(message.id);
-    }
-  }, [emit, removeMessageForCurrentUser]);
+      typingUserTimeoutsRef.current[senderId] = setTimeout(() => {
+        delete typingUserTimeoutsRef.current[senderId];
+        setTypingUserIds((prev) => prev.filter((id) => id !== senderId));
+      }, 6000);
+    };
 
-  const handleReactMessage = useCallback(async (
-    message: Message,
-    reaction?: MessageReaction["reaction"],
-  ) => {
-    try {
-      const response = await authFetch(`/api/messages/${message.id}/reaction`, {
-        method: "PUT",
-        body: JSON.stringify({ reaction }),
-      });
-      const updated = response.data as Message | undefined;
-      setMessageReactions(message.id, updated?.reactions ?? []);
-    } catch {
-      emit("message:react", {
-        message_id: message.id,
-        conversation_id: message.conversation_id,
-        reaction,
-      });
+    on("message:typing", handleTyping);
+    return () => {
+      off("message:typing", handleTyping);
+    };
+  }, [activeChatId, currentUserId, off, on]);
 
-      const withoutMine = (message.reactions ?? []).filter(
-        (item) => item.user_id !== currentUserId,
+  useEffect(() => {
+    return () => {
+      if (localTypingStopTimerRef.current) {
+        clearTimeout(localTypingStopTimerRef.current);
+      }
+      clearTypingUsers();
+    };
+  }, [clearTypingUsers]);
+
+  const setMessageReactions = useCallback(
+    (messageId: string, reactions: MessageReaction[]) => {
+      setMessages((prev) =>
+        prev.map((item) =>
+          item.id === messageId ? { ...item, reactions } : item,
+        ),
       );
-      const nextReactions = reaction
-        ? [
-            ...withoutMine,
-            {
-              user_id: currentUserId,
-              reaction,
-              created_at: new Date().toISOString(),
-            },
-          ]
-        : withoutMine;
-      setMessageReactions(message.id, nextReactions);
-    }
-  }, [currentUserId, emit, setMessageReactions]);
+    },
+    [],
+  );
+
+  const markMessageRecalled = useCallback(
+    (messageId: string, recalledAt?: string, recalledBy?: string) => {
+      if (!activeChatId) return;
+
+      setMessages((prev) => {
+        const next = prev.map((item) =>
+          item.id === messageId
+            ? {
+                ...item,
+                content: "Tin nhắn đã được thu hồi",
+                recalled_at: recalledAt ?? new Date().toISOString(),
+                recalled_by: recalledBy ?? currentUserId,
+                reactions: [],
+              }
+            : item,
+        );
+
+        updateConversationPreviewFromMessages(activeChatId, next);
+        return next;
+      });
+      setActiveActionMessageId((current) =>
+        current === messageId ? null : current,
+      );
+    },
+    [activeChatId, currentUserId, updateConversationPreviewFromMessages],
+  );
+
+  const removeMessageForCurrentUser = useCallback(
+    (messageId: string) => {
+      if (!activeChatId) return;
+
+      setMessages((prev) => {
+        const next = prev.filter((item) => item.id !== messageId);
+        updateConversationPreviewFromMessages(activeChatId, next);
+        return next;
+      });
+      setActiveActionMessageId((current) =>
+        current === messageId ? null : current,
+      );
+    },
+    [activeChatId, updateConversationPreviewFromMessages],
+  );
+
+  const handleRecallMessage = useCallback(
+    async (message: Message) => {
+      if (message.sender_id !== currentUserId) {
+        Alert.alert(
+          "Không thể thu hồi",
+          "Bạn chỉ có thể thu hồi tin nhắn của chính mình.",
+        );
+        return;
+      }
+
+      try {
+        const response = await authFetch(`/api/messages/${message.id}/recall`, {
+          method: "PATCH",
+        });
+        const recalled = response.data as Message | undefined;
+        markMessageRecalled(
+          message.id,
+          recalled?.recalled_at ?? undefined,
+          recalled?.recalled_by ?? undefined,
+        );
+      } catch {
+        emit("message:recall", {
+          message_id: message.id,
+          conversation_id: message.conversation_id,
+        });
+        markMessageRecalled(message.id);
+      }
+    },
+    [currentUserId, emit, markMessageRecalled],
+  );
+
+  const handleDeleteMessage = useCallback(
+    async (message: Message) => {
+      try {
+        await authFetch(`/api/messages/${message.id}`, { method: "DELETE" });
+        removeMessageForCurrentUser(message.id);
+      } catch {
+        emit("message:delete", {
+          message_id: message.id,
+          conversation_id: message.conversation_id,
+        });
+        removeMessageForCurrentUser(message.id);
+      }
+    },
+    [emit, removeMessageForCurrentUser],
+  );
+
+  const handleReactMessage = useCallback(
+    async (message: Message, reaction?: MessageReaction["reaction"]) => {
+      try {
+        const response = await authFetch(
+          `/api/messages/${message.id}/reaction`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ reaction }),
+          },
+        );
+        const updated = response.data as Message | undefined;
+        setMessageReactions(message.id, updated?.reactions ?? []);
+      } catch {
+        emit("message:react", {
+          message_id: message.id,
+          conversation_id: message.conversation_id,
+          reaction,
+        });
+
+        const withoutMine = (message.reactions ?? []).filter(
+          (item) => item.user_id !== currentUserId,
+        );
+        const nextReactions = reaction
+          ? [
+              ...withoutMine,
+              {
+                user_id: currentUserId,
+                reaction,
+                created_at: new Date().toISOString(),
+              },
+            ]
+          : withoutMine;
+        setMessageReactions(message.id, nextReactions);
+      }
+    },
+    [currentUserId, emit, setMessageReactions],
+  );
 
   // ── Real-time messages ────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (payload: unknown) => {
       const data = payload as any;
-      const convId: string = Array.isArray(data.conversation_id) ? data.conversation_id[0] : data.conversation_id;
+      const convId: string = Array.isArray(data.conversation_id)
+        ? data.conversation_id[0]
+        : data.conversation_id;
       if (!convId) return;
 
-      const rawContent = typeof data.content === "object"
-        ? JSON.stringify(data.content)
-        : (data.content ?? "");
+      const rawContent =
+        typeof data.content === "object"
+          ? JSON.stringify(data.content)
+          : (data.content ?? "");
 
       const newMsg: Message = {
         id: data.message_id ?? data.id ?? `rt-${Date.now()}`,
@@ -691,7 +1209,9 @@ export default function ChatsScreen() {
       } else {
         if (data.sender_id !== currentUserId) {
           setConversations((prev) =>
-            prev.map((c) => c.id === convId ? { ...c, unread: c.unread + 1 } : c)
+            prev.map((c) =>
+              c.id === convId ? { ...c, unread: c.unread + 1 } : c,
+            ),
           );
         }
       }
@@ -699,15 +1219,21 @@ export default function ChatsScreen() {
       // Build preview text (avoid showing JSON)
       const { text, file } = parseMessageContent(rawContent);
       const previewText = file
-        ? (file.mimetype?.startsWith("image/") ? "🖼 Hình ảnh" : `📎 ${file.originalName ?? file.filename}`)
+        ? file.mimetype?.startsWith("image/")
+          ? "🖼 Hình ảnh"
+          : `📎 ${file.originalName ?? file.filename}`
         : text;
 
       setConversations((prev) =>
         prev.map((c) =>
           c.id === convId
-            ? { ...c, preview: previewText || c.preview, time: formatTime(newMsg.created_at) }
-            : c
-        )
+            ? {
+                ...c,
+                preview: previewText || c.preview,
+                time: formatTime(newMsg.created_at),
+              }
+            : c,
+        ),
       );
     };
 
@@ -763,10 +1289,17 @@ export default function ChatsScreen() {
       off("message:deleted", handleMessageDeleted);
       off("message:reaction_updated", handleReactionUpdated);
     };
-  }, [currentUserId, markMessageRecalled, off, on, removeMessageForCurrentUser, setMessageReactions]);
+  }, [
+    currentUserId,
+    markMessageRecalled,
+    off,
+    on,
+    removeMessageForCurrentUser,
+    setMessageReactions,
+  ]);
 
   const filteredConversations = conversations.filter((c) =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase())
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
 
@@ -774,7 +1307,11 @@ export default function ChatsScreen() {
   function renderMessageContent(msg: Message, isMe: boolean) {
     const isRecalled = Boolean(msg.recalled_at);
     if (isRecalled) {
-      return <Text style={{ fontSize: 14, fontStyle: "italic", color: "#94a3b8" }}>Tin nhắn đã được thu hồi</Text>;
+      return (
+        <Text style={{ fontSize: 14, fontStyle: "italic", color: "#94a3b8" }}>
+          Tin nhắn đã được thu hồi
+        </Text>
+      );
     }
 
     const { text, file } = parseMessageContent(msg.content);
@@ -783,7 +1320,13 @@ export default function ChatsScreen() {
       <View style={{ gap: 6 }}>
         {file && <FileMessage file={file} isMe={isMe} token={authToken} />}
         {text ? (
-          <Text style={{ fontSize: 14, color: isMe ? "#fff" : "#1e293b", lineHeight: 20 }}>
+          <Text
+            style={{
+              fontSize: 14,
+              color: isMe ? "#fff" : "#1e293b",
+              lineHeight: 20,
+            }}
+          >
             {text}
           </Text>
         ) : null}
@@ -797,27 +1340,39 @@ export default function ChatsScreen() {
       counts[item.reaction] = (counts[item.reaction] ?? 0) + 1;
     }
 
-    const myReaction = (msg.reactions ?? []).find((item) => item.user_id === currentUserId)?.reaction;
+    const myReaction = (msg.reactions ?? []).find(
+      (item) => item.user_id === currentUserId,
+    )?.reaction;
 
     return (
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-        {(Object.keys(counts) as MessageReaction["reaction"][]).map((reactionKey) => (
-          <View
-            key={`${msg.id}-${reactionKey}`}
-            style={{
-              borderWidth: 1,
-              borderColor: myReaction === reactionKey ? "#60a5fa" : "#cbd5e1",
-              backgroundColor: myReaction === reactionKey ? "#eff6ff" : "#ffffff",
-              borderRadius: 999,
-              paddingHorizontal: 8,
-              paddingVertical: 2,
-            }}
-          >
-            <Text style={{ fontSize: 11, color: myReaction === reactionKey ? "#1d4ed8" : "#475569" }}>
-              {REACTION_EMOJI[reactionKey]} {counts[reactionKey]}
-            </Text>
-          </View>
-        ))}
+      <View
+        style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 }}
+      >
+        {(Object.keys(counts) as MessageReaction["reaction"][]).map(
+          (reactionKey) => (
+            <View
+              key={`${msg.id}-${reactionKey}`}
+              style={{
+                borderWidth: 1,
+                borderColor: myReaction === reactionKey ? "#60a5fa" : "#cbd5e1",
+                backgroundColor:
+                  myReaction === reactionKey ? "#eff6ff" : "#ffffff",
+                borderRadius: 999,
+                paddingHorizontal: 8,
+                paddingVertical: 2,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: myReaction === reactionKey ? "#1d4ed8" : "#475569",
+                }}
+              >
+                {REACTION_EMOJI[reactionKey]} {counts[reactionKey]}
+              </Text>
+            </View>
+          ),
+        )}
       </View>
     );
   }
@@ -837,13 +1392,33 @@ export default function ChatsScreen() {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               className="flex-row items-center px-2 py-2 mr-2"
             >
-              <Text className="text-blue-600 text-base font-semibold">← Danh sách</Text>
+              <Text className="text-blue-600 text-base font-semibold">
+                ← Danh sách
+              </Text>
             </TouchableOpacity>
-            <Image source={{ uri: activeConv.avatar }} className="w-10 h-10 rounded-full bg-slate-200 mr-3" />
+            <Image
+              source={{ uri: activeConv.avatar }}
+              className="w-10 h-10 rounded-full bg-slate-200 mr-3"
+            />
             <View className="flex-1">
-              <Text className="font-semibold text-slate-800" numberOfLines={1}>{activeConv.name}</Text>
-              <Text className="text-xs text-slate-400">{activeConv.type === "group" ? "Nhóm" : "Trực tiếp"}</Text>
+              <Text className="font-semibold text-slate-800" numberOfLines={1}>
+                {activeConv.name}
+              </Text>
+              <Text className="text-xs text-slate-400">
+                {typingIndicatorText ??
+                  (activeConv.type === "group" ? "Nhóm" : "Trực tiếp")}
+              </Text>
             </View>
+            {activeConv.type === "group" && (
+              <TouchableOpacity
+                onPress={() => void openGroupManager()}
+                className="px-3 py-1.5 rounded-xl bg-slate-100"
+              >
+                <Text className="text-xs font-semibold text-slate-700">
+                  Quản lý
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Messages */}
@@ -856,16 +1431,25 @@ export default function ChatsScreen() {
               ref={scrollRef}
               className="flex-1 px-4 py-3"
               keyboardShouldPersistTaps="handled"
-              onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+              onContentSizeChange={() =>
+                scrollRef.current?.scrollToEnd({ animated: true })
+              }
               {...chatSwipeResponder.panHandlers}
             >
               {/* System greeting when no messages yet */}
               {messages.length === 0 && (
                 <View className="items-center mt-8 mb-4">
-                  <Image source={{ uri: activeConv.avatar }} className="w-20 h-20 rounded-full bg-slate-200 mb-3" />
-                  <Text className="font-bold text-slate-800 text-base">{activeConv.name}</Text>
+                  <Image
+                    source={{ uri: activeConv.avatar }}
+                    className="w-20 h-20 rounded-full bg-slate-200 mb-3"
+                  />
+                  <Text className="font-bold text-slate-800 text-base">
+                    {activeConv.name}
+                  </Text>
                   <View className="mt-4 bg-slate-100 rounded-2xl px-5 py-3 mx-8">
-                    <Text className="text-slate-500 text-sm text-center">{SYSTEM_GREETING}</Text>
+                    <Text className="text-slate-500 text-sm text-center">
+                      {SYSTEM_GREETING}
+                    </Text>
                   </View>
                 </View>
               )}
@@ -879,26 +1463,44 @@ export default function ChatsScreen() {
                   return (
                     <View key={msg.id} className="items-center my-3">
                       <View className="bg-slate-100 rounded-full px-4 py-1.5">
-                        <Text className="text-slate-500 text-xs">{msg.content}</Text>
+                        <Text className="text-slate-500 text-xs">
+                          {msg.content}
+                        </Text>
                       </View>
                     </View>
                   );
                 }
 
-                const myReaction = (msg.reactions ?? []).find((item) => item.user_id === currentUserId)?.reaction;
+                const myReaction = (msg.reactions ?? []).find(
+                  (item) => item.user_id === currentUserId,
+                )?.reaction;
 
                 return (
-                  <View key={msg.id} className={`flex-row items-end mb-3 ${isMe ? "justify-end" : "justify-start"}`}>
+                  <View
+                    key={msg.id}
+                    className={`flex-row items-end mb-3 ${isMe ? "justify-end" : "justify-start"}`}
+                  >
                     {!isMe && (
                       <Image
-                        source={{ uri: userCache[msg.sender_id]?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.sender_id}` }}
+                        source={{
+                          uri:
+                            userCache[msg.sender_id]?.avatarUrl ||
+                            `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.sender_id}`,
+                        }}
                         className="w-8 h-8 rounded-full bg-slate-200 mr-2"
                       />
                     )}
-                    <View style={{ maxWidth: "75%", alignItems: isMe ? "flex-end" : "flex-start" }}>
+                    <View
+                      style={{
+                        maxWidth: "75%",
+                        alignItems: isMe ? "flex-end" : "flex-start",
+                      }}
+                    >
                       {!isMe && (
                         <Text className="text-[10px] text-slate-400 mb-0.5 ml-1">
-                          {userCache[msg.sender_id]?.fullName || msg.sender_name || ""}
+                          {userCache[msg.sender_id]?.fullName ||
+                            msg.sender_name ||
+                            ""}
                         </Text>
                       )}
                       <Pressable
@@ -908,7 +1510,11 @@ export default function ChatsScreen() {
                           )
                         }
                         delayLongPress={250}
-                        style={{ flexDirection: "row", alignItems: "flex-end", gap: 6 }}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "flex-end",
+                          gap: 6,
+                        }}
                       >
                         <View
                           style={{
@@ -936,13 +1542,19 @@ export default function ChatsScreen() {
                             justifyContent: isMe ? "flex-end" : "flex-start",
                           }}
                         >
-                          {(Object.keys(REACTION_EMOJI) as MessageReaction["reaction"][]).map((reactionKey) => (
+                          {(
+                            Object.keys(
+                              REACTION_EMOJI,
+                            ) as MessageReaction["reaction"][]
+                          ).map((reactionKey) => (
                             <TouchableOpacity
                               key={`${msg.id}-react-${reactionKey}`}
                               onPress={() =>
                                 void handleReactMessage(
                                   msg,
-                                  myReaction === reactionKey ? undefined : reactionKey,
+                                  myReaction === reactionKey
+                                    ? undefined
+                                    : reactionKey,
                                 )
                               }
                               style={{
@@ -954,18 +1566,28 @@ export default function ChatsScreen() {
                                 paddingVertical: 2,
                               }}
                             >
-                              <Text style={{ fontSize: 12 }}>{REACTION_EMOJI[reactionKey]}</Text>
+                              <Text style={{ fontSize: 12 }}>
+                                {REACTION_EMOJI[reactionKey]}
+                              </Text>
                             </TouchableOpacity>
                           ))}
 
                           {isMe && (
-                            <TouchableOpacity onPress={() => void handleRecallMessage(msg)}>
-                              <Text className="text-[11px] text-rose-500 font-medium">Thu hồi</Text>
+                            <TouchableOpacity
+                              onPress={() => void handleRecallMessage(msg)}
+                            >
+                              <Text className="text-[11px] text-rose-500 font-medium">
+                                Thu hồi
+                              </Text>
                             </TouchableOpacity>
                           )}
 
-                          <TouchableOpacity onPress={() => void handleDeleteMessage(msg)}>
-                            <Text className="text-[11px] text-rose-500 font-medium">Xóa</Text>
+                          <TouchableOpacity
+                            onPress={() => void handleDeleteMessage(msg)}
+                          >
+                            <Text className="text-[11px] text-rose-500 font-medium">
+                              Xóa
+                            </Text>
                           </TouchableOpacity>
                         </View>
                       )}
@@ -983,15 +1605,19 @@ export default function ChatsScreen() {
           {/* Quick greetings when no messages */}
           {!loadingMsgs && messages.length === 0 && (
             <View className="flex-row flex-wrap gap-2 px-4 pb-2 justify-center">
-              {["👋 Xin chào!", "Hi bạn 😊", "Chào mừng bạn bè mới!"].map((greeting) => (
-                <TouchableOpacity
-                  key={greeting}
-                  onPress={() => setInputText(greeting)}
-                  className="bg-blue-50 border border-blue-200 rounded-full px-4 py-1.5"
-                >
-                  <Text className="text-blue-600 text-sm font-medium">{greeting}</Text>
-                </TouchableOpacity>
-              ))}
+              {["👋 Xin chào!", "Hi bạn 😊", "Chào mừng bạn bè mới!"].map(
+                (greeting) => (
+                  <TouchableOpacity
+                    key={greeting}
+                    onPress={() => setInputText(greeting)}
+                    className="bg-blue-50 border border-blue-200 rounded-full px-4 py-1.5"
+                  >
+                    <Text className="text-blue-600 text-sm font-medium">
+                      {greeting}
+                    </Text>
+                  </TouchableOpacity>
+                ),
+              )}
             </View>
           )}
 
@@ -1010,29 +1636,301 @@ export default function ChatsScreen() {
               disabled={!inputText.trim() || sending}
               className={`px-4 py-2.5 rounded-2xl ${inputText.trim() && !sending ? "bg-blue-600" : "bg-slate-200"}`}
             >
-              {sending
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <Text className={`font-semibold text-sm ${inputText.trim() ? "text-white" : "text-slate-400"}`}>Gửi</Text>
-              }
+              {sending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text
+                  className={`font-semibold text-sm ${inputText.trim() ? "text-white" : "text-slate-400"}`}
+                >
+                  Gửi
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
+
+          <Modal
+            visible={showGroupManager}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowGroupManager(false)}
+          >
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: "rgba(15,23,42,0.45)",
+                justifyContent: "flex-end",
+              }}
+            >
+              <View
+                style={{
+                  maxHeight: "84%",
+                  backgroundColor: "#ffffff",
+                  borderTopLeftRadius: 20,
+                  borderTopRightRadius: 20,
+                }}
+              >
+                <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-200">
+                  <Text className="text-base font-bold text-slate-800">
+                    Quản lý nhóm
+                  </Text>
+                  <TouchableOpacity onPress={() => setShowGroupManager(false)}>
+                    <Text className="text-slate-500 font-semibold">Đóng</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {groupLoading ? (
+                  <View className="py-10 items-center">
+                    <ActivityIndicator size="small" color="#2563EB" />
+                    <Text className="text-xs text-slate-500 mt-2">
+                      Đang tải...
+                    </Text>
+                  </View>
+                ) : (
+                  <ScrollView className="px-4 py-3">
+                    {groupError ? (
+                      <Text className="text-xs text-rose-600 mb-3">
+                        {groupError}
+                      </Text>
+                    ) : null}
+
+                    <Text className="text-sm font-semibold text-slate-700 mb-2">
+                      Thành viên
+                    </Text>
+                    {groupMembers.map((member) => {
+                      const memberName =
+                        member.profile?.fullName ||
+                        userCache[member.userId]?.fullName ||
+                        `Người dùng ${member.userId.slice(0, 6)}`;
+                      const isSelf = member.userId === currentUserId;
+                      const canOwnerChangeRole =
+                        isGroupOwner && !isSelf && member.role !== "owner";
+
+                      return (
+                        <View
+                          key={member.userId}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: "#e2e8f0",
+                            borderRadius: 12,
+                            padding: 10,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Text className="text-sm font-medium text-slate-800">
+                            {memberName}
+                          </Text>
+                          <Text className="text-xs text-slate-500 mt-0.5">
+                            {member.role === "owner"
+                              ? "Chủ nhóm"
+                              : member.role === "admin"
+                                ? "Phó nhóm"
+                                : "Thành viên"}
+                            {isSelf ? " (Bạn)" : ""}
+                          </Text>
+
+                          {canOwnerChangeRole && (
+                            <View className="flex-row flex-wrap gap-2 mt-2">
+                              {member.role === "member" ? (
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    void handleUpdateMemberRole(
+                                      member.userId,
+                                      "admin",
+                                    )
+                                  }
+                                  disabled={
+                                    groupBusyAction ===
+                                    `role-${member.userId}-admin`
+                                  }
+                                  className="px-2.5 py-1 rounded-lg bg-blue-50"
+                                >
+                                  <Text className="text-[11px] font-semibold text-blue-700">
+                                    Gán phó nhóm
+                                  </Text>
+                                </TouchableOpacity>
+                              ) : (
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    void handleUpdateMemberRole(
+                                      member.userId,
+                                      "member",
+                                    )
+                                  }
+                                  disabled={
+                                    groupBusyAction ===
+                                    `role-${member.userId}-member`
+                                  }
+                                  className="px-2.5 py-1 rounded-lg bg-slate-100"
+                                >
+                                  <Text className="text-[11px] font-semibold text-slate-700">
+                                    Hạ thành viên
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+
+                              <TouchableOpacity
+                                onPress={() =>
+                                  void handleUpdateMemberRole(
+                                    member.userId,
+                                    "owner",
+                                  )
+                                }
+                                disabled={
+                                  groupBusyAction ===
+                                  `role-${member.userId}-owner`
+                                }
+                                className="px-2.5 py-1 rounded-lg bg-amber-50"
+                              >
+                                <Text className="text-[11px] font-semibold text-amber-700">
+                                  Chuyển chủ nhóm
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+
+                          {canManageGroupMembers && !isSelf && (
+                            <TouchableOpacity
+                              onPress={() =>
+                                void handleRemoveMemberFromGroup(member.userId)
+                              }
+                              disabled={
+                                groupBusyAction === `remove-${member.userId}`
+                              }
+                              className="mt-2 px-2.5 py-1 rounded-lg bg-rose-50 self-start"
+                            >
+                              <Text className="text-[11px] font-semibold text-rose-700">
+                                Xóa khỏi nhóm
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })}
+
+                    {canManageGroupMembers && (
+                      <>
+                        <Text className="text-sm font-semibold text-slate-700 mt-2 mb-2">
+                          Thêm thành viên
+                        </Text>
+                        {groupCandidates.length === 0 ? (
+                          <Text className="text-xs text-slate-500 mb-3">
+                            Không còn bạn bè để thêm.
+                          </Text>
+                        ) : (
+                          <>
+                            {groupCandidates.map((friend) => {
+                              const selected = selectedAddMemberIds.includes(
+                                friend.id,
+                              );
+                              return (
+                                <TouchableOpacity
+                                  key={friend.id}
+                                  onPress={() => {
+                                    setSelectedAddMemberIds((prev) =>
+                                      prev.includes(friend.id)
+                                        ? prev.filter((id) => id !== friend.id)
+                                        : [...prev, friend.id],
+                                    );
+                                  }}
+                                  style={{
+                                    borderWidth: 1,
+                                    borderColor: selected
+                                      ? "#3b82f6"
+                                      : "#e2e8f0",
+                                    backgroundColor: selected
+                                      ? "#eff6ff"
+                                      : "#ffffff",
+                                    borderRadius: 10,
+                                    paddingVertical: 8,
+                                    paddingHorizontal: 10,
+                                    marginBottom: 6,
+                                  }}
+                                >
+                                  <Text className="text-sm text-slate-700">
+                                    {friend.fullName}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+
+                            <TouchableOpacity
+                              onPress={() => void handleAddMembersToGroup()}
+                              disabled={
+                                selectedAddMemberIds.length === 0 ||
+                                groupBusyAction === "add"
+                              }
+                              className={`mt-2 px-3 py-2 rounded-xl ${selectedAddMemberIds.length > 0 ? "bg-blue-600" : "bg-slate-300"}`}
+                            >
+                              <Text className="text-center text-white text-xs font-semibold">
+                                {groupBusyAction === "add"
+                                  ? "Đang thêm..."
+                                  : `Thêm ${selectedAddMemberIds.length} thành viên`}
+                              </Text>
+                            </TouchableOpacity>
+                          </>
+                        )}
+                      </>
+                    )}
+
+                    <View className="mt-4 mb-2">
+                      <TouchableOpacity
+                        onPress={() => void handleLeaveGroup()}
+                        disabled={groupBusyAction === "leave"}
+                        className="px-3 py-2 rounded-xl bg-orange-50"
+                      >
+                        <Text className="text-center text-orange-700 font-semibold text-sm">
+                          {groupBusyAction === "leave"
+                            ? "Đang rời nhóm..."
+                            : "Rời nhóm"}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {isGroupOwner && (
+                        <TouchableOpacity
+                          onPress={() => void handleDeleteGroup()}
+                          disabled={groupBusyAction === "delete"}
+                          className="mt-2 px-3 py-2 rounded-xl bg-rose-50"
+                        >
+                          <Text className="text-center text-rose-700 font-semibold text-sm">
+                            {groupBusyAction === "delete"
+                              ? "Đang giải tán..."
+                              : "Giải tán nhóm"}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </ScrollView>
+                )}
+              </View>
+            </View>
+          </Modal>
         </KeyboardAvoidingView>
       ) : (
         <>
           <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-200">
             <View className="flex-row items-center gap-3">
               <Image
-                source={{ uri: user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUserId}` }}
+                source={{
+                  uri:
+                    user?.avatarUrl ||
+                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUserId}`,
+                }}
                 className="w-10 h-10 rounded-full bg-slate-200"
               />
               <View>
-                <Text className="text-base font-bold text-slate-800">Tin nhắn</Text>
-                <Text className="text-xs text-slate-400">{isConnected ? "● Đã kết nối" : "○ Đang kết nối..."}</Text>
+                <Text className="text-base font-bold text-slate-800">
+                  Tin nhắn
+                </Text>
+                <Text className="text-xs text-slate-400">
+                  {isConnected ? "● Đã kết nối" : "○ Đang kết nối..."}
+                </Text>
               </View>
             </View>
             {totalUnread > 0 && (
               <View className="bg-red-500 rounded-full min-w-[22px] h-[22px] items-center justify-center px-1.5">
-                <Text className="text-white text-xs font-bold">{totalUnread}</Text>
+                <Text className="text-white text-xs font-bold">
+                  {totalUnread}
+                </Text>
               </View>
             )}
           </View>
@@ -1059,18 +1957,25 @@ export default function ChatsScreen() {
               <View className="w-20 h-20 bg-blue-50 rounded-full items-center justify-center mb-4">
                 <Text className="text-4xl">💬</Text>
               </View>
-              <Text className="text-slate-600 font-medium">Chưa có cuộc trò chuyện</Text>
-              <Text className="text-slate-400 text-xs mt-1">Kết bạn để bắt đầu nhắn tin</Text>
+              <Text className="text-slate-600 font-medium">
+                Chưa có cuộc trò chuyện
+              </Text>
+              <Text className="text-slate-400 text-xs mt-1">
+                Kết bạn để bắt đầu nhắn tin
+              </Text>
             </View>
           ) : (
             <FlatList
               data={filteredConversations}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => {
-                const { text: previewText, file: previewFile } = parseMessageContent(item.preview);
+                const { text: previewText, file: previewFile } =
+                  parseMessageContent(item.preview);
                 const displayPreview = previewFile
-                  ? (previewFile.mimetype?.startsWith("image/") ? "🖼 Hình ảnh" : `📎 ${previewFile.originalName}`)
-                  : (previewText || item.preview);
+                  ? previewFile.mimetype?.startsWith("image/")
+                    ? "🖼 Hình ảnh"
+                    : `📎 ${previewFile.originalName}`
+                  : previewText || item.preview;
 
                 return (
                   <TouchableOpacity
@@ -1078,15 +1983,25 @@ export default function ChatsScreen() {
                     className="flex-row items-center px-4 py-3 border-b border-slate-50"
                   >
                     <View className="relative">
-                      <Image source={{ uri: item.avatar }} className="w-14 h-14 rounded-full bg-slate-200" />
+                      <Image
+                        source={{ uri: item.avatar }}
+                        className="w-14 h-14 rounded-full bg-slate-200"
+                      />
                       {item.online && (
                         <View className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
                       )}
                     </View>
                     <View className="flex-1 ml-4">
                       <View className="flex-row justify-between items-center mb-0.5">
-                        <Text className="text-base font-semibold text-slate-800" numberOfLines={1}>{item.name}</Text>
-                        <Text className="text-xs text-slate-400">{item.time}</Text>
+                        <Text
+                          className="text-base font-semibold text-slate-800"
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+                        <Text className="text-xs text-slate-400">
+                          {item.time}
+                        </Text>
                       </View>
                       <View className="flex-row justify-between items-center">
                         <Text
@@ -1097,7 +2012,9 @@ export default function ChatsScreen() {
                         </Text>
                         {item.unread > 0 && (
                           <View className="bg-red-500 rounded-full min-w-[20px] h-5 items-center justify-center px-1">
-                            <Text className="text-white text-xs font-bold">{item.unread}</Text>
+                            <Text className="text-white text-xs font-bold">
+                              {item.unread}
+                            </Text>
                           </View>
                         )}
                       </View>

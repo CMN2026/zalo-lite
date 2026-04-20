@@ -18,6 +18,7 @@ import { verifyToken } from "./utils/jwt.js";
 import { MessageService } from "./services/message.service.js";
 import { ConversationRepository } from "./repositories/conversation.repository.js";
 import { initUserClientService } from "./services/user-client.service.js";
+import { setRealtimeServer } from "./realtime/socket-emitter.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -27,6 +28,7 @@ const io = new Server(server, {
     credentials: true,
   },
 });
+setRealtimeServer(io);
 
 const messageService = new MessageService();
 const conversationRepository = new ConversationRepository();
@@ -207,15 +209,83 @@ io.on("connection", async (socket) => {
     }
   });
 
+  socket.on("join_conversation", async (payload) => {
+    const conversationId =
+      payload && typeof payload.conversation_id === "string"
+        ? payload.conversation_id.trim()
+        : "";
+
+    if (!conversationId) {
+      socket.emit("join_conversation_error", {
+        message: "invalid_conversation_id",
+      });
+      return;
+    }
+
+    try {
+      const members =
+        await conversationRepository.getConversationMembers(conversationId);
+      const canJoin = members.some((member) => member.userId === userId);
+
+      if (!canJoin) {
+        socket.emit("join_conversation_error", {
+          conversation_id: conversationId,
+          message: "not_a_member",
+        });
+        return;
+      }
+
+      socket.join(`conversation_${conversationId}`);
+      socket.emit("join_conversation_ack", {
+        conversation_id: conversationId,
+        ok: true,
+      });
+    } catch (error) {
+      socket.emit("join_conversation_error", {
+        conversation_id: conversationId,
+        message: error instanceof Error ? error.message : "join_failed",
+      });
+    }
+  });
+
+  socket.on("leave_conversation", (payload) => {
+    const conversationId =
+      payload && typeof payload.conversation_id === "string"
+        ? payload.conversation_id.trim()
+        : "";
+
+    if (!conversationId) {
+      socket.emit("leave_conversation_error", {
+        message: "invalid_conversation_id",
+      });
+      return;
+    }
+
+    socket.leave(`conversation_${conversationId}`);
+    socket.emit("leave_conversation_ack", {
+      conversation_id: conversationId,
+      ok: true,
+    });
+  });
+
   // TYPING EVENT
   socket.on("message:typing", (payload) => {
-    socket
-      .to(`conversation_${payload.conversation_id}`)
-      .emit("message:typing", {
-        conversation_id: payload.conversation_id,
-        user_id: userId,
-        timestamp: Date.now(),
-      });
+    const conversationId =
+      payload && typeof payload.conversation_id === "string"
+        ? payload.conversation_id.trim()
+        : "";
+    if (!conversationId) {
+      return;
+    }
+
+    const isTyping = payload?.is_typing !== false;
+
+    socket.to(`conversation_${conversationId}`).emit("message:typing", {
+      conversation_id: conversationId,
+      user_id: userId,
+      is_typing: isTyping,
+      timestamp: Date.now(),
+    });
   });
 
   // READ RECEIPT EVENT
@@ -376,15 +446,19 @@ async function bootstrap() {
       content: string;
     };
 
-    void messageService
-      .persistIncomingMessage(message)
-      .catch((error) => {
-        console.error("Failed to persist broadcasted message", error);
-      });
+    void messageService.persistIncomingMessage(message).catch((error) => {
+      console.error("Failed to persist broadcasted message", error);
+    });
 
     // Keep backward compatibility while standardizing on message:receive.
-    io.to(`conversation_${message.conversation_id}`).emit("receive_message", message);
-    io.to(`conversation_${message.conversation_id}`).emit("message:receive", message);
+    io.to(`conversation_${message.conversation_id}`).emit(
+      "receive_message",
+      message,
+    );
+    io.to(`conversation_${message.conversation_id}`).emit(
+      "message:receive",
+      message,
+    );
   });
 
   // Subscribe to message read events

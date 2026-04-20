@@ -55,9 +55,11 @@ export class UserClientService {
    */
   async getUserById(userId: string): Promise<UserBasic> {
     try {
+      const token = this.buildInternalUserToken(userId);
       const response = await fetch(`${this.baseUrl}/users/${userId}`, {
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
       });
 

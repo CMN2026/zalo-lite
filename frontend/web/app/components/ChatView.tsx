@@ -214,9 +214,7 @@ async function authJsonRequest<T>(
       ? `${path.includes("?") ? "&" : "?"}_ts=${Date.now()}`
       : "";
 
-  const fallbackPath = path.startsWith("/api/")
-    ? path.slice(4)
-    : path;
+  const fallbackPath = path.startsWith("/api/") ? path.slice(4) : path;
 
   const targets = [
     { baseUrl: API_BASE_URL, requestPath: path, tag: "gateway" as const },
@@ -268,7 +266,8 @@ async function authJsonRequest<T>(
 
       return (await response.json()) as T;
     } catch (error) {
-      const typedError = error instanceof Error ? error : new Error(String(error));
+      const typedError =
+        error instanceof Error ? error : new Error(String(error));
 
       if (typedError.name === "AbortError") {
         lastError = new Error("http_timeout");
@@ -292,7 +291,7 @@ async function authJsonRequest<T>(
     }
   }
 
-  throw (lastError ?? new Error("request_failed"));
+  throw lastError ?? new Error("request_failed");
 }
 
 export default function ChatView({
@@ -363,7 +362,14 @@ export default function ChatView({
   const composerBlockedMessage = activeBlockState?.blockedByCurrentUser
     ? "Bạn đã chặn người này. Mở chặn để tiếp tục nhắn tin."
     : "Bạn đã bị chặn. Chỉ có thể nhắn lại khi đối phương mở chặn.";
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
+  const typingUserTimeoutsRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
+  const localTypingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const localTypingActiveRef = useRef(false);
   const conversationsRef = useRef<Conversation[]>([]);
   const isLoadingConversationsRef = useRef(false);
   const conversationsRetryAfterRef = useRef(0);
@@ -740,6 +746,89 @@ export default function ChatView({
       return acc;
     }, {});
   }, [allUsers]);
+
+  const clearTypingUsers = useCallback(() => {
+    Object.values(typingUserTimeoutsRef.current).forEach((timer) => {
+      clearTimeout(timer);
+    });
+    typingUserTimeoutsRef.current = {};
+    setTypingUserIds([]);
+  }, []);
+
+  const emitTypingState = useCallback(
+    (isTyping: boolean) => {
+      if (!activeChatId || !isConnected) {
+        return;
+      }
+
+      emit("message:typing", {
+        conversation_id: activeChatId,
+        is_typing: isTyping,
+      });
+      localTypingActiveRef.current = isTyping;
+    },
+    [activeChatId, emit, isConnected],
+  );
+
+  const handleLocalTypingChange = useCallback(
+    (value: string) => {
+      const hasText = value.trim().length > 0;
+
+      if (!activeChatId || !isConnected || isComposerBlocked) {
+        if (localTypingStopTimerRef.current) {
+          clearTimeout(localTypingStopTimerRef.current);
+          localTypingStopTimerRef.current = null;
+        }
+
+        if (localTypingActiveRef.current) {
+          emitTypingState(false);
+        }
+        return;
+      }
+
+      if (hasText && !localTypingActiveRef.current) {
+        emitTypingState(true);
+      }
+
+      if (localTypingStopTimerRef.current) {
+        clearTimeout(localTypingStopTimerRef.current);
+      }
+
+      localTypingStopTimerRef.current = setTimeout(() => {
+        if (localTypingActiveRef.current) {
+          emitTypingState(false);
+        }
+      }, 3000);
+
+      if (!hasText && localTypingActiveRef.current) {
+        emitTypingState(false);
+      }
+    },
+    [activeChatId, emitTypingState, isComposerBlocked, isConnected],
+  );
+
+  const typingIndicatorText = useMemo(() => {
+    if (!activeChat || typingUserIds.length === 0) {
+      return null;
+    }
+
+    const typingNames = typingUserIds
+      .map((userId) => {
+        const match = allUsers.find((entry) => entry.id === userId);
+        return match?.fullName || match?.email || "Ai đó";
+      })
+      .filter(Boolean);
+
+    if (typingNames.length === 0) {
+      return "Đang nhập...";
+    }
+
+    if (typingNames.length === 1) {
+      return `${typingNames[0]} đang nhập...`;
+    }
+
+    return `${typingNames.length} người đang nhập...`;
+  }, [activeChat, allUsers, typingUserIds]);
 
   const fetchLatestMessagesByConversation = useCallback(
     async (conversationIds: string[]) => {
@@ -1245,6 +1334,19 @@ export default function ChatView({
   }, [activeChatId, isConnected, join, leave]);
 
   useEffect(() => {
+    clearTypingUsers();
+  }, [activeChatId, clearTypingUsers]);
+
+  useEffect(() => {
+    return () => {
+      clearTypingUsers();
+      if (localTypingStopTimerRef.current) {
+        clearTimeout(localTypingStopTimerRef.current);
+      }
+    };
+  }, [clearTypingUsers]);
+
+  useEffect(() => {
     if (!activeChatId) {
       return;
     }
@@ -1573,10 +1675,49 @@ export default function ChatView({
     };
 
     const handleTyping = (payload: unknown) => {
-      const data = payload as { conversation_id: string };
-      if (data.conversation_id !== activeChatId) return;
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {}, 3000);
+      const data = payload as {
+        conversation_id?: unknown;
+        conversationId?: unknown;
+        user_id?: unknown;
+        userId?: unknown;
+        is_typing?: unknown;
+      };
+
+      const conversationId = normalizeConversationId(
+        data.conversation_id ?? data.conversationId,
+      );
+      const senderIdRaw = data.user_id ?? data.userId;
+      const senderId =
+        typeof senderIdRaw === "string" ? senderIdRaw.trim() : "";
+      const isTyping = data.is_typing !== false;
+
+      if (!conversationId || conversationId !== activeChatId || !senderId) {
+        return;
+      }
+
+      if (senderId === currentUserId) {
+        return;
+      }
+
+      const existingTimer = typingUserTimeoutsRef.current[senderId];
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        delete typingUserTimeoutsRef.current[senderId];
+      }
+
+      if (!isTyping) {
+        setTypingUserIds((prev) => prev.filter((id) => id !== senderId));
+        return;
+      }
+
+      setTypingUserIds((prev) =>
+        prev.includes(senderId) ? prev : [...prev, senderId],
+      );
+
+      typingUserTimeoutsRef.current[senderId] = setTimeout(() => {
+        delete typingUserTimeoutsRef.current[senderId];
+        setTypingUserIds((prev) => prev.filter((id) => id !== senderId));
+      }, 6000);
     };
 
     const handleMessageDeleted = (payload: unknown) => {
@@ -1605,6 +1746,127 @@ export default function ChatView({
       void loadConversations();
     };
 
+    const handleConversationDeleted = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      if (!conversationId) {
+        return;
+      }
+
+      if (activeChatId === conversationId) {
+        setActiveChatId(null);
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
+    const handleConversationCreated = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      if (!conversationId) {
+        return;
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
+    const handleConversationMemberLeft = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+        user_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      const userId = typeof data.user_id === "string" ? data.user_id : "";
+
+      if (!conversationId) {
+        return;
+      }
+
+      if (activeChatId === conversationId && userId === currentUserId) {
+        setActiveChatId(null);
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
+    const handleConversationMemberRemoved = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+        user_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      const removedUserId =
+        typeof data.user_id === "string" ? data.user_id.trim() : "";
+
+      if (!conversationId) {
+        return;
+      }
+
+      if (activeChatId === conversationId && removedUserId === currentUserId) {
+        setActiveChatId(null);
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
+    const handleConversationMemberRoleUpdated = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      if (!conversationId) {
+        return;
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
+    const handleConversationMembersAdded = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      if (!conversationId) {
+        return;
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
     on("message:send_ack", handleSendAck);
     on("receive_message", handleMessageReceive);
     on("message:receive", handleMessageReceive);
@@ -1620,6 +1882,12 @@ export default function ChatView({
     on("message:recall_error", handleActionError);
     on("message:reaction_error", handleActionError);
     on("notification:reply", handleReplyNotification);
+    on("conversation:created", handleConversationCreated);
+    on("conversation:deleted", handleConversationDeleted);
+    on("conversation:member_left", handleConversationMemberLeft);
+    on("conversation:member_removed", handleConversationMemberRemoved);
+    on("conversation:member_role_updated", handleConversationMemberRoleUpdated);
+    on("conversation:members_added", handleConversationMembersAdded);
 
     return () => {
       off("message:send_ack", handleSendAck);
@@ -1637,6 +1905,15 @@ export default function ChatView({
       off("message:recall_error", handleActionError);
       off("message:reaction_error", handleActionError);
       off("notification:reply", handleReplyNotification);
+      off("conversation:created", handleConversationCreated);
+      off("conversation:deleted", handleConversationDeleted);
+      off("conversation:member_left", handleConversationMemberLeft);
+      off("conversation:member_removed", handleConversationMemberRemoved);
+      off(
+        "conversation:member_role_updated",
+        handleConversationMemberRoleUpdated,
+      );
+      off("conversation:members_added", handleConversationMembersAdded);
     };
   }, [
     activeChatId,
@@ -1657,6 +1934,14 @@ export default function ChatView({
 
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || !activeChatId || isComposerBlocked) return;
+
+    if (localTypingStopTimerRef.current) {
+      clearTimeout(localTypingStopTimerRef.current);
+      localTypingStopTimerRef.current = null;
+    }
+    if (localTypingActiveRef.current) {
+      emitTypingState(false);
+    }
 
     const replyTarget = replyingTo;
     setReplyingTo(null);
@@ -2336,6 +2621,19 @@ export default function ChatView({
               onDelete={handleDeleteMessage}
             />
 
+            {typingIndicatorText && (
+              <div className="px-4 pb-1">
+                <div className="inline-flex max-w-[78%] items-center gap-2 px-1 py-0.5 text-[12px] text-[#3f4956]">
+                  <span className="inline-flex items-center gap-1.5 text-[#0d6efd]">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#0d6efd] [animation-duration:900ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#0d6efd] [animation-delay:120ms] [animation-duration:900ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#0d6efd] [animation-delay:240ms] [animation-duration:900ms]" />
+                  </span>
+                  <span className="truncate">{typingIndicatorText}</span>
+                </div>
+              </div>
+            )}
+
             <MessageInput
               onSendMessage={handleSendMessage}
               onSendFile={handleSendFile}
@@ -2351,6 +2649,7 @@ export default function ChatView({
                   : undefined
               }
               onCancelReply={() => setReplyingTo(null)}
+              onTypingChange={handleLocalTypingChange}
             />
             {chatNotice && (
               <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">

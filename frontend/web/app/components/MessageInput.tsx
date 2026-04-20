@@ -6,6 +6,7 @@ import { Send, Paperclip, Smile, X, Loader } from "lucide-react";
 interface MessageInputProps {
   onSendMessage: (message: string) => void;
   onSendFile: (file: File, caption?: string) => void;
+  onTypingChange?: (value: string) => void;
   isLoading?: boolean;
   isConnected?: boolean;
   disabled?: boolean;
@@ -18,6 +19,7 @@ interface MessageInputProps {
 export default function MessageInput({
   onSendMessage,
   onSendFile,
+  onTypingChange,
   isLoading = false,
   isConnected = true,
   disabled = false,
@@ -30,6 +32,7 @@ export default function MessageInput({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const wasTypingRef = useRef(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const safeMessage = typeof message === "string" ? message : "";
@@ -79,6 +82,24 @@ export default function MessageInput({
     };
   }, [showEmojiPicker]);
 
+  useEffect(() => {
+    const isTyping = safeMessage.trim().length > 0 && !disabled;
+
+    if (isTyping || wasTypingRef.current) {
+      onTypingChange?.(safeMessage);
+    }
+
+    wasTypingRef.current = isTyping;
+  }, [disabled, onTypingChange, safeMessage]);
+
+  useEffect(() => {
+    return () => {
+      if (wasTypingRef.current) {
+        onTypingChange?.("");
+      }
+    };
+  }, [onTypingChange]);
+
   const clearSelectedFile = () => {
     setSelectedFile(null);
     if (fileInputRef.current) {
@@ -90,6 +111,7 @@ export default function MessageInput({
     if (safeMessage.trim() && !isLoading && !disabled) {
       onSendMessage(safeMessage.trim());
       setMessage("");
+      onTypingChange?.("");
       setShowEmojiPicker(false);
     }
   };
@@ -157,6 +179,7 @@ export default function MessageInput({
         onSendFile(selectedFile, safeMessage.trim() || undefined);
         clearSelectedFile();
         setMessage("");
+        onTypingChange?.("");
         setShowEmojiPicker(false);
       } catch (error) {
         console.error("Error sending file:", error);
