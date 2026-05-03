@@ -1,5 +1,6 @@
 import "dotenv/config";
 import http from "node:http";
+import { randomUUID } from "node:crypto";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -7,15 +8,17 @@ import rateLimit from "express-rate-limit";
 import { Server } from "socket.io";
 import { env } from "./config/env.js";
 import { ensureTables } from "./config/dynamodb.js";
-import { connectRedis, redisSubscriber } from "./config/redis.js";
+import { connectRedis, redisPublisher, redisSubscriber } from "./config/redis.js";
 import { authMiddleware } from "./middlewares/auth.middleware.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { setupFileServer } from "./middlewares/upload.middleware.js";
 import { friendRoutes } from "./routes/friend.routes.js";
 import { conversationRoutes } from "./routes/conversation.routes.js";
 import { messageRoutes } from "./routes/message.routes.js";
+import { callRoutes } from "./routes/call.routes.js";
 import { verifyToken } from "./utils/jwt.js";
 import { MessageService } from "./services/message.service.js";
+import { CallService } from "./services/call.service.js";
 import { ConversationRepository } from "./repositories/conversation.repository.js";
 import { initUserClientService } from "./services/user-client.service.js";
 import { setRealtimeServer } from "./realtime/socket-emitter.js";
@@ -24,14 +27,105 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:3000", "http://localhost:3003", "*"],
+    origin: env.CORS_ORIGINS.length > 0 ? env.CORS_ORIGINS : "*",
     credentials: true,
   },
 });
 setRealtimeServer(io);
 
 const messageService = new MessageService();
+const callService = new CallService();
 const conversationRepository = new ConversationRepository();
+const callSignalingInstanceId = randomUUID();
+
+type CallSignalEventName =
+  | "call:initiate"
+  | "call:accept"
+  | "call:decline"
+  | "call:offer"
+  | "call:answer"
+  | "call:ice_candidate"
+  | "call:participant_update"
+  | "call:end"
+  | "call:missed";
+
+type CallSignalTarget = {
+  conversation_id?: string;
+  user_ids?: string[];
+};
+
+type CallSignalEnvelope = {
+  source_instance_id: string;
+  event_name: CallSignalEventName;
+  target: CallSignalTarget;
+  payload: Record<string, unknown>;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function getConversationId(payload: unknown): string | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+  return asString(payload.conversation_id);
+}
+
+function getCallId(payload: unknown): string | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+  return asString(payload.call_id);
+}
+
+async function ensureConversationMember(
+  conversationId: string,
+  userId: string,
+): Promise<boolean> {
+  const members = await conversationRepository.getConversationMembers(
+    conversationId,
+  );
+  return members.some((member) => member.userId === userId);
+}
+
+function emitCallSignal(
+  eventName: CallSignalEventName,
+  target: CallSignalTarget,
+  payload: Record<string, unknown>,
+): void {
+  if (target.conversation_id) {
+    io.to(`conversation_${target.conversation_id}`).emit(eventName, payload);
+  }
+
+  target.user_ids?.forEach((userId) => {
+    io.to(`user_${userId}`).emit(eventName, payload);
+  });
+}
+
+async function publishCallSignal(
+  eventName: CallSignalEventName,
+  target: CallSignalTarget,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const envelope: CallSignalEnvelope = {
+    source_instance_id: callSignalingInstanceId,
+    event_name: eventName,
+    target,
+    payload,
+  };
+
+  await redisPublisher.publish(
+    env.REDIS_CALL_SIGNAL_CHANNEL,
+    JSON.stringify(envelope),
+  );
+}
 
 app.disable("x-powered-by");
 app.use(
@@ -69,6 +163,7 @@ app.use(authMiddleware);
 app.use("/friends", friendRoutes);
 app.use("/conversations", conversationRoutes);
 app.use("/messages", messageRoutes);
+app.use("/calls", callRoutes);
 app.use(errorHandler);
 
 // Initialize user client service
@@ -356,6 +451,174 @@ io.on("connection", async (socket) => {
     }
   });
 
+  socket.on("call:initiate", async (payload: unknown) => {
+    try {
+      const conversationId = getConversationId(payload);
+      if (!conversationId) {
+        socket.emit("call:error", {
+          event: "call:initiate",
+          message: "invalid_conversation_id",
+        });
+        return;
+      }
+
+      const isMember = await ensureConversationMember(conversationId, userId);
+      if (!isMember) {
+        socket.emit("call:error", {
+          event: "call:initiate",
+          conversation_id: conversationId,
+          message: "not_a_member",
+        });
+        return;
+      }
+
+      const sourcePayload = isRecord(payload) ? payload : {};
+      const callId = getCallId(payload) ?? randomUUID();
+      const callType =
+        asString(sourcePayload.call_type) ??
+        (conversationId.includes("grp") ? "group" : "direct");
+      const relayPayload: Record<string, unknown> = {
+        ...sourcePayload,
+        call_id: callId,
+        conversation_id: conversationId,
+        call_type: callType,
+        initiator_id: userId,
+        created_at: new Date().toISOString(),
+      };
+
+      await callService.startCall({
+        call_id: callId,
+        conversation_id: conversationId,
+        initiator_id: userId,
+        call_type: callType === "group" ? "group" : "direct",
+        started_at:
+          typeof relayPayload.created_at === "string"
+            ? relayPayload.created_at
+            : undefined,
+      });
+
+      socket.to(`conversation_${conversationId}`).emit("call:initiate", relayPayload);
+      socket.emit("call:initiate_ack", {
+        ok: true,
+        call_id: callId,
+        conversation_id: conversationId,
+      });
+
+      await publishCallSignal(
+        "call:initiate",
+        { conversation_id: conversationId },
+        relayPayload,
+      );
+    } catch (error) {
+      socket.emit("call:error", {
+        event: "call:initiate",
+        message: error instanceof Error ? error.message : "call_initiate_failed",
+      });
+    }
+  });
+
+  const relayCallEvent = (eventName: CallSignalEventName) => {
+    socket.on(eventName, async (payload: unknown) => {
+      try {
+        const conversationId = getConversationId(payload);
+        if (!conversationId) {
+          socket.emit("call:error", {
+            event: eventName,
+            message: "invalid_conversation_id",
+          });
+          return;
+        }
+
+        const callId = getCallId(payload);
+        if (!callId) {
+          socket.emit("call:error", {
+            event: eventName,
+            conversation_id: conversationId,
+            message: "invalid_call_id",
+          });
+          return;
+        }
+
+        const isMember = await ensureConversationMember(conversationId, userId);
+        if (!isMember) {
+          socket.emit("call:error", {
+            event: eventName,
+            conversation_id: conversationId,
+            message: "not_a_member",
+          });
+          return;
+        }
+
+        const sourcePayload = isRecord(payload) ? payload : {};
+        const relayPayload: Record<string, unknown> = {
+          ...sourcePayload,
+          call_id: callId,
+          conversation_id: conversationId,
+          sender_id: userId,
+          timestamp: Date.now(),
+        };
+
+        if (eventName === "call:accept") {
+          await callService.markParticipantState(
+            callId,
+            userId,
+            conversationId,
+            "connected",
+          );
+        }
+
+        if (eventName === "call:decline") {
+          await callService.markParticipantState(
+            callId,
+            userId,
+            conversationId,
+            "declined",
+          );
+
+          await callService.autoEndDeclinedDirectCall(
+            callId,
+            conversationId,
+          );
+        }
+
+        if (eventName === "call:end") {
+          const endReason =
+            typeof sourcePayload.reason === "string" && sourcePayload.reason
+              ? sourcePayload.reason
+              : "ended_by_user";
+          await callService.endCall(callId, userId, conversationId, endReason);
+        }
+
+        socket.to(`conversation_${conversationId}`).emit(eventName, relayPayload);
+        socket.emit("call:signal_ack", {
+          ok: true,
+          event: eventName,
+          call_id: callId,
+          conversation_id: conversationId,
+        });
+
+        await publishCallSignal(
+          eventName,
+          { conversation_id: conversationId },
+          relayPayload,
+        );
+      } catch (error) {
+        socket.emit("call:error", {
+          event: eventName,
+          message: error instanceof Error ? error.message : "call_signal_failed",
+        });
+      }
+    });
+  };
+
+  relayCallEvent("call:accept");
+  relayCallEvent("call:decline");
+  relayCallEvent("call:offer");
+  relayCallEvent("call:answer");
+  relayCallEvent("call:ice_candidate");
+  relayCallEvent("call:participant_update");
+  relayCallEvent("call:end");
+
   // JOIN CONVERSATION EVENT - Dynamic room joining
   socket.on(
     "join_conversation",
@@ -435,6 +698,62 @@ io.on("connection", async (socket) => {
 async function bootstrap() {
   await ensureTables();
   await connectRedis();
+
+  let timeoutSweepRunning = false;
+  const timeoutSweepInterval = setInterval(() => {
+    if (timeoutSweepRunning) {
+      return;
+    }
+
+    timeoutSweepRunning = true;
+    void callService
+      .expireUnansweredCalls(env.CALL_INVITE_TIMEOUT_SECONDS)
+      .then((expiredSessions) => {
+        if (expiredSessions.length > 0) {
+          expiredSessions.forEach((session) => {
+            const missedPayload = {
+              call_id: session.id,
+              conversation_id: session.conversation_id,
+              reason: "missed_timeout",
+              ended_at: session.ended_at,
+            };
+
+            emitCallSignal(
+              "call:missed",
+              { conversation_id: session.conversation_id },
+              missedPayload,
+            );
+            emitCallSignal(
+              "call:end",
+              { conversation_id: session.conversation_id },
+              missedPayload,
+            );
+
+            void publishCallSignal(
+              "call:missed",
+              { conversation_id: session.conversation_id },
+              missedPayload,
+            );
+            void publishCallSignal(
+              "call:end",
+              { conversation_id: session.conversation_id },
+              missedPayload,
+            );
+          });
+
+          console.log(
+            `[Call Timeout] Auto-ended ${expiredSessions.length} unanswered call(s)`,
+          );
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to sweep unanswered calls", error);
+      })
+      .finally(() => {
+        timeoutSweepRunning = false;
+      });
+  }, 10_000);
+  timeoutSweepInterval.unref();
 
   await redisSubscriber.subscribe(env.REDIS_MESSAGE_CHANNEL, (messageText) => {
     const message = JSON.parse(messageText) as {
@@ -566,6 +885,18 @@ async function bootstrap() {
       }
     },
   );
+
+  await redisSubscriber.subscribe(env.REDIS_CALL_SIGNAL_CHANNEL, (text) => {
+    try {
+      const envelope = JSON.parse(text) as CallSignalEnvelope;
+      if (envelope.source_instance_id === callSignalingInstanceId) {
+        return;
+      }
+      emitCallSignal(envelope.event_name, envelope.target, envelope.payload);
+    } catch (error) {
+      console.error("Failed to process call signaling message", error);
+    }
+  });
 
   server.listen(env.PORT, () => {
     console.log(`chat-service listening on ${env.PORT}`);

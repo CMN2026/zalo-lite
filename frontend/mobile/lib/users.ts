@@ -84,6 +84,24 @@ export async function listFriends() {
   return request<ApiResponse<ProfileUser[]>>("/users/friends");
 }
 
+export async function getFriendshipStatus(peerId: string) {
+  return request<ApiResponse<{ isBlocked?: boolean; blockedByUserId?: string }>>(
+    `/users/friends/${peerId}/status`
+  );
+}
+
+export async function blockFriendship(peerId: string) {
+  return request<ApiResponse<void>>(`/users/friends/${peerId}/block`, {
+    method: "POST",
+  });
+}
+
+export async function unblockFriendship(peerId: string) {
+  return request<ApiResponse<void>>(`/users/friends/${peerId}/unblock`, {
+    method: "POST",
+  });
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = await getAuthToken();
   if (!token) {

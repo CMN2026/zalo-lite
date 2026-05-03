@@ -90,6 +90,8 @@ services:
         condition: service_healthy
       dynamodb-local:
         condition: service_started
+      livekit:
+        condition: service_started
     environment:
       PORT: 3002
       REDIS_URL: redis://redis:6379
@@ -104,13 +106,24 @@ services:
       RATE_LIMIT_WINDOW_MS: 60000
       RATE_LIMIT_MAX: 300
       REDIS_MESSAGE_CHANNEL: chat:messages
+      REDIS_CALL_SIGNAL_CHANNEL: chat:calls:signaling
       TABLE_CONVERSATIONS: conversations
       TABLE_CONVERSATION_MEMBERS: conversation_members
       TABLE_MESSAGES: messages
       TABLE_FRIEND_REQUESTS: friend_requests
       TABLE_FRIENDSHIPS: friendships
+      TABLE_CALL_SESSIONS: call_sessions
+      TABLE_CALL_HISTORY: call_history
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_PUBLIC_URL: ws://localhost:7880
+      LIVEKIT_API_KEY: dev-livekit-api-key-zalo-lite-2026
+      LIVEKIT_API_SECRET: dev-livekit-api-secret-zalo-lite-2026-production-ready
+      CALL_INVITE_TIMEOUT_SECONDS: 30
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3004,http://localhost:19006
     ports:
       - "3002:3002"
+    volumes:
+      - chat_uploads:/app/uploads
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3002/health || exit 1"]
       interval: 10s
@@ -164,6 +177,30 @@ services:
       retries: 3
       start_period: 20s
 
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: zalo-livekit
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      # WebSocket / HTTP API
+      - "7880:7880"
+      # ICE/TCP fallback for WebRTC
+      - "7881:7881"
+      # WebRTC media UDP range
+      - "20000-20100:20000-20100/udp"
+    healthcheck:
+      test: ["CMD-SHELL", "livekit-server --help > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   api-gateway:
     build:
       context: ../../backend/api-gateway
@@ -185,7 +222,7 @@ services:
       JWT_SECRET: super-strong-jwt-secret
       JWT_ISSUER: zalo-lite-user-service
       JWT_AUDIENCE: zalo-lite-clients
-      CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3004,http://localhost:19006
     ports:
       - "3004:3004"
     healthcheck:
@@ -199,3 +236,4 @@ volumes:
   postgres_data:
   redis_data:
   dynamodb_data:
+  chat_uploads:
