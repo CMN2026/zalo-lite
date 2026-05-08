@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import io, { Socket } from "socket.io-client";
 import { useAuth } from "../contexts/auth";
-import { getAuthToken } from "../lib/auth";
+import { getAuthToken, clearAuthSession } from "../lib/auth";
 
 // Use API Gateway for Socket.io connections (not direct service)
 const API_BASE_URL =
@@ -93,6 +93,18 @@ export const useSocket = () => {
           connectErrorCount = 0;
           replaceSocket(CHAT_SERVICE_BASE_URL);
         }
+      });
+
+      socket.on("force_logout", (data: { message?: string }) => {
+        const message = data?.message || "Tài khoản của bạn đã được đăng nhập ở thiết bị khác. Vui lòng đăng nhập lại.";
+        alert(message);
+        
+        // Disconnect immediately to stop reconnect loops
+        socket.disconnect();
+        
+        // Use the native global window object to reload to avoid React state complexities
+        clearAuthSession();
+        window.location.href = "/login";
       });
     };
 

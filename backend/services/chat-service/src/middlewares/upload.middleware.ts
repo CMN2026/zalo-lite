@@ -2,16 +2,17 @@ import type { Express, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
-import { fileURLToPath } from "node:url";
 import { v4 as uuidv4 } from "uuid";
 import { verifyToken } from "../utils/jwt.js";
 import { ConversationRepository } from "../repositories/conversation.repository.js";
 
 const conversationRepository = new ConversationRepository();
 
-// Use a stable uploads path relative to the service location (not cwd).
-const serviceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const uploadsDir = path.join(serviceRoot, "uploads");
+// Use UPLOADS_DIR env var if set, otherwise fall back to <project-root>/uploads.
+// In Docker the working directory is /app, so this resolves to /app/uploads.
+const uploadsDir = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.resolve(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }

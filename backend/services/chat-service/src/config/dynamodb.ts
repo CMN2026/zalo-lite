@@ -89,6 +89,24 @@ export async function ensureTables(): Promise<void> {
       ],
       BillingMode: "PAY_PER_REQUEST",
     }),
+    new CreateTableCommand({
+      TableName: env.TABLE_CALL_SESSIONS,
+      AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
+      KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+      BillingMode: "PAY_PER_REQUEST",
+    }),
+    new CreateTableCommand({
+      TableName: env.TABLE_CALL_HISTORY,
+      AttributeDefinitions: [
+        { AttributeName: "user_id", AttributeType: "S" },
+        { AttributeName: "created_at_call_id", AttributeType: "S" },
+      ],
+      KeySchema: [
+        { AttributeName: "user_id", KeyType: "HASH" },
+        { AttributeName: "created_at_call_id", KeyType: "RANGE" },
+      ],
+      BillingMode: "PAY_PER_REQUEST",
+    }),
   ];
 
   for (const command of tableCommands) {

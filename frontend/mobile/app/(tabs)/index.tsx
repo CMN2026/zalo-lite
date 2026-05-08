@@ -28,6 +28,7 @@ import { useAuth } from "../../contexts/auth";
 import { useSocket } from "../../hooks/useSocket";
 import { getAuthToken } from "../../lib/auth";
 import { API_BASE_URL } from "../../lib/api";
+import { blockFriendship, unblockFriendship, getFriendshipStatus } from "../../lib/users";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface FileAttachment {
@@ -173,8 +174,20 @@ function getMessagePreview(
 }
 
 // ── Image Viewer Modal ────────────────────────────────────────────────────────
-function ImageViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
+function ImageViewer({
+  uri,
+  onClose,
+  token,
+}: {
+  uri: string;
+  onClose: () => void;
+  token?: string | null;
+}) {
   const { width, height } = Dimensions.get("window");
+  const headers: Record<string, string> = { Accept: "image/*" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   return (
     <Modal visible animationType="fade" transparent onRequestClose={onClose}>
       <TouchableOpacity
@@ -188,11 +201,11 @@ function ImageViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
         onPress={onClose}
       >
         <Image
-          source={{ uri, headers: { Accept: "image/*" } }}
+          source={{ uri, headers }}
+          resizeMode="contain"
           style={{
             width: width - 16,
             height: height * 0.7,
-            resizeMode: "contain",
           }}
         />
         <Text style={{ color: "#94a3b8", marginTop: 12, fontSize: 13 }}>
@@ -214,8 +227,15 @@ function FileMessage({
   token?: string | null;
 }) {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [imgError, setImgError] = useState(false);
   const url = buildFileUrl(file.path, token);
   const isImage = file.mimetype?.startsWith("image/");
+
+  // Build headers with Authorization token for React Native Image loader
+  const imageHeaders: Record<string, string> = {};
+  if (token) {
+    imageHeaders["Authorization"] = `Bearer ${token}`;
+  }
 
   if (isImage) {
     return (
@@ -224,18 +244,46 @@ function FileMessage({
           onPress={() => setPreviewUri(url)}
           activeOpacity={0.85}
         >
-          <Image
-            source={{ uri: url }}
-            style={{
-              width: 200,
-              height: 200,
-              borderRadius: 12,
-              resizeMode: "cover",
-            }}
-            onError={() => {
-              /* ignore */
-            }}
-          />
+          {imgError ? (
+            <View
+              style={{
+                width: 200,
+                height: 120,
+                borderRadius: 12,
+                backgroundColor: isMe ? "rgba(255,255,255,0.15)" : "#f1f5f9",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 28, marginBottom: 4 }}>🖼</Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: isMe ? "#dbeafe" : "#94a3b8",
+                }}
+              >
+                Không tải được ảnh
+              </Text>
+            </View>
+          ) : (
+            <Image
+              source={{ uri: url, headers: imageHeaders }}
+              resizeMode="cover"
+              style={{
+                width: 200,
+                height: 200,
+                borderRadius: 12,
+              }}
+              onError={(e) => {
+                console.warn(
+                  "[FileMessage] Image load failed:",
+                  url,
+                  e.nativeEvent?.error,
+                );
+                setImgError(true);
+              }}
+            />
+          )}
           <Text
             style={{
               fontSize: 11,
@@ -248,7 +296,11 @@ function FileMessage({
           </Text>
         </TouchableOpacity>
         {previewUri && (
-          <ImageViewer uri={previewUri} onClose={() => setPreviewUri(null)} />
+          <ImageViewer
+            uri={previewUri}
+            onClose={() => setPreviewUri(null)}
+            token={token}
+          />
         )}
       </>
     );
@@ -317,7 +369,11 @@ export default function ChatsScreen() {
   const [activeActionMessageId, setActiveActionMessageId] = useState<
     string | null
   >(null);
-  const [showGroupManager, setShowGroupManager] = useState(false);
+  const [showChatDetails, setShowChatDetails] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [blockedByCurrentUser, setBlockedByCurrentUser] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [groupCandidates, setGroupCandidates] = useState<
     Array<{ id: string; fullName: string }>
@@ -364,6 +420,64 @@ export default function ChatsScreen() {
     typingUserTimeoutsRef.current = {};
     setTypingUserIds([]);
   }, []);
+
+  const sharedMedia = useMemo(() => {
+    return messages
+      .filter((m) => m.type === "file")
+      .map((m) => {
+        const { file } = parseMessageContent(m.content);
+        if (!file) return null;
+        const isImage = file.mimetype?.startsWith("image/") ?? false;
+        const url = buildFileUrl(file.path, authToken);
+        return {
+          id: m.id,
+          fileName: file.originalName || file.filename,
+          isImage,
+          url,
+          size: file.size,
+          mimetype: file.mimetype,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+  }, [messages, authToken]);
+
+  const imageItems = useMemo(() => sharedMedia.filter((item) => item.isImage), [sharedMedia]);
+  const fileItems = useMemo(() => sharedMedia.filter((item) => !item.isImage), [sharedMedia]);
+
+  const directPeerId = activeConv?.type === "direct" && activeConv.peerId ? activeConv.peerId : null;
+
+  const handleBlockToggle = useCallback(async () => {
+    if (!directPeerId) return;
+    try {
+      if (isBlocked && blockedByCurrentUser) {
+        await unblockFriendship(directPeerId);
+        setIsBlocked(false);
+        setBlockedByCurrentUser(false);
+        Alert.alert("Thành công", "Đã mở chặn tin nhắn.");
+      } else if (!isBlocked) {
+        await blockFriendship(directPeerId);
+        setIsBlocked(true);
+        setBlockedByCurrentUser(true);
+        Alert.alert("Thành công", "Đã chặn người dùng này.");
+      } else {
+        Alert.alert("Lỗi", "Bạn đang bị chặn, không thể tự mở chặn.");
+      }
+    } catch {
+      Alert.alert("Lỗi", "Không thể thực hiện thao tác này.");
+    }
+  }, [directPeerId, isBlocked, blockedByCurrentUser]);
+
+  // Load blocked status when opening chat details
+  useEffect(() => {
+    if (showChatDetails && activeConv?.type === "direct" && directPeerId) {
+      getFriendshipStatus(directPeerId).then((res) => {
+        const blocked = Boolean(res.data?.isBlocked);
+        const meBlocker = blocked && res.data?.blockedByUserId === currentUserId;
+        setIsBlocked(blocked);
+        setBlockedByCurrentUser(meBlocker);
+      }).catch(console.warn);
+    }
+  }, [showChatDetails, activeConv?.type, directPeerId, currentUserId]);
 
   const typingIndicatorText = useMemo(() => {
     if (!activeConv || typingUserIds.length === 0) {
@@ -717,11 +831,13 @@ export default function ChatsScreen() {
     }
   }, [activeChatId, activeConv?.type]);
 
-  const openGroupManager = useCallback(async () => {
-    setShowGroupManager(true);
+  const openChatDetails = useCallback(async () => {
+    setShowChatDetails(true);
     setSelectedAddMemberIds([]);
-    await loadGroupManagementDetail();
-  }, [loadGroupManagementDetail]);
+    if (activeConv?.type === "group") {
+      await loadGroupManagementDetail();
+    }
+  }, [loadGroupManagementDetail, activeConv?.type]);
 
   const handleAddMembersToGroup = useCallback(async () => {
     if (!activeChatId || selectedAddMemberIds.length === 0) return;
@@ -802,7 +918,7 @@ export default function ChatsScreen() {
       await authFetch(`/api/conversations/${activeChatId}/leave`, {
         method: "POST",
       });
-      setShowGroupManager(false);
+      setShowChatDetails(false);
       closeActiveChat();
       await loadConversations();
     } catch {
@@ -820,7 +936,7 @@ export default function ChatsScreen() {
       await authFetch(`/api/conversations/${activeChatId}`, {
         method: "DELETE",
       });
-      setShowGroupManager(false);
+      setShowChatDetails(false);
       closeActiveChat();
       await loadConversations();
     } catch {
@@ -1409,16 +1525,12 @@ export default function ChatsScreen() {
                   (activeConv.type === "group" ? "Nhóm" : "Trực tiếp")}
               </Text>
             </View>
-            {activeConv.type === "group" && (
-              <TouchableOpacity
-                onPress={() => void openGroupManager()}
-                className="px-3 py-1.5 rounded-xl bg-slate-100"
-              >
-                <Text className="text-xs font-semibold text-slate-700">
-                  Quản lý
-                </Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              onPress={() => void openChatDetails()}
+              className="px-3 py-1.5 rounded-xl active:bg-slate-100"
+            >
+              <Text style={{ fontSize: 22, color: "#475569" }}>≡</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Messages */}
@@ -1649,260 +1761,297 @@ export default function ChatsScreen() {
           </View>
 
           <Modal
-            visible={showGroupManager}
-            transparent
+            visible={showChatDetails}
             animationType="slide"
-            onRequestClose={() => setShowGroupManager(false)}
+            onRequestClose={() => setShowChatDetails(false)}
           >
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: "rgba(15,23,42,0.45)",
-                justifyContent: "flex-end",
-              }}
-            >
-              <View
-                style={{
-                  maxHeight: "84%",
-                  backgroundColor: "#ffffff",
-                  borderTopLeftRadius: 20,
-                  borderTopRightRadius: 20,
-                }}
-              >
-                <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-200">
-                  <Text className="text-base font-bold text-slate-800">
-                    Quản lý nhóm
-                  </Text>
-                  <TouchableOpacity onPress={() => setShowGroupManager(false)}>
-                    <Text className="text-slate-500 font-semibold">Đóng</Text>
-                  </TouchableOpacity>
+            <SafeAreaView className="flex-1 bg-slate-50">
+              <View className="flex-row items-center px-4 py-3 bg-white border-b border-slate-200">
+                <TouchableOpacity onPress={() => setShowChatDetails(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Text className="text-xl font-bold text-slate-600">{"←"}</Text>
+                </TouchableOpacity>
+                <Text className="flex-1 text-center font-bold text-lg text-slate-800">Tùy chọn</Text>
+                <View style={{ width: 20 }} />
+              </View>
+              <ScrollView className="flex-1">
+                {/* Header Info */}
+                <View className="bg-white items-center pt-6 pb-4 border-b border-slate-100">
+                  <Image source={{ uri: activeConv.avatar }} className="w-20 h-20 rounded-full mb-3" />
+                  <Text className="text-xl font-bold text-slate-800">{activeConv.name}</Text>
+                  <Text className="text-sm text-slate-500 mt-1">{activeConv.type === "group" ? `${groupMembers.length} thành viên` : "Thông tin hội thoại"}</Text>
                 </View>
 
-                {groupLoading ? (
-                  <View className="py-10 items-center">
-                    <ActivityIndicator size="small" color="#2563EB" />
-                    <Text className="text-xs text-slate-500 mt-2">
-                      Đang tải...
-                    </Text>
-                  </View>
-                ) : (
-                  <ScrollView className="px-4 py-3">
-                    {groupError ? (
-                      <Text className="text-xs text-rose-600 mb-3">
-                        {groupError}
+                {/* Toggles */}
+                <View className="bg-white mt-3 border-y border-slate-100">
+                  <TouchableOpacity onPress={() => setIsMuted(!isMuted)} className="flex-row items-center justify-between p-4 border-b border-slate-50">
+                    <Text className="text-base text-slate-700">{isMuted ? "Đang tắt thông báo" : "Tắt thông báo"}</Text>
+                    <Text className="text-xl">{isMuted ? "🔕" : "🔔"}</Text>
+                  </TouchableOpacity>
+                  {activeConv.type === "direct" && (
+                    <TouchableOpacity onPress={() => void handleBlockToggle()} className="flex-row items-center justify-between p-4">
+                      <Text className={`text-base ${(isBlocked && blockedByCurrentUser) ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {(isBlocked && blockedByCurrentUser) ? "Mở chặn người này" : (isBlocked ? "Bạn đang bị chặn" : "Chặn tin nhắn")}
                       </Text>
-                    ) : null}
+                      <Text className="text-xl">{(isBlocked && blockedByCurrentUser) ? "🟢" : "🚫"}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
 
-                    <Text className="text-sm font-semibold text-slate-700 mb-2">
-                      Thành viên
-                    </Text>
-                    {groupMembers.map((member) => {
-                      const memberName =
-                        member.profile?.fullName ||
-                        userCache[member.userId]?.fullName ||
-                        `Người dùng ${member.userId.slice(0, 6)}`;
-                      const isSelf = member.userId === currentUserId;
-                      const canOwnerChangeRole =
-                        isGroupOwner && !isSelf && member.role !== "owner";
+                {/* Media */}
+                <View className="bg-white mt-3 border-y border-slate-100 pt-3 pb-4">
+                  <Text className="px-4 text-sm font-bold text-slate-800 mb-3">Thư viện ảnh ({imageItems.length})</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-3">
+                    {imageItems.length === 0 ? (
+                      <Text className="text-slate-400 text-sm ml-1 mb-2">Không có ảnh nào</Text>
+                    ) : (
+                      imageItems.map((img) => (
+                        <TouchableOpacity key={img.id} activeOpacity={0.9} className="mr-2">
+                          <Image source={{ uri: img.url, headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined }} className="w-20 h-20 rounded-lg bg-slate-200" />
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </ScrollView>
+                </View>
 
-                      return (
-                        <View
-                          key={member.userId}
-                          style={{
-                            borderWidth: 1,
-                            borderColor: "#e2e8f0",
-                            borderRadius: 12,
-                            padding: 10,
-                            marginBottom: 8,
-                          }}
-                        >
-                          <Text className="text-sm font-medium text-slate-800">
-                            {memberName}
-                          </Text>
-                          <Text className="text-xs text-slate-500 mt-0.5">
-                            {member.role === "owner"
-                              ? "Chủ nhóm"
-                              : member.role === "admin"
-                                ? "Phó nhóm"
-                                : "Thành viên"}
-                            {isSelf ? " (Bạn)" : ""}
-                          </Text>
+                {/* Files */}
+                <View className="bg-white mt-3 border-y border-slate-100 py-3">
+                  <Text className="px-4 text-sm font-bold text-slate-800 mb-3">Tài liệu, files ({fileItems.length})</Text>
+                  {fileItems.length === 0 ? (
+                    <Text className="text-slate-400 text-sm px-4 mb-2">Không có file nào</Text>
+                  ) : (
+                    fileItems.map((f) => (
+                      <View key={f.id} className="flex-row items-center px-4 py-2 border-b border-slate-50">
+                        <Text className="text-2xl mr-3">📎</Text>
+                        <View className="flex-1">
+                          <Text className="text-sm font-semibold text-slate-800" numberOfLines={1}>{f.fileName}</Text>
+                          <Text className="text-xs text-slate-500">{f.mimetype} · {Math.round(f.size / 1024)}KB</Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
 
-                          {canOwnerChangeRole && (
-                            <View className="flex-row flex-wrap gap-2 mt-2">
-                              {member.role === "member" ? (
+                {/* Group Config (Only for groups) */}
+                {activeConv.type === "group" && (
+                  <View className="bg-white mt-3 border-y border-slate-100 pt-3 pb-6">
+                    <View className="px-4">
+                      {groupError ? (
+                        <Text className="text-xs text-rose-600 mb-3">
+                          {groupError}
+                        </Text>
+                      ) : null}
+
+                      <Text className="text-sm font-semibold text-slate-700 mb-2 mt-4 text-center">
+                        --- Quản lý Thành viên ---
+                      </Text>
+                      {groupMembers.map((member) => {
+                        const memberName =
+                          member.profile?.fullName ||
+                          userCache[member.userId]?.fullName ||
+                          `Người dùng ${member.userId.slice(0, 6)}`;
+                        const isSelf = member.userId === currentUserId;
+                        const canOwnerChangeRole =
+                          isGroupOwner && !isSelf && member.role !== "owner";
+
+                        return (
+                          <View
+                            key={member.userId}
+                            style={{
+                              borderWidth: 1,
+                              borderColor: "#e2e8f0",
+                              borderRadius: 12,
+                              padding: 10,
+                              marginBottom: 8,
+                            }}
+                          >
+                            <Text className="text-sm font-medium text-slate-800">
+                              {memberName}
+                            </Text>
+                            <Text className="text-xs text-slate-500 mt-0.5">
+                              {member.role === "owner"
+                                ? "Chủ nhóm"
+                                : member.role === "admin"
+                                  ? "Phó nhóm"
+                                  : "Thành viên"}
+                              {isSelf ? " (Bạn)" : ""}
+                            </Text>
+
+                            {canOwnerChangeRole && (
+                              <View className="flex-row flex-wrap gap-2 mt-2">
+                                {member.role === "member" ? (
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      void handleUpdateMemberRole(
+                                        member.userId,
+                                        "admin",
+                                      )
+                                    }
+                                    disabled={
+                                      groupBusyAction ===
+                                      `role-${member.userId}-admin`
+                                    }
+                                    className="px-2.5 py-1 rounded-lg bg-blue-50"
+                                  >
+                                    <Text className="text-[11px] font-semibold text-blue-700">
+                                      Gán phó nhóm
+                                    </Text>
+                                  </TouchableOpacity>
+                                ) : (
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      void handleUpdateMemberRole(
+                                        member.userId,
+                                        "member",
+                                      )
+                                    }
+                                    disabled={
+                                      groupBusyAction ===
+                                      `role-${member.userId}-member`
+                                    }
+                                    className="px-2.5 py-1 rounded-lg bg-slate-100"
+                                  >
+                                    <Text className="text-[11px] font-semibold text-slate-700">
+                                      Hạ thành viên
+                                    </Text>
+                                  </TouchableOpacity>
+                                )}
+
                                 <TouchableOpacity
                                   onPress={() =>
                                     void handleUpdateMemberRole(
                                       member.userId,
-                                      "admin",
+                                      "owner",
                                     )
                                   }
                                   disabled={
                                     groupBusyAction ===
-                                    `role-${member.userId}-admin`
+                                    `role-${member.userId}-owner`
                                   }
-                                  className="px-2.5 py-1 rounded-lg bg-blue-50"
+                                  className="px-2.5 py-1 rounded-lg bg-amber-50"
                                 >
-                                  <Text className="text-[11px] font-semibold text-blue-700">
-                                    Gán phó nhóm
+                                  <Text className="text-[11px] font-semibold text-amber-700">
+                                    Chuyển chủ nhóm
                                   </Text>
                                 </TouchableOpacity>
-                              ) : (
-                                <TouchableOpacity
-                                  onPress={() =>
-                                    void handleUpdateMemberRole(
-                                      member.userId,
-                                      "member",
-                                    )
-                                  }
-                                  disabled={
-                                    groupBusyAction ===
-                                    `role-${member.userId}-member`
-                                  }
-                                  className="px-2.5 py-1 rounded-lg bg-slate-100"
-                                >
-                                  <Text className="text-[11px] font-semibold text-slate-700">
-                                    Hạ thành viên
-                                  </Text>
-                                </TouchableOpacity>
-                              )}
+                              </View>
+                            )}
 
+                            {canManageGroupMembers && !isSelf && (
                               <TouchableOpacity
                                 onPress={() =>
-                                  void handleUpdateMemberRole(
-                                    member.userId,
-                                    "owner",
-                                  )
+                                  void handleRemoveMemberFromGroup(member.userId)
                                 }
                                 disabled={
-                                  groupBusyAction ===
-                                  `role-${member.userId}-owner`
+                                  groupBusyAction === `remove-${member.userId}`
                                 }
-                                className="px-2.5 py-1 rounded-lg bg-amber-50"
+                                className="mt-2 px-2.5 py-1 rounded-lg bg-rose-50 self-start"
                               >
-                                <Text className="text-[11px] font-semibold text-amber-700">
-                                  Chuyển chủ nhóm
+                                <Text className="text-[11px] font-semibold text-rose-700">
+                                  Xóa khỏi nhóm
                                 </Text>
                               </TouchableOpacity>
-                            </View>
-                          )}
+                            )}
+                          </View>
+                        );
+                      })}
 
-                          {canManageGroupMembers && !isSelf && (
-                            <TouchableOpacity
-                              onPress={() =>
-                                void handleRemoveMemberFromGroup(member.userId)
-                              }
-                              disabled={
-                                groupBusyAction === `remove-${member.userId}`
-                              }
-                              className="mt-2 px-2.5 py-1 rounded-lg bg-rose-50 self-start"
-                            >
-                              <Text className="text-[11px] font-semibold text-rose-700">
-                                Xóa khỏi nhóm
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      );
-                    })}
-
-                    {canManageGroupMembers && (
-                      <>
-                        <Text className="text-sm font-semibold text-slate-700 mt-2 mb-2">
-                          Thêm thành viên
-                        </Text>
-                        {groupCandidates.length === 0 ? (
-                          <Text className="text-xs text-slate-500 mb-3">
-                            Không còn bạn bè để thêm.
+                      {canManageGroupMembers && (
+                        <>
+                          <Text className="text-sm font-semibold text-slate-700 mt-2 mb-2">
+                            Thêm thành viên
                           </Text>
-                        ) : (
-                          <>
-                            {groupCandidates.map((friend) => {
-                              const selected = selectedAddMemberIds.includes(
-                                friend.id,
-                              );
-                              return (
-                                <TouchableOpacity
-                                  key={friend.id}
-                                  onPress={() => {
-                                    setSelectedAddMemberIds((prev) =>
-                                      prev.includes(friend.id)
-                                        ? prev.filter((id) => id !== friend.id)
-                                        : [...prev, friend.id],
-                                    );
-                                  }}
-                                  style={{
-                                    borderWidth: 1,
-                                    borderColor: selected
-                                      ? "#3b82f6"
-                                      : "#e2e8f0",
-                                    backgroundColor: selected
-                                      ? "#eff6ff"
-                                      : "#ffffff",
-                                    borderRadius: 10,
-                                    paddingVertical: 8,
-                                    paddingHorizontal: 10,
-                                    marginBottom: 6,
-                                  }}
-                                >
-                                  <Text className="text-sm text-slate-700">
-                                    {friend.fullName}
-                                  </Text>
-                                </TouchableOpacity>
-                              );
-                            })}
+                          {groupCandidates.length === 0 ? (
+                            <Text className="text-xs text-slate-500 mb-3">
+                              Không còn bạn bè để thêm.
+                            </Text>
+                          ) : (
+                            <>
+                              {groupCandidates.map((friend) => {
+                                const selected = selectedAddMemberIds.includes(
+                                  friend.id,
+                                );
+                                return (
+                                  <TouchableOpacity
+                                    key={friend.id}
+                                    onPress={() => {
+                                      setSelectedAddMemberIds((prev) =>
+                                        prev.includes(friend.id)
+                                          ? prev.filter((id) => id !== friend.id)
+                                          : [...prev, friend.id],
+                                      );
+                                    }}
+                                    style={{
+                                      borderWidth: 1,
+                                      borderColor: selected
+                                        ? "#3b82f6"
+                                        : "#e2e8f0",
+                                      backgroundColor: selected
+                                        ? "#eff6ff"
+                                        : "#ffffff",
+                                      borderRadius: 10,
+                                      paddingVertical: 8,
+                                      paddingHorizontal: 10,
+                                      marginBottom: 6,
+                                    }}
+                                  >
+                                    <Text className="text-sm text-slate-700">
+                                      {friend.fullName}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
 
-                            <TouchableOpacity
-                              onPress={() => void handleAddMembersToGroup()}
-                              disabled={
-                                selectedAddMemberIds.length === 0 ||
-                                groupBusyAction === "add"
-                              }
-                              className={`mt-2 px-3 py-2 rounded-xl ${selectedAddMemberIds.length > 0 ? "bg-blue-600" : "bg-slate-300"}`}
-                            >
-                              <Text className="text-center text-white text-xs font-semibold">
-                                {groupBusyAction === "add"
-                                  ? "Đang thêm..."
-                                  : `Thêm ${selectedAddMemberIds.length} thành viên`}
-                              </Text>
-                            </TouchableOpacity>
-                          </>
-                        )}
-                      </>
-                    )}
+                              <TouchableOpacity
+                                onPress={() => void handleAddMembersToGroup()}
+                                disabled={
+                                  selectedAddMemberIds.length === 0 ||
+                                  groupBusyAction === "add"
+                                }
+                                className={`mt-2 px-3 py-2 rounded-xl ${selectedAddMemberIds.length > 0 ? "bg-blue-600" : "bg-slate-300"}`}
+                              >
+                                <Text className="text-center text-white text-xs font-semibold">
+                                  {groupBusyAction === "add"
+                                    ? "Đang thêm..."
+                                    : `Thêm ${selectedAddMemberIds.length} thành viên`}
+                                </Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </>
+                      )}
 
-                    <View className="mt-4 mb-2">
-                      <TouchableOpacity
-                        onPress={() => void handleLeaveGroup()}
-                        disabled={groupBusyAction === "leave"}
-                        className="px-3 py-2 rounded-xl bg-orange-50"
-                      >
-                        <Text className="text-center text-orange-700 font-semibold text-sm">
-                          {groupBusyAction === "leave"
-                            ? "Đang rời nhóm..."
-                            : "Rời nhóm"}
-                        </Text>
-                      </TouchableOpacity>
-
-                      {isGroupOwner && (
+                      <View className="mt-8 mb-2">
                         <TouchableOpacity
-                          onPress={() => void handleDeleteGroup()}
-                          disabled={groupBusyAction === "delete"}
-                          className="mt-2 px-3 py-2 rounded-xl bg-rose-50"
+                          onPress={() => void handleLeaveGroup()}
+                          disabled={groupBusyAction === "leave"}
+                          className="px-3 py-3 rounded-xl bg-orange-50 mb-3"
                         >
-                          <Text className="text-center text-rose-700 font-semibold text-sm">
-                            {groupBusyAction === "delete"
-                              ? "Đang giải tán..."
-                              : "Giải tán nhóm"}
+                          <Text className="text-center text-orange-700 font-semibold text-base">
+                            {groupBusyAction === "leave"
+                              ? "Đang rời nhóm..."
+                              : "Rời nhóm"}
                           </Text>
                         </TouchableOpacity>
-                      )}
+
+                        {isGroupOwner && (
+                          <TouchableOpacity
+                            onPress={() => void handleDeleteGroup()}
+                            disabled={groupBusyAction === "delete"}
+                            className="px-3 py-3 rounded-xl bg-rose-50"
+                          >
+                            <Text className="text-center text-rose-700 font-semibold text-base">
+                              {groupBusyAction === "delete"
+                                ? "Đang giải tán..."
+                                : "Giải tán nhóm"}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
-                  </ScrollView>
+                  </View>
                 )}
-              </View>
-            </View>
+              </ScrollView>
+            </SafeAreaView>
           </Modal>
         </KeyboardAvoidingView>
       ) : (
