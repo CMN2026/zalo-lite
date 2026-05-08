@@ -89,6 +89,7 @@ type CallSignalPayload = {
   sender_id?: unknown;
   call_type?: unknown;
   reason?: unknown;
+  left_user_id?: unknown;
 };
 
 type ActiveCallState = {
@@ -97,6 +98,12 @@ type ActiveCallState = {
   status: "ringing" | "connected";
   isInitiator: boolean;
   connectedAt?: number;
+  callType: "direct" | "group";
+};
+
+type ActiveGroupCallInfo = {
+  callId: string;
+  callType: "group";
 };
 
 function formatCallDuration(seconds: number): string {
@@ -399,6 +406,9 @@ export default function ChatView({
     null,
   );
   const liveKitRequestCallIdRef = useRef<string | null>(null);
+  const [activeGroupCalls, setActiveGroupCalls] = useState<
+    Record<string, ActiveGroupCallInfo>
+  >({});
   const [activeConversationActionId, setActiveConversationActionId] = useState<
     string | null
   >(null);
@@ -1471,6 +1481,46 @@ export default function ChatView({
     void markConversationAsRead(activeChatId, true);
   }, [activeChatId, markConversationAsRead]);
 
+  const fetchActiveCallForConversation = useCallback(
+    async (conversationId: string) => {
+      try {
+        const response = await authJsonRequest<{
+          data?: {
+            id: string;
+            status: string;
+            call_type: "group" | "direct";
+          } | null;
+        }>(`/api/calls/active-for-conversation?conversation_id=${conversationId}`);
+
+        if (response.data && response.data.status === "active") {
+          setActiveGroupCalls((prev) => ({
+            ...prev,
+            [conversationId]: {
+              callId: response.data!.id,
+              callType: response.data!.call_type as "group",
+            },
+          }));
+        } else {
+          setActiveGroupCalls((prev) => {
+            const next = { ...prev };
+            delete next[conversationId];
+            return next;
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch active call for conversation:", error);
+      }
+    },
+    [authJsonRequest],
+  );
+
+  useEffect(() => {
+    if (!activeChatId) {
+      return;
+    }
+    void fetchActiveCallForConversation(activeChatId);
+  }, [activeChatId, fetchActiveCallForConversation]);
+
   useEffect(() => {
     if (!activeChatId || !currentUserId) {
       return;
@@ -1998,13 +2048,25 @@ export default function ChatView({
         return;
       }
 
+      const callType = conversationId.startsWith("grp_")
+        ? ("group" as const)
+        : ("direct" as const);
+
       setActiveCall({
         callId,
         conversationId,
         status: "ringing",
         isInitiator: true,
         connectedAt: undefined,
+        callType,
       });
+
+      if (callType === "group") {
+        setActiveGroupCalls((prev) => ({
+          ...prev,
+          [conversationId]: { callId, callType: "group" },
+        }));
+      }
     };
 
     const handleCallInitiate = (payload: unknown) => {
@@ -2029,6 +2091,13 @@ export default function ChatView({
         initiatorId,
         callType,
       });
+
+      if (callType === "group") {
+        setActiveGroupCalls((prev) => ({
+          ...prev,
+          [conversationId]: { callId, callType: "group" },
+        }));
+      }
     };
 
     const handleCallAccept = (payload: unknown) => {
@@ -2111,10 +2180,27 @@ export default function ChatView({
       liveKitRequestCallIdRef.current = null;
 
       if (callId && conversationId) {
-        // Backend persists the call-info message via CallService.endCall().
-        // The message arrives through the normal message:receive socket event.
         const notice = endedCallConnectedAt ? "Cuộc gọi đã kết thúc" : "Cuộc gọi nhỡ";
         setChatNotice(notice);
+      }
+
+      // Remove from active group calls
+      if (conversationId) {
+        setActiveGroupCalls((prev) => {
+          const next = { ...prev };
+          delete next[conversationId];
+          return next;
+        });
+      }
+    };
+
+    const handleCallParticipantLeft = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const leftUserId =
+        typeof data.left_user_id === "string" ? data.left_user_id : "";
+
+      if (leftUserId && leftUserId !== currentUserId) {
+        setChatNotice("Một thành viên đã rời cuộc gọi");
       }
     };
 
@@ -2161,10 +2247,27 @@ export default function ChatView({
     };
 
     const handleCallError = (payload: unknown) => {
-      const data = payload as { message?: unknown };
+      const data = payload as { message?: unknown; conversation_id?: unknown };
       const message =
         typeof data.message === "string" ? data.message : "call_error";
-      setChatNotice(`Lỗi cuộc gọi: ${message}`);
+      const conversationId = normalizeConversationId(data.conversation_id);
+
+      if (message === "call_already_active") {
+        setChatNotice("Cuộc gọi nhóm đang diễn ra. Đang tải...");
+        if (conversationId) {
+          void fetchActiveCallForConversation(conversationId);
+        }
+      } else {
+        setChatNotice(
+          message === "not_a_member"
+            ? "Bạn không có quyền thực hiện cuộc gọi."
+            : `Lỗi cuộc gọi: ${message}`,
+        );
+      }
+
+      setActiveCall(null);
+      setLiveKitTokenPayload(null);
+      liveKitRequestCallIdRef.current = null;
     };
 
     on("message:send_ack", handleSendAck);
@@ -2195,6 +2298,7 @@ export default function ChatView({
     on("call:end", handleCallEnd);
     on("call:missed", handleCallMissed);
     on("call:error", handleCallError);
+    on("call:participant_left", handleCallParticipantLeft);
 
     return () => {
       off("message:send_ack", handleSendAck);
@@ -2228,6 +2332,7 @@ export default function ChatView({
       off("call:end", handleCallEnd);
       off("call:missed", handleCallMissed);
       off("call:error", handleCallError);
+      off("call:participant_left", handleCallParticipantLeft);
     };
   }, [
     activeChatId,
@@ -2682,15 +2787,25 @@ export default function ChatView({
     const conversationId = activeCall.conversationId;
     const callId = activeCall.callId;
 
-    emit("call:end", {
-      call_id: callId,
-      conversation_id: conversationId,
-      reason: "ended_by_user",
-    });
+    if (activeCall.callType === "group") {
+      // Group call: leave instead of end
+      emit("call:leave", {
+        call_id: callId,
+        conversation_id: conversationId,
+      });
+      setChatNotice("Bạn đã rời cuộc gọi nhóm");
+    } else {
+      // Direct call: end the whole call
+      emit("call:end", {
+        call_id: callId,
+        conversation_id: conversationId,
+        reason: "ended_by_user",
+      });
+      setChatNotice(
+        activeCall.connectedAt ? "Cuộc gọi đã kết thúc" : "Cuộc gọi nhỡ",
+      );
+    }
 
-    // Backend will persist the call-info message via CallService.endCall().
-    // The message arrives through the normal message:receive socket event.
-    setChatNotice(activeCall.connectedAt ? "Cuộc gọi đã kết thúc" : "Cuộc gọi nhỡ");
     setActiveCall(null);
     setLiveKitTokenPayload(null);
     setLiveKitTokenError(null);
@@ -2713,6 +2828,7 @@ export default function ChatView({
       status: "connected",
       isInitiator: false,
       connectedAt: Date.now(),
+      callType: incomingCall.callType,
     });
     setIncomingCall(null);
   }, [emit, incomingCall]);
@@ -3170,9 +3286,39 @@ export default function ChatView({
               <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700">
                 {activeCall.status === "ringing"
                   ? "Đang đổ chuông..."
-                  : "Cuộc gọi đang diễn ra (signaling)"}
+                  : "Cuộc gọi đang diễn ra"}
               </div>
             )}
+
+            {activeChat.type === "group" &&
+              activeGroupCalls[activeChat.id] &&
+              activeCall?.conversationId !== activeChat.id && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const groupCall = activeGroupCalls[activeChat.id];
+                    if (!groupCall) return;
+
+                    emit("call:accept", {
+                      call_id: groupCall.callId,
+                      conversation_id: activeChat.id,
+                    });
+
+                    setActiveCall({
+                      callId: groupCall.callId,
+                      conversationId: activeChat.id,
+                      status: "connected",
+                      isInitiator: false,
+                      connectedAt: Date.now(),
+                      callType: "group",
+                    });
+                  }}
+                  className="flex w-full items-center justify-center gap-2 border-b border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
+                >
+                  <Phone className="h-4 w-4" />
+                  Cuộc gọi nhóm đang diễn ra — Tham gia
+                </button>
+              )}
 
             <MessageList
               messages={activeChat.messages}

@@ -44,3 +44,9 @@ callRoutes.get(
 );
 
 callRoutes.get("/active", CallController.active);
+
+callRoutes.get(
+  "/active-for-conversation",
+  [query("conversation_id").isString().notEmpty(), validateRequest],
+  CallController.activeForConversation,
+);

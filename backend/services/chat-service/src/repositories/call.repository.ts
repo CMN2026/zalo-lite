@@ -122,6 +122,28 @@ export class CallRepository {
     return (response.Items as CallSession[] | undefined) ?? [];
   }
 
+  async getActiveByConversationId(
+    conversationId: string,
+  ): Promise<CallSession | null> {
+    const response = await dynamo.send(
+      new ScanCommand({
+        TableName: env.TABLE_CALL_SESSIONS,
+        FilterExpression:
+          "#status = :active AND conversation_id = :cid",
+        ExpressionAttributeNames: {
+          "#status": "status",
+        },
+        ExpressionAttributeValues: {
+          ":active": "active",
+          ":cid": conversationId,
+        },
+      }),
+    );
+
+    const items = (response.Items as CallSession[] | undefined) ?? [];
+    return items[0] ?? null;
+  }
+
   async appendHistory(items: CallHistoryItem[]): Promise<void> {
     for (const item of items) {
       await dynamo.send(

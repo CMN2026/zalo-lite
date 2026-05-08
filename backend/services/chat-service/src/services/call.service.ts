@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { ConversationRepository } from "../repositories/conversation.repository.js";
 import { MessageRepository } from "../repositories/message.repository.js";
+import { UserClientService } from "./user-client.service.js";
 import {
   CallRepository,
   type CallHistoryItem,
@@ -42,6 +43,10 @@ export class CallService {
 
   private readonly messageRepository = new MessageRepository();
 
+  private readonly userClient = new UserClientService(
+    process.env.USER_SERVICE_BASE_URL || "http://localhost:3001",
+  );
+
   async startCall(input: StartCallInput): Promise<CallSession> {
     const members = await this.conversationRepository.getConversationMembers(
       input.conversation_id,
@@ -50,6 +55,13 @@ export class CallService {
     const isMember = members.some((member) => member.userId === input.initiator_id);
     if (!isMember) {
       throw new HttpError(403, "not_a_member");
+    }
+
+    const activeCall = await this.callRepository.getActiveByConversationId(
+      input.conversation_id,
+    );
+    if (activeCall) {
+      throw new HttpError(409, "call_already_active");
     }
 
     const existing = await this.callRepository.getSessionById(input.call_id);
@@ -106,11 +118,14 @@ export class CallService {
     }
 
     const now = new Date().toISOString();
+    let found = false;
+
     session.participants = session.participants.map((participant) => {
       if (participant.user_id !== userId) {
         return participant;
       }
 
+      found = true;
       const next = {
         ...participant,
         state,
@@ -126,6 +141,16 @@ export class CallService {
 
       return next;
     });
+
+    if (!found) {
+      session.participants.push({
+        user_id: userId,
+        state,
+        joined_at: state === "connected" ? now : undefined,
+        left_at: (state === "left" || state === "declined" || state === "missed") ? now : undefined,
+      });
+      session.participant_user_ids.push(userId);
+    }
 
     return this.callRepository.saveSession(session);
   }
@@ -203,24 +228,31 @@ export class CallService {
         (p) => p.state === "connected" || p.state === "left",
       );
 
+      // Fetch initiator name for the call info message
+      let callerName = "";
+      try {
+        const caller = await this.userClient.getUserById(session.initiator_id);
+        callerName = caller.fullName || "";
+      } catch {
+        // Fallback: no name available
+      }
+
       let callInfoText: string;
       if (hadConnection && durationSeconds > 0) {
-        callInfoText = `\uD83D\uDCDE Cu\u1ED9c g\u1ECDi k\u1EBFt th\u00FAc \u2022 ${formatCallDuration(durationSeconds)}`;
-      } else if (
-        endReason === "missed_timeout" ||
-        endReason === "no_answer" ||
-        endReason === "declined_by_peer"
-      ) {
-        callInfoText = "\uD83D\uDCDE Cu\u1ED9c g\u1ECDi nh\u1EE1";
-      } else if (!hadConnection) {
-        callInfoText = "\uD83D\uDCDE Cu\u1ED9c g\u1ECDi nh\u1EE1";
+        const durationStr = formatCallDuration(durationSeconds);
+        callInfoText = callerName
+          ? `\uD83D\uDCDE ${callerName} \u0111\u00E3 g\u1ECDi \u2022 ${durationStr}`
+          : `\uD83D\uDCDE Cu\u1ED9c g\u1ECDi k\u1EBFt th\u00FAc \u2022 ${durationStr}`;
       } else {
-        callInfoText = "\uD83D\uDCDE Cu\u1ED9c g\u1ECDi k\u1EBFt th\u00FAc";
+        callInfoText = callerName
+          ? `\uD83D\uDCDE Cu\u1ED9c g\u1ECDi nh\u1EE1 t\u1EEB ${callerName}`
+          : "\uD83D\uDCDE Cu\u1ED9c g\u1ECDi nh\u1EE1";
       }
 
       const callInfoContent = JSON.stringify({
         text: callInfoText,
         call_id: callId,
+        caller_name: callerName,
         duration_seconds: durationSeconds,
         end_reason: endReason,
         had_connection: hadConnection,
@@ -245,6 +277,79 @@ export class CallService {
     }
 
     return saved;
+  }
+
+  /**
+   * Leave a group call without ending it for everyone.
+   * If fewer than 2 connected participants remain, auto-ends the call.
+   */
+  async leaveCall(
+    callId: string,
+    userId: string,
+    conversationId: string,
+  ): Promise<{ action: "participant_left" | "ended"; session: CallSession }> {
+    const session = await this.callRepository.getSessionById(callId);
+    if (!session) {
+      throw new HttpError(404, "call_not_found");
+    }
+
+    if (session.conversation_id !== conversationId) {
+      throw new HttpError(400, "conversation_mismatch");
+    }
+
+    if (session.status === "ended") {
+      return { action: "ended", session };
+    }
+
+    const members = await this.conversationRepository.getConversationMembers(
+      conversationId,
+    );
+    const isMember = members.some((member) => member.userId === userId);
+    if (!isMember) {
+      throw new HttpError(403, "not_a_member");
+    }
+
+    // Mark the leaving participant
+    const now = new Date().toISOString();
+    session.participants = session.participants.map((participant) => {
+      if (participant.user_id !== userId) {
+        return participant;
+      }
+      return {
+        ...participant,
+        state: "left" as const,
+        left_at: participant.left_at ?? now,
+      };
+    });
+
+    await this.callRepository.saveSession(session);
+
+    // Count participants still in the call (connected or initiated — not left/declined/missed)
+    const activeParticipants = session.participants.filter(
+      (p) => p.state === "connected" || p.state === "initiated",
+    );
+
+    if (activeParticipants.length < 2) {
+      // Auto-end the call
+      const endedSession = await this.endCall(
+        callId,
+        userId,
+        conversationId,
+        "last_participant_left",
+      );
+      return { action: "ended", session: endedSession };
+    }
+
+    return { action: "participant_left", session };
+  }
+
+  /**
+   * Get the active call for a conversation, if any.
+   */
+  async getActiveCallForConversation(
+    conversationId: string,
+  ): Promise<CallSession | null> {
+    return this.callRepository.getActiveByConversationId(conversationId);
   }
 
   async listHistory(userId: string, limit: number): Promise<CallHistoryItem[]> {

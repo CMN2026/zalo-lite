@@ -47,6 +47,8 @@ type CallSignalEventName =
   | "call:ice_candidate"
   | "call:participant_update"
   | "call:end"
+  | "call:leave"
+  | "call:participant_left"
   | "call:missed";
 
 type CallSignalTarget = {
@@ -203,6 +205,21 @@ io.on("connection", async (socket) => {
 
   try {
     socket.join(`user_${userId}`);
+
+    // Force disconnect other sockets of the same user (Single Device Login)
+    const userSockets = await io.in(`user_${userId}`).fetchSockets();
+    for (const userSocket of userSockets) {
+      if (userSocket.id !== socket.id) {
+        userSocket.emit("force_logout", {
+          reason: "logged_in_elsewhere",
+          message: "Tài khoản của bạn đã được đăng nhập ở nơi khác.",
+        });
+        // Optionally delay disconnect to allow the event to be sent
+        setTimeout(() => {
+          userSocket.disconnect(true);
+        }, 500);
+      }
+    }
 
     // Emit online event
     socket.broadcast.emit("user:online", { user_id: userId, online: true });
@@ -510,9 +527,11 @@ io.on("connection", async (socket) => {
         relayPayload,
       );
     } catch (error) {
+      const message = error instanceof Error ? error.message : "call_initiate_failed";
       socket.emit("call:error", {
         event: "call:initiate",
-        message: error instanceof Error ? error.message : "call_initiate_failed",
+        conversation_id: conversationId,
+        message: message === "call_already_active" ? "call_already_active" : message,
       });
     }
   });
@@ -589,6 +608,54 @@ io.on("connection", async (socket) => {
           await callService.endCall(callId, userId, conversationId, endReason);
         }
 
+        if (eventName === "call:leave") {
+          const result = await callService.leaveCall(
+            callId,
+            userId,
+            conversationId,
+          );
+
+          if (result.action === "ended") {
+            // Call truly ended — broadcast call:end to everyone
+            const endPayload = {
+              ...relayPayload,
+              reason: "last_participant_left",
+            };
+            socket.to(`conversation_${conversationId}`).emit("call:end", endPayload);
+            socket.emit("call:signal_ack", {
+              ok: true,
+              event: "call:end",
+              call_id: callId,
+              conversation_id: conversationId,
+            });
+            await publishCallSignal(
+              "call:end",
+              { conversation_id: conversationId },
+              endPayload,
+            );
+          } else {
+            // Participant left — broadcast call:participant_left
+            const leftPayload = {
+              ...relayPayload,
+              left_user_id: userId,
+            };
+            socket.to(`conversation_${conversationId}`).emit("call:participant_left", leftPayload);
+            socket.emit("call:signal_ack", {
+              ok: true,
+              event: "call:leave",
+              call_id: callId,
+              conversation_id: conversationId,
+            });
+            await publishCallSignal(
+              "call:participant_left",
+              { conversation_id: conversationId },
+              leftPayload,
+            );
+          }
+          // Skip the default relay below — we already emitted
+          return;
+        }
+
         socket.to(`conversation_${conversationId}`).emit(eventName, relayPayload);
         socket.emit("call:signal_ack", {
           ok: true,
@@ -618,6 +685,7 @@ io.on("connection", async (socket) => {
   relayCallEvent("call:ice_candidate");
   relayCallEvent("call:participant_update");
   relayCallEvent("call:end");
+  relayCallEvent("call:leave");
 
   // JOIN CONVERSATION EVENT - Dynamic room joining
   socket.on(

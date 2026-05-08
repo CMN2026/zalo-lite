@@ -82,6 +82,29 @@ export class CallController {
     }
   }
 
+  static async activeForConversation(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const conversationId =
+        typeof req.query.conversation_id === "string"
+          ? req.query.conversation_id
+          : "";
+      if (!conversationId) {
+        res.status(400).json({ error: "conversation_id is required" });
+        return;
+      }
+
+      const data =
+        await callService.getActiveCallForConversation(conversationId);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async liveKitToken(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.auth?.userId ?? "";
