@@ -372,6 +372,7 @@ io.on("connection", (socket: Socket) => {
     "message:deleted",
     "message:delete_ack",
     "message:recalled",
+    "force_logout",
     "message:reaction_updated",
     "message:recall_ack",
     "message:reaction_ack",
@@ -418,6 +419,12 @@ io.on("connection", (socket: Socket) => {
         console.log(`[Socket.io] Upstream disconnected for ${socket.id}`);
         return;
       }
+      if (eventName === "force_logout") {
+        console.log(`[Socket.io] Upstream received force_logout for ${socket.id}`);
+        socket.emit("force_logout", payload);
+        upstream.disconnect();
+        return;
+      }
       if (eventName === "connect_error") {
         console.error(`[Socket.io] Upstream error for ${socket.id}`, payload);
         socket.emit("connect_error", payload);
@@ -428,9 +435,7 @@ io.on("connection", (socket: Socket) => {
   });
 
   socket.on("disconnect", () => {
-    if (upstream.connected) {
-      upstream.disconnect();
-    }
+    upstream.disconnect();
     console.log(`[Socket.io] Disconnected: ${socket.id}`);
   });
 });

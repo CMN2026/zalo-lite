@@ -94,11 +94,11 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-100">
-      <View className="bg-white px-4 py-3 border-b border-slate-200 flex-row items-center justify-between">
-        <Text className="text-xl font-bold text-slate-800">Cá nhân</Text>
+    <SafeAreaView className="flex-1 bg-zalo-bg">
+      <View className="bg-zalo-blue px-4 py-3 border-b border-zalo-blue flex-row items-center justify-between">
+        <Text className="text-xl font-bold text-white">Cá nhân</Text>
         <TouchableOpacity onPress={loadProfile}>
-          <Text className="text-blue-600 text-sm font-semibold">Refresh</Text>
+          <Text className="text-blue-100 text-sm font-semibold">Refresh</Text>
         </TouchableOpacity>
       </View>
 

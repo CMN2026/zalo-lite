@@ -1,33 +1,36 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useCallback, useState } from "react";
 import io, { Socket } from "socket.io-client";
 import { useAuth } from "../contexts/auth";
-import { getAuthToken } from "../lib/auth";
+import { getAuthToken, authStorage } from "../lib/auth";
+import { DeviceEventEmitter } from "react-native";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://10.0.2.2:3004";
 const CHAT_SERVICE_BASE_URL = process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://10.0.2.2:3002";
 
+// Module-level singletons to ensure only ONE socket exists across all components
+let sharedSocket: Socket | null = null;
+let subscribersCount = 0;
+let globalConnectErrorCount = 0;
+let globalDidFallbackToChatService = false;
+
 export const useSocket = () => {
   const { user } = useAuth();
-  const socketRef = useRef<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(sharedSocket?.connected ?? false);
 
   useEffect(() => {
     if (!user) {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
       return;
     }
 
     let isMounted = true;
-    let connectErrorCount = 0;
-    let didFallbackToChatService = false;
-
+    
     const initSocket = async () => {
       const token = await getAuthToken();
       if (!token || !isMounted) {
         return;
       }
+
+      subscribersCount++;
 
       const createSocket = (baseUrl: string) =>
         io(baseUrl, {
@@ -44,23 +47,21 @@ export const useSocket = () => {
         });
 
       const replaceSocket = (baseUrl: string) => {
-        if (socketRef.current) {
-          socketRef.current.removeAllListeners();
-          socketRef.current.disconnect();
+        if (sharedSocket) {
+          sharedSocket.removeAllListeners();
+          sharedSocket.disconnect();
         }
-        socketRef.current = createSocket(baseUrl);
-        attachListeners(socketRef.current);
+        sharedSocket = createSocket(baseUrl);
+        attachGlobalListeners(sharedSocket);
       };
 
-      const attachListeners = (socket: Socket) => {
+      const attachGlobalListeners = (socket: Socket) => {
         socket.on("connect", () => {
           console.log(`✅ Socket connected as ${user.fullName}`);
-          connectErrorCount = 0;
-          setIsConnected(true);
+          globalConnectErrorCount = 0;
         });
 
         socket.on("disconnect", async (reason) => {
-          setIsConnected(false);
           if (reason === "io server disconnect") {
             const latestToken = await getAuthToken();
             if (latestToken && socket.auth) {
@@ -72,65 +73,110 @@ export const useSocket = () => {
 
         socket.on("connect_error", (error: Error) => {
           console.error("Socket.io error:", error);
-          connectErrorCount += 1;
+          globalConnectErrorCount += 1;
           const isGatewayTimeout =
-            !didFallbackToChatService &&
-            (error.message.toLowerCase().includes("timeout") || connectErrorCount >= 2);
+            !globalDidFallbackToChatService &&
+            (error.message.toLowerCase().includes("timeout") || globalConnectErrorCount >= 2);
 
           if (isGatewayTimeout) {
-            didFallbackToChatService = true;
-            connectErrorCount = 0;
+            globalDidFallbackToChatService = true;
+            globalConnectErrorCount = 0;
             replaceSocket(CHAT_SERVICE_BASE_URL);
           }
         });
+
+        socket.on("force_logout", async (data: { message?: string }) => {
+          const message = data?.message || "Tài khoản của bạn đã được đăng nhập ở thiết bị khác. Vui lòng đăng nhập lại.";
+          socket.disconnect();
+          await authStorage.removeToken();
+          DeviceEventEmitter.emit("force_logout", message);
+        });
       };
 
-      socketRef.current = createSocket(API_BASE_URL);
-      attachListeners(socketRef.current);
+      if (!sharedSocket) {
+        sharedSocket = createSocket(API_BASE_URL);
+        attachGlobalListeners(sharedSocket);
+      }
+
+      // Sync local state with sharedSocket
+      if (isMounted) {
+        setIsConnected(sharedSocket.connected);
+      }
+
+      const onConnect = () => isMounted && setIsConnected(true);
+      const onDisconnect = () => isMounted && setIsConnected(false);
+
+      sharedSocket.on("connect", onConnect);
+      sharedSocket.on("disconnect", onDisconnect);
+
+      // Cleanup specific to this instance
+      return () => {
+        if (sharedSocket) {
+          sharedSocket.off("connect", onConnect);
+          sharedSocket.off("disconnect", onDisconnect);
+        }
+      };
     };
 
-    initSocket();
+    let cleanupListeners: (() => void) | undefined;
+    
+    initSocket().then((cleanupFn) => {
+      cleanupListeners = cleanupFn as unknown as () => void;
+    });
 
     return () => {
       isMounted = false;
-      if (socketRef.current) {
-        socketRef.current.removeAllListeners();
-        socketRef.current.disconnect();
+      if (cleanupListeners) {
+        cleanupListeners();
       }
+      
+      // We only decrement subscribers if we actually incremented them.
+      // Since initSocket is async, it's possible this unmounts before initSocket finishes.
+      // To keep it simple, we just assume if it was mounted, it will eventually decrement.
+      // Actually, a safer way is just to check subscribersCount directly:
+      setTimeout(() => {
+         subscribersCount = Math.max(0, subscribersCount - 1);
+         if (subscribersCount === 0 && sharedSocket) {
+           sharedSocket.removeAllListeners();
+           sharedSocket.disconnect();
+           sharedSocket = null;
+           globalConnectErrorCount = 0;
+         }
+      }, 0);
     };
   }, [user]);
 
   const emit = useCallback((event: string, data: unknown) => {
-    if (socketRef.current && isConnected) {
-      socketRef.current.emit(event, data);
+    if (sharedSocket && isConnected) {
+      sharedSocket.emit(event, data);
     }
   }, [isConnected]);
 
   const on = useCallback((event: string, callback: (data: any) => void) => {
-    if (socketRef.current) {
-      socketRef.current.on(event, callback);
+    if (sharedSocket) {
+      sharedSocket.on(event, callback);
     }
   }, []);
 
   const off = useCallback((event: string, callback?: (data: any) => void) => {
-    if (socketRef.current) {
+    if (sharedSocket) {
       if (callback) {
-        socketRef.current.off(event, callback);
+        sharedSocket.off(event, callback);
       } else {
-        socketRef.current.off(event);
+        sharedSocket.off(event);
       }
     }
   }, []);
 
   const join = useCallback((conversationId: string) => {
-    if (socketRef.current) {
-      socketRef.current.emit("join_conversation", { conversation_id: conversationId });
+    if (sharedSocket) {
+      sharedSocket.emit("join_conversation", { conversation_id: conversationId });
     }
   }, []);
 
   const leave = useCallback((conversationId: string) => {
-    if (socketRef.current) {
-      socketRef.current.emit("leave_conversation", { conversation_id: conversationId });
+    if (sharedSocket) {
+      sharedSocket.emit("leave_conversation", { conversation_id: conversationId });
     }
   }, []);
 

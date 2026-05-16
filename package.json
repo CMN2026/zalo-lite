@@ -1,0 +1,16 @@
+{
+  "name": "zalo-lite-root",
+  "version": "1.0.0",
+  "description": "Root package for running microservices individually",
+  "scripts": {
+    "start:gateway": "npm run dev --prefix backend/api-gateway",
+    "start:user": "npm run dev --prefix backend/services/user-service",
+    "start:chat": "npm run dev --prefix backend/services/chat-service",
+    "start:chatbot": "npm run dev --prefix backend/services/chatbot-service",
+    "start:frontend": "npm run dev --prefix frontend/web",
+    "start:all": "concurrently \"npm run start:gateway\" \"npm run start:user\" \"npm run start:chat\" \"npm run start:chatbot\" \"npm run start:frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

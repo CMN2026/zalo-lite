@@ -7,6 +7,7 @@ import '../global.css';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '../contexts/auth';
 import { useEffect } from 'react';
+import ForceLogoutModal from '../components/ForceLogoutModal';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -47,6 +48,7 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <RootLayoutNav />
+      <ForceLogoutModal />
     </AuthProvider>
   );
 }

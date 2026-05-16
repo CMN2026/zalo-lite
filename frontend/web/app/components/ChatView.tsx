@@ -26,6 +26,7 @@ import CreateGroupModal from "./CreateGroupModal";
 import StartConversationModal from "./StartConversationModal";
 import GroupDetailPanel from "./GroupDetailPanel";
 import LiveKitCallOverlay from "./LiveKitCallOverlay";
+import UserProfileModal from "./UserProfileModal";
 import { useSocket } from "../hooks/useSocket";
 import { useAuth } from "../contexts/auth";
 import { getAuthToken } from "../lib/auth";
@@ -418,6 +419,7 @@ export default function ChatView({
   const [lastReadAtByConversation, setLastReadAtByConversation] = useState<
     Record<string, string>
   >({});
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
   const unreadByConversation =
     externalUnreadByConversation ?? localUnreadByConversation;
@@ -3225,11 +3227,22 @@ export default function ChatView({
           <>
             <div className="h-16 bg-[#f5f7fa] border-b border-slate-200 px-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <img
-                  src={activeChat.avatar}
-                  alt={activeChat.name}
-                  className="w-9 h-9 rounded-full object-cover"
-                />
+                <button
+                  type="button"
+                  className={`relative ${activeChat.type === "direct" && activeChat.peerId ? "cursor-pointer hover:opacity-80 transition-opacity" : "cursor-default"}`}
+                  onClick={() => {
+                    if (activeChat.type === "direct" && activeChat.peerId) {
+                      setProfileUserId(activeChat.peerId);
+                    }
+                  }}
+                  aria-label="Xem trang cá nhân"
+                >
+                  <img
+                    src={activeChat.avatar}
+                    alt={activeChat.name}
+                    className="w-9 h-9 rounded-full object-cover"
+                  />
+                </button>
                 <div>
                   <h2 className="text-[16px] leading-none font-semibold">
                     {activeChat.name}
@@ -3513,6 +3526,27 @@ export default function ChatView({
         onClose={() => setShowStartConversation(false)}
         onSelectFriend={handleStartDirectConversation}
       />
+      {profileUserId && (
+        <UserProfileModal
+          userId={profileUserId}
+          onClose={() => setProfileUserId(null)}
+          onMessage={(userId) => {
+            setProfileUserId(null);
+            // Wait for modal to close before navigating
+            setTimeout(() => {
+               // We already have a function handleStartDirectConversation but it takes a full friend object.
+               // Let's just create a direct conversation if not already active
+               // Or simply close if we are already in the chat.
+               if (activeChat?.peerId !== userId) {
+                 const friend = allUsers.find(u => u.id === userId);
+                 if (friend) {
+                   void handleStartDirectConversation(friend);
+                 }
+               }
+            }, 100);
+          }}
+        />
+      )}
     </div>
   );
 }

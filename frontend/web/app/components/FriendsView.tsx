@@ -20,6 +20,7 @@ import {
   type FriendRequest,
   type ProfileUser,
 } from "../lib/users";
+import UserProfileModal from "./UserProfileModal";
 
 type TabId = "friends" | "search" | "requests";
 
@@ -43,6 +44,7 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
   const [openingChatId, setOpeningChatId] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
   const filteredFriends = useMemo(() => {
     const query = friendFilter.trim().toLowerCase();
@@ -306,6 +308,7 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
                   key={friend.id}
                   user={friend}
                   meta={friend.phone ?? "No phone number"}
+                  onClickAvatar={() => setProfileUserId(friend.id)}
                   action={
                     <div className="flex items-center gap-2">
                       <span className="bg-green-50 text-green-700 text-xs font-semibold px-3 py-1 rounded-full">
@@ -387,6 +390,7 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
                     key={user.id}
                     user={user}
                     meta={user.phone ?? "No phone number"}
+                    onClickAvatar={() => setProfileUserId(user.id)}
                     action={
                       <button
                         onClick={() => void handleSendRequest(user)}
@@ -463,6 +467,21 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
           )}
         </section>
       )}
+      {profileUserId && (
+        <UserProfileModal
+          userId={profileUserId}
+          onClose={() => setProfileUserId(null)}
+          onMessage={(userId) => {
+            setProfileUserId(null);
+            setTimeout(() => {
+              const friend = friends.find((f) => f.id === userId) || searchResults.find((f) => f.id === userId);
+              if (friend) {
+                void handleOpenChat(friend);
+              }
+            }, 100);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -508,6 +527,7 @@ function UserRow({
   meta: string;
   action: React.ReactNode;
   fallbackName?: string;
+  onClickAvatar?: () => void;
 }) {
   const name = user?.fullName ?? fallbackName;
   const initials = name
@@ -519,17 +539,23 @@ function UserRow({
 
   return (
     <div className="p-4 flex items-center gap-3">
-      {user?.avatarUrl ? (
-        <img
-          src={user.avatarUrl}
-          alt={name}
-          className="w-11 h-11 rounded-full object-cover"
-        />
-      ) : (
-        <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold">
-          {initials}
-        </div>
-      )}
+      <button 
+        type="button" 
+        onClick={onClickAvatar} 
+        className={onClickAvatar ? "cursor-pointer hover:opacity-80 transition-opacity" : "cursor-default"}
+      >
+        {user?.avatarUrl ? (
+          <img
+            src={user.avatarUrl}
+            alt={name}
+            className="w-11 h-11 rounded-full object-cover"
+          />
+        ) : (
+          <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold">
+            {initials}
+          </div>
+        )}
+      </button>
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-sm truncate">{name}</div>
         <div className="text-xs text-slate-500 truncate mt-0.5">{meta}</div>
