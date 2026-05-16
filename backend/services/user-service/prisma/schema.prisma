@@ -36,13 +36,24 @@ enum FriendshipStatus {
   @@map("friendship_status")
 }
 
+enum UserGender {
+  MALE
+  FEMALE
+  OTHER
+
+  @@map("user_gender")
+}
+
 model User {
   id        String   @id @default(uuid()) @db.Uuid
   email     String   @unique @db.VarChar(255)
   phone     String?  @unique @db.VarChar(20)
   fullName  String   @map("full_name") @db.VarChar(100)
   avatarUrl String?  @map("avatar_url")
+  coverUrl  String?  @map("cover_url")
   bio       String?  @db.VarChar(280)
+  gender    UserGender?
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
   role      UserRole @default(USER)
   plan      UserPlan @default(FREE)
   isActive  Boolean  @default(true) @map("is_active")

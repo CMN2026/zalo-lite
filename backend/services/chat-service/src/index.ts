@@ -469,8 +469,8 @@ io.on("connection", async (socket) => {
   });
 
   socket.on("call:initiate", async (payload: unknown) => {
+    const conversationId = getConversationId(payload);
     try {
-      const conversationId = getConversationId(payload);
       if (!conversationId) {
         socket.emit("call:error", {
           event: "call:initiate",

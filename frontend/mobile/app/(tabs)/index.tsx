@@ -1495,21 +1495,21 @@ export default function ChatsScreen() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1 bg-zalo-bg">
       {activeChatId && activeConv ? (
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1"
         >
           {/* Chat header */}
-          <View className="flex-row items-center px-3 py-2.5 border-b border-slate-200 bg-white">
+          <View className="flex-row items-center px-3 py-2.5 bg-zalo-blue shadow-sm">
             <TouchableOpacity
               onPress={closeActiveChat}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               className="flex-row items-center px-2 py-2 mr-2"
             >
-              <Text className="text-blue-600 text-base font-semibold">
-                ← Danh sách
+              <Text className="text-white text-base font-semibold">
+                ←
               </Text>
             </TouchableOpacity>
             <Image
@@ -1517,19 +1517,19 @@ export default function ChatsScreen() {
               className="w-10 h-10 rounded-full bg-slate-200 mr-3"
             />
             <View className="flex-1">
-              <Text className="font-semibold text-slate-800" numberOfLines={1}>
+              <Text className="font-semibold text-white" numberOfLines={1}>
                 {activeConv.name}
               </Text>
-              <Text className="text-xs text-slate-400">
+              <Text className="text-xs text-blue-100">
                 {typingIndicatorText ??
                   (activeConv.type === "group" ? "Nhóm" : "Trực tiếp")}
               </Text>
             </View>
             <TouchableOpacity
               onPress={() => void openChatDetails()}
-              className="px-3 py-1.5 rounded-xl active:bg-slate-100"
+              className="px-3 py-1.5 rounded-xl active:bg-blue-600"
             >
-              <Text style={{ fontSize: 22, color: "#475569" }}>≡</Text>
+              <Text style={{ fontSize: 22, color: "#ffffff" }}>≡</Text>
             </TouchableOpacity>
           </View>
 
@@ -1635,7 +1635,9 @@ export default function ChatsScreen() {
                             borderRadius: 18,
                             borderBottomRightRadius: isMe ? 4 : 18,
                             borderBottomLeftRadius: isMe ? 18 : 4,
-                            backgroundColor: isMe ? "#2563eb" : "#f1f5f9",
+                            backgroundColor: isMe ? "#0068FF" : "#ffffff",
+                            borderWidth: isMe ? 0 : 1,
+                            borderColor: "#e2e8f0",
                           }}
                         >
                           {renderMessageContent(msg, isMe)}
@@ -2056,7 +2058,7 @@ export default function ChatsScreen() {
         </KeyboardAvoidingView>
       ) : (
         <>
-          <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-200">
+          <View className="flex-row items-center justify-between px-4 py-3 bg-zalo-blue">
             <View className="flex-row items-center gap-3">
               <Image
                 source={{
@@ -2067,10 +2069,10 @@ export default function ChatsScreen() {
                 className="w-10 h-10 rounded-full bg-slate-200"
               />
               <View>
-                <Text className="text-base font-bold text-slate-800">
+                <Text className="text-base font-bold text-white">
                   Tin nhắn
                 </Text>
-                <Text className="text-xs text-slate-400">
+                <Text className="text-xs text-blue-100">
                   {isConnected ? "● Đã kết nối" : "○ Đang kết nối..."}
                 </Text>
               </View>
@@ -2084,14 +2086,15 @@ export default function ChatsScreen() {
             )}
           </View>
 
-          <View className="px-4 py-2">
-            <View className="bg-slate-100 rounded-xl px-4 py-2 flex-row items-center gap-2">
-              <Text className="text-slate-400">🔍</Text>
+          <View className="px-4 pb-3 bg-zalo-blue">
+            <View className="bg-white/20 rounded-lg px-4 py-2 flex-row items-center gap-2">
+              <Text className="text-white">🔍</Text>
               <TextInput
                 value={searchTerm}
                 onChangeText={setSearchTerm}
                 placeholder="Tìm kiếm..."
-                className="flex-1 text-sm text-slate-700"
+                placeholderTextColor="#bae6fd"
+                className="flex-1 text-sm text-white"
               />
             </View>
           </View>
@@ -2129,7 +2132,7 @@ export default function ChatsScreen() {
                 return (
                   <TouchableOpacity
                     onPress={() => openChat(item)}
-                    className="flex-row items-center px-4 py-3 border-b border-slate-50"
+                    className="flex-row items-center px-4 py-3 bg-white border-b border-slate-100"
                   >
                     <View className="relative">
                       <Image
@@ -2143,18 +2146,18 @@ export default function ChatsScreen() {
                     <View className="flex-1 ml-4">
                       <View className="flex-row justify-between items-center mb-0.5">
                         <Text
-                          className="text-base font-semibold text-slate-800"
+                          className="text-base font-medium text-zalo-text"
                           numberOfLines={1}
                         >
                           {item.name}
                         </Text>
-                        <Text className="text-xs text-slate-400">
+                        <Text className="text-xs text-zalo-gray">
                           {item.time}
                         </Text>
                       </View>
                       <View className="flex-row justify-between items-center">
                         <Text
-                          className={`text-sm flex-1 mr-3 ${item.unread > 0 ? "text-slate-800 font-medium" : "text-slate-500"}`}
+                          className={`text-sm flex-1 mr-3 ${item.unread > 0 ? "text-zalo-text font-semibold" : "text-zalo-gray"}`}
                           numberOfLines={1}
                         >
                           {displayPreview}

@@ -233,22 +233,22 @@ export default function ChatbotScreen() {
   const needsStaff = activeConv?.status === "needs_staff";
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1 bg-zalo-bg">
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
+      <View className="flex-row items-center justify-between px-4 py-3 bg-zalo-blue border-b border-zalo-blue">
         <View>
-          <Text className="font-bold text-slate-900">Hỗ trợ khách hàng</Text>
-          <Text className="text-[11px] text-slate-400">Trả lời 24/7</Text>
+          <Text className="font-bold text-white">Khám phá</Text>
+          <Text className="text-[11px] text-blue-100">Mini App & Tiện ích</Text>
         </View>
         <View className="flex-row gap-2">
           <TouchableOpacity
             onPress={() => setShowList(!showList)}
-            className="bg-slate-100 px-3 py-1.5 rounded-lg"
+            className="bg-white/20 px-3 py-1.5 rounded-lg"
           >
-            <Text className="text-slate-700 text-xs font-semibold">Lịch sử</Text>
+            <Text className="text-white text-xs font-semibold">Lịch sử</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleNewConv} className="bg-blue-600 px-3 py-1.5 rounded-lg">
-            <Text className="text-white text-xs font-semibold">+ Mới</Text>
+          <TouchableOpacity onPress={handleNewConv} className="bg-white px-3 py-1.5 rounded-lg">
+            <Text className="text-zalo-blue text-xs font-semibold">+ Mới</Text>
           </TouchableOpacity>
         </View>
       </View>
