@@ -96,6 +96,20 @@ export class UserController {
     }
   }
 
+  static async listOutgoingRequests(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.listOutgoingRequests(userId);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async respondFriendRequest(
     req: Request,
     res: Response,
@@ -119,6 +133,19 @@ export class UserController {
       const userId = req.auth?.userId;
       const data = await userService.listFriends(userId);
       res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async removeFriend(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.removeFriend(
+        userId,
+        req.params.otherUserId,
+      );
+      res.status(200).json({ message: "friendship_removed", data });
     } catch (error) {
       next(error);
     }

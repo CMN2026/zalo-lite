@@ -26,6 +26,26 @@ type AuthPayload = {
   plan: "FREE" | "PREMIUM";
 };
 
+type FriendProfile = {
+  id?: string;
+  fullName?: string;
+  phone?: string | null;
+  avatarUrl?: string | null;
+};
+
+type FriendRequestPayload = {
+  id?: string;
+  status?: "PENDING" | "ACCEPTED" | "REJECTED" | "BLOCKED";
+  message?: string | null;
+  requester?: FriendProfile;
+  addressee?: FriendProfile;
+};
+
+type ApiEnvelope<T> = {
+  message?: string;
+  data?: T;
+};
+
 const env = {
   PORT: Number(process.env.PORT ?? 3004),
   USER_SERVICE_URL: process.env.USER_SERVICE_URL ?? "http://localhost:3001",
@@ -170,6 +190,45 @@ function mapApiPrefix(apiPrefix: string, upstreamPrefix: string) {
   };
 }
 
+function getBearerHeader(req: Request) {
+  return typeof req.headers.authorization === "string"
+    ? req.headers.authorization
+    : "";
+}
+
+async function forwardJsonToUserService(
+  req: Request,
+  res: Response,
+  upstreamPath: string,
+): Promise<unknown> {
+  const response = await fetch(`${env.USER_SERVICE_URL}${upstreamPath}`, {
+    method: req.method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: getBearerHeader(req),
+    },
+    body: JSON.stringify(req.body ?? {}),
+  });
+
+  const raw = await response.text();
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType) {
+    res.setHeader("content-type", contentType);
+  }
+
+  res.status(response.status).send(raw);
+
+  if (!raw || !contentType.includes("application/json")) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public routes — no auth required
 // ─────────────────────────────────────────────────────────────────────────────
@@ -182,6 +241,80 @@ app.use(
 // ─────────────────────────────────────────────────────────────────────────────
 // Protected routes — JWT required
 // ─────────────────────────────────────────────────────────────────────────────
+
+app.post(
+  "/api/users/friend-requests",
+  authenticateJwt,
+  authorizeRoles("USER", "ADMIN"),
+  async (req, res, next) => {
+    try {
+      const payload = (await forwardJsonToUserService(
+        req,
+        res,
+        "/users/friend-requests",
+      )) as ApiEnvelope<FriendRequestPayload> | null;
+
+      const request = payload?.data;
+      if (!request || res.statusCode >= 400) {
+        return;
+      }
+
+      if (request.status === "ACCEPTED") {
+        const requesterId = request.requester?.id;
+        if (requesterId) {
+          io.to(`user_${requesterId}`).emit("friend_request:accepted", {
+            requestId: request.id,
+            friend: request.addressee,
+          });
+        }
+        return;
+      }
+
+      const addresseeId = request.addressee?.id;
+      if (addresseeId) {
+        io.to(`user_${addresseeId}`).emit("friend_request:incoming", {
+          requestId: request.id,
+          requester: request.requester,
+          message: request.message ?? null,
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.post(
+  "/api/users/friend-requests/:requestId/respond",
+  authenticateJwt,
+  authorizeRoles("USER", "ADMIN"),
+  async (req, res, next) => {
+    try {
+      const payload = (await forwardJsonToUserService(
+        req,
+        res,
+        `/users/friend-requests/${encodeURIComponent(
+          req.params.requestId,
+        )}/respond`,
+      )) as ApiEnvelope<FriendRequestPayload> | null;
+
+      const request = payload?.data;
+      if (!request || res.statusCode >= 400 || request.status !== "ACCEPTED") {
+        return;
+      }
+
+      const requesterId = request.requester?.id;
+      if (requesterId) {
+        io.to(`user_${requesterId}`).emit("friend_request:accepted", {
+          requestId: request.id,
+          friend: request.addressee,
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 app.use(
   "/api/users",
@@ -271,6 +404,14 @@ io.on("connection", (socket: Socket) => {
     return;
   }
 
+  const userId =
+    typeof socket.data.auth?.userId === "string"
+      ? socket.data.auth.userId
+      : undefined;
+  if (userId) {
+    socket.join(`user_${userId}`);
+  }
+
   const upstream: ClientSocket = createSocketClient(env.CHAT_SERVICE_URL, {
     path: "/socket.io/",
     auth: { token },
@@ -282,7 +423,7 @@ io.on("connection", (socket: Socket) => {
   });
 
   console.log(
-    `[Socket.io] Connected: ${socket.id} (user: ${socket.data.auth?.userId})`,
+    `[Socket.io] Connected: ${socket.id} (user: ${userId ?? "unknown"})`,
   );
 
   const clientToUpstreamEvents = [
@@ -350,7 +491,12 @@ io.on("connection", (socket: Socket) => {
       }
       if (eventName === "connect_error") {
         console.error(`[Socket.io] Upstream error for ${socket.id}`, payload);
-        socket.emit("connect_error", payload);
+        socket.emit("upstream_connect_error", {
+          message:
+            payload instanceof Error
+              ? payload.message
+              : "Unable to connect to chat service",
+        });
         return;
       }
       socket.emit(eventName, payload);

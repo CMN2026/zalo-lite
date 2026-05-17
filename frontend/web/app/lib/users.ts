@@ -50,7 +50,7 @@ type ApiRequestError = Error &
   };
 
 type RequestOptions = {
-  method?: "GET" | "PATCH" | "POST";
+  method?: "GET" | "PATCH" | "POST" | "DELETE";
   body?: Record<string, unknown>;
 };
 
@@ -97,6 +97,12 @@ export async function listIncomingFriendRequests() {
   );
 }
 
+export async function listOutgoingFriendRequests() {
+  return request<ApiResponse<FriendRequest[]>>(
+    "/users/friend-requests/outgoing",
+  );
+}
+
 export async function respondFriendRequest(
   requestId: string,
   action: "accept" | "reject",
@@ -112,6 +118,15 @@ export async function respondFriendRequest(
 
 export async function listFriends() {
   return request<ApiResponse<ProfileUser[]>>("/users/friends");
+}
+
+export async function removeFriend(otherUserId: string) {
+  return request<ApiResponse<{ id: string; removedUserId: string }>>(
+    `/users/friendships/${otherUserId}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export async function getFriendshipStatus(otherUserId: string) {

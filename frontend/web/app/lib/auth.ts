@@ -58,7 +58,10 @@ export async function register(input: {
   return post<AuthResponse<{ token: string; user: AuthUser }>>(
     "/api/auth/register",
     {
-      body: input,
+      body: {
+        ...input,
+        full_name: input.fullName,
+      },
     },
   );
 }

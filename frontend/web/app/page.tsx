@@ -552,7 +552,11 @@ export default function DashboardLayout() {
         {currentView === "history" && <HistoryView />}
         {currentView === "stats" && <StatsView />}
         {currentView === "friends" && (
-          <FriendsView onStartChat={handleStartChatFromFriends} />
+          <FriendsView
+            onStartChat={handleStartChatFromFriends}
+            onRealtimeEvent={on}
+            offRealtimeEvent={off}
+          />
         )}
         {currentView === "profile" && <ProfileView />}
       </div>
