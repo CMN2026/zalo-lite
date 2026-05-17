@@ -18,7 +18,7 @@ export interface Message {
   conversation_id: string;
   sender_id: string;
   sender_name?: string;
-  type: "text" | "file";
+  type: "text" | "file" | "call";
   content: string;
   created_at: string;
   read_by: string[];
@@ -322,6 +322,39 @@ export default function MessageList({
               ? "bg-white border-slate-200 hover:bg-slate-50"
               : "bg-white border-slate-200 rounded-bl-none hover:bg-slate-50";
             const isHighlighted = highlightedMessageId === message.id;
+
+            // Call info message — rendered as centered system bubble
+            if (message.type === "call") {
+              let callText = message.content;
+              try {
+                const parsed = JSON.parse(message.content) as { text?: string };
+                if (parsed.text) {
+                  callText = parsed.text;
+                }
+              } catch {
+                // content is plain text, use as-is
+              }
+
+              return (
+                <div key={message.id} className="rounded-xl px-1 py-1">
+                  {showDateSeparator && (
+                    <div className="flex items-center justify-center my-4">
+                      <p className="text-xs text-slate-400 bg-slate-50 px-3 py-1 rounded-full">
+                        {messageDate}
+                      </p>
+                    </div>
+                  )}
+                  <div className="flex justify-center animate-fadeIn">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-sm">
+                      <span>{callText}</span>
+                      <span className="text-[11px] text-slate-400">
+                        {formatTime(message.created_at)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
 
             if (message.type === "text") {
               return (

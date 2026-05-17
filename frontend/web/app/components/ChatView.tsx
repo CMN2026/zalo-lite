@@ -13,6 +13,8 @@ import {
   Bell,
   BellOff,
   MoreVertical,
+  Phone,
+  PhoneOff,
   Plus,
   Search,
   Trash2,
@@ -23,9 +25,12 @@ import MessageInput from "./MessageInput";
 import CreateGroupModal from "./CreateGroupModal";
 import StartConversationModal from "./StartConversationModal";
 import GroupDetailPanel from "./GroupDetailPanel";
+import LiveKitCallOverlay from "./LiveKitCallOverlay";
+import UserProfileModal from "./UserProfileModal";
 import { useSocket } from "../hooks/useSocket";
 import { useAuth } from "../contexts/auth";
 import { getAuthToken } from "../lib/auth";
+import type { LiveKitTokenPayload } from "../lib/calls";
 
 interface Conversation {
   id: string;
@@ -76,6 +81,60 @@ type SendAckPayload = {
   client_temp_id?: string;
   error?: string;
   conversation_id?: string;
+};
+
+type CallSignalPayload = {
+  call_id?: unknown;
+  conversation_id?: unknown;
+  initiator_id?: unknown;
+  sender_id?: unknown;
+  call_type?: unknown;
+  reason?: unknown;
+  left_user_id?: unknown;
+};
+
+type ActiveCallState = {
+  callId: string;
+  conversationId: string;
+  status: "ringing" | "connected";
+  isInitiator: boolean;
+  connectedAt?: number;
+  callType: "direct" | "group";
+};
+
+type ActiveGroupCallInfo = {
+  callId: string;
+  callType: "group";
+};
+
+function formatCallDuration(seconds: number): string {
+  if (seconds < 0 || !Number.isFinite(seconds)) {
+    return "";
+  }
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  const parts: string[] = [];
+  if (hours > 0) {
+    parts.push(`${hours} giờ`);
+  }
+  if (minutes > 0) {
+    parts.push(`${minutes} phút`);
+  }
+  if (secs > 0 || parts.length === 0) {
+    parts.push(`${secs} giây`);
+  }
+
+  return parts.join(" ");
+}
+
+type IncomingCallState = {
+  callId: string;
+  conversationId: string;
+  initiatorId: string;
+  callType: "direct" | "group";
 };
 
 interface ChatViewProps {
@@ -223,7 +282,8 @@ async function authJsonRequest<T>(
       requestPath:
         path.startsWith("/api/conversations") ||
         path.startsWith("/api/messages") ||
-        path.startsWith("/api/friends")
+        path.startsWith("/api/friends") ||
+        path.startsWith("/api/calls")
           ? fallbackPath
           : null,
       tag: "chat-service" as const,
@@ -320,6 +380,9 @@ export default function ChatView({
   const [localUnreadByConversation, setLocalUnreadByConversation] = useState<
     Record<string, number>
   >({});
+  const [missedCallsByConversation, setMissedCallsByConversation] = useState<
+    Record<string, number>
+  >({});
   const [localMutedByConversation, setLocalMutedByConversation] = useState<
     Record<string, boolean>
   >({});
@@ -334,6 +397,19 @@ export default function ChatView({
   >({});
   const [chatNotice, setChatNotice] = useState<string>("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [activeCall, setActiveCall] = useState<ActiveCallState | null>(null);
+  const [incomingCall, setIncomingCall] = useState<IncomingCallState | null>(
+    null,
+  );
+  const [liveKitTokenPayload, setLiveKitTokenPayload] =
+    useState<LiveKitTokenPayload | null>(null);
+  const [liveKitTokenError, setLiveKitTokenError] = useState<string | null>(
+    null,
+  );
+  const liveKitRequestCallIdRef = useRef<string | null>(null);
+  const [activeGroupCalls, setActiveGroupCalls] = useState<
+    Record<string, ActiveGroupCallInfo>
+  >({});
   const [activeConversationActionId, setActiveConversationActionId] = useState<
     string | null
   >(null);
@@ -343,6 +419,7 @@ export default function ChatView({
   const [lastReadAtByConversation, setLastReadAtByConversation] = useState<
     Record<string, string>
   >({});
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
   const unreadByConversation =
     externalUnreadByConversation ?? localUnreadByConversation;
@@ -589,6 +666,58 @@ export default function ChatView({
       // Keep previous users to avoid UI flicker when API is temporarily throttled.
     }
   }, [currentUserId]);
+
+  const loadMissedCallCounters = useCallback(async () => {
+    if (!currentUserId || !getAuthToken()) {
+      setMissedCallsByConversation({});
+      return;
+    }
+
+    try {
+      const response = await authJsonRequest<{ data?: unknown }>(
+        "/api/calls/history?limit=200",
+      );
+
+      const nextCounters = (Array.isArray(response.data)
+        ? response.data
+        : []
+      ).reduce<Record<string, number>>((acc, item) => {
+        if (!item || typeof item !== "object") {
+          return acc;
+        }
+
+        const raw = item as { conversation_id?: unknown; status?: unknown };
+        const conversationId = normalizeConversationId(raw.conversation_id);
+        const status = typeof raw.status === "string" ? raw.status : "";
+
+        if (!conversationId || status !== "missed") {
+          return acc;
+        }
+
+        acc[conversationId] = (acc[conversationId] ?? 0) + 1;
+        return acc;
+      }, {});
+
+      setMissedCallsByConversation(nextCounters);
+    } catch {
+      // Keep current counters if call history request fails transiently.
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
+    void loadMissedCallCounters();
+    const intervalId = window.setInterval(() => {
+      void loadMissedCallCounters();
+    }, 60_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [currentUserId, loadMissedCallCounters]);
 
   useEffect(() => {
     if (!currentUserId) {
@@ -1354,6 +1483,46 @@ export default function ChatView({
     void markConversationAsRead(activeChatId, true);
   }, [activeChatId, markConversationAsRead]);
 
+  const fetchActiveCallForConversation = useCallback(
+    async (conversationId: string) => {
+      try {
+        const response = await authJsonRequest<{
+          data?: {
+            id: string;
+            status: string;
+            call_type: "group" | "direct";
+          } | null;
+        }>(`/api/calls/active-for-conversation?conversation_id=${conversationId}`);
+
+        if (response.data && response.data.status === "active") {
+          setActiveGroupCalls((prev) => ({
+            ...prev,
+            [conversationId]: {
+              callId: response.data!.id,
+              callType: response.data!.call_type as "group",
+            },
+          }));
+        } else {
+          setActiveGroupCalls((prev) => {
+            const next = { ...prev };
+            delete next[conversationId];
+            return next;
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch active call for conversation:", error);
+      }
+    },
+    [authJsonRequest],
+  );
+
+  useEffect(() => {
+    if (!activeChatId) {
+      return;
+    }
+    void fetchActiveCallForConversation(activeChatId);
+  }, [activeChatId, fetchActiveCallForConversation]);
+
   useEffect(() => {
     if (!activeChatId || !currentUserId) {
       return;
@@ -1867,6 +2036,242 @@ export default function ChatView({
       void loadConversations();
     };
 
+    const handleCallInitiateAck = (payload: unknown) => {
+      const data = payload as {
+        ok?: unknown;
+        call_id?: unknown;
+        conversation_id?: unknown;
+      };
+      const ok = data.ok === true;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+
+      if (!ok || !callId || !conversationId) {
+        return;
+      }
+
+      const callType = conversationId.startsWith("grp_")
+        ? ("group" as const)
+        : ("direct" as const);
+
+      setActiveCall({
+        callId,
+        conversationId,
+        status: "ringing",
+        isInitiator: true,
+        connectedAt: undefined,
+        callType,
+      });
+
+      if (callType === "group") {
+        setActiveGroupCalls((prev) => ({
+          ...prev,
+          [conversationId]: { callId, callType: "group" },
+        }));
+      }
+    };
+
+    const handleCallInitiate = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+      const initiatorId =
+        typeof data.initiator_id === "string" ? data.initiator_id.trim() : "";
+      const callType = data.call_type === "group" ? "group" : "direct";
+
+      if (!callId || !conversationId || !initiatorId) {
+        return;
+      }
+
+      if (initiatorId === currentUserId) {
+        return;
+      }
+
+      setIncomingCall({
+        callId,
+        conversationId,
+        initiatorId,
+        callType,
+      });
+
+      if (callType === "group") {
+        setActiveGroupCalls((prev) => ({
+          ...prev,
+          [conversationId]: { callId, callType: "group" },
+        }));
+      }
+    };
+
+    const handleCallAccept = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+
+      if (!callId || !conversationId) {
+        return;
+      }
+
+      setActiveCall((current) => {
+        if (!current || current.callId !== callId) {
+          return current;
+        }
+
+        return {
+          ...current,
+          status: "connected",
+          connectedAt: current.connectedAt ?? Date.now(),
+        };
+      });
+    };
+
+    const handleCallDecline = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+
+      setActiveCall((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
+
+      setLiveKitTokenPayload(null);
+      setLiveKitTokenError(null);
+      liveKitRequestCallIdRef.current = null;
+
+      if (callId && conversationId) {
+        // Backend persists the call-info message; no local append needed.
+        setChatNotice("Cuộc gọi nhỡ");
+      }
+    };
+
+    const handleCallEnd = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+      const reason = typeof data.reason === "string" ? data.reason : "ended";
+
+      let endedCallConnectedAt: number | undefined;
+      setActiveCall((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        endedCallConnectedAt = current.connectedAt;
+        return null;
+      });
+
+      setIncomingCall((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
+
+      setLiveKitTokenPayload(null);
+      setLiveKitTokenError(null);
+      liveKitRequestCallIdRef.current = null;
+
+      if (callId && conversationId) {
+        const notice = endedCallConnectedAt ? "Cuộc gọi đã kết thúc" : "Cuộc gọi nhỡ";
+        setChatNotice(notice);
+      }
+
+      // Remove from active group calls
+      if (conversationId) {
+        setActiveGroupCalls((prev) => {
+          const next = { ...prev };
+          delete next[conversationId];
+          return next;
+        });
+      }
+    };
+
+    const handleCallParticipantLeft = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const leftUserId =
+        typeof data.left_user_id === "string" ? data.left_user_id : "";
+
+      if (leftUserId && leftUserId !== currentUserId) {
+        setChatNotice("Một thành viên đã rời cuộc gọi");
+      }
+    };
+
+    const handleCallMissed = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+
+      setActiveCall((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
+
+      setIncomingCall((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
+
+      if (conversationId) {
+        setMissedCallsByConversation((prev) => ({
+          ...prev,
+          [conversationId]: (prev[conversationId] ?? 0) + 1,
+        }));
+      }
+
+      setLiveKitTokenPayload(null);
+      setLiveKitTokenError(null);
+      liveKitRequestCallIdRef.current = null;
+
+      if (callId && conversationId) {
+        // Backend persists the call-info message; no local append needed.
+        setChatNotice("📞 Cuộc gọi nhỡ");
+      }
+    };
+
+    const handleCallError = (payload: unknown) => {
+      const data = payload as { message?: unknown; conversation_id?: unknown };
+      const message =
+        typeof data.message === "string" ? data.message : "call_error";
+      const conversationId = normalizeConversationId(data.conversation_id);
+
+      if (message === "call_already_active") {
+        setChatNotice("Cuộc gọi nhóm đang diễn ra. Đang tải...");
+        if (conversationId) {
+          void fetchActiveCallForConversation(conversationId);
+        }
+      } else {
+        setChatNotice(
+          message === "not_a_member"
+            ? "Bạn không có quyền thực hiện cuộc gọi."
+            : `Lỗi cuộc gọi: ${message}`,
+        );
+      }
+
+      setActiveCall(null);
+      setLiveKitTokenPayload(null);
+      liveKitRequestCallIdRef.current = null;
+    };
+
     on("message:send_ack", handleSendAck);
     on("receive_message", handleMessageReceive);
     on("message:receive", handleMessageReceive);
@@ -1888,6 +2293,14 @@ export default function ChatView({
     on("conversation:member_removed", handleConversationMemberRemoved);
     on("conversation:member_role_updated", handleConversationMemberRoleUpdated);
     on("conversation:members_added", handleConversationMembersAdded);
+    on("call:initiate_ack", handleCallInitiateAck);
+    on("call:initiate", handleCallInitiate);
+    on("call:accept", handleCallAccept);
+    on("call:decline", handleCallDecline);
+    on("call:end", handleCallEnd);
+    on("call:missed", handleCallMissed);
+    on("call:error", handleCallError);
+    on("call:participant_left", handleCallParticipantLeft);
 
     return () => {
       off("message:send_ack", handleSendAck);
@@ -1914,6 +2327,14 @@ export default function ChatView({
         handleConversationMemberRoleUpdated,
       );
       off("conversation:members_added", handleConversationMembersAdded);
+      off("call:initiate_ack", handleCallInitiateAck);
+      off("call:initiate", handleCallInitiate);
+      off("call:accept", handleCallAccept);
+      off("call:decline", handleCallDecline);
+      off("call:end", handleCallEnd);
+      off("call:missed", handleCallMissed);
+      off("call:error", handleCallError);
+      off("call:participant_left", handleCallParticipantLeft);
     };
   }, [
     activeChatId,
@@ -2202,12 +2623,230 @@ export default function ChatView({
       delete next[conversationId];
       return next;
     });
+    setMissedCallsByConversation((prev) => {
+      if (!(conversationId in prev)) {
+        return prev;
+      }
+
+      const next = { ...prev };
+      delete next[conversationId];
+      return next;
+    });
     setChatNotice("");
   };
 
   const handleReply = (message: Message) => {
     setReplyingTo(message);
   };
+
+  const requestLiveKitToken = useCallback(
+    async (callId: string, conversationId: string) => {
+      try {
+        const response = await authJsonRequest<{
+          data?: {
+            token: string;
+            ws_url: string;
+            room_name: string;
+            expires_at: string;
+          };
+        }>(`/api/calls/${encodeURIComponent(callId)}/livekit-token`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            conversation_id: conversationId,
+          }),
+        });
+
+        if (!response.data) {
+          setChatNotice("Không nhận được media token cho cuộc gọi.");
+          return null;
+        }
+
+        return response.data;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "request_failed";
+        setChatNotice(`Không thể cấp media token: ${message}`);
+        return null;
+      }
+    },
+    [],
+  );
+
+  const loadLiveKitToken = useCallback(
+    async (callId: string, conversationId: string) => {
+      if (liveKitRequestCallIdRef.current === callId) {
+        return liveKitTokenPayload;
+      }
+
+      liveKitRequestCallIdRef.current = callId;
+      setLiveKitTokenError(null);
+      const payload = await requestLiveKitToken(callId, conversationId);
+
+      if (!payload) {
+        setLiveKitTokenPayload(null);
+        setLiveKitTokenError("Không nhận được media token cho cuộc gọi.");
+        return null;
+      }
+
+      setLiveKitTokenPayload(payload);
+      return payload;
+    },
+    [requestLiveKitToken, liveKitTokenPayload],
+  );
+
+  const appendCallInfoMessage = useCallback(
+    (input: {
+      callId: string;
+      conversationId: string;
+      kind: "ended" | "declined" | "missed";
+      text: string;
+    }) => {
+      const messageId = `call-info:${input.callId}:${input.kind}`;
+      const createdAt = new Date().toISOString();
+
+      setConversations((prev) =>
+        prev.map((conv) => {
+          if (conv.id !== input.conversationId) {
+            return conv;
+          }
+
+          if (conv.messages.some((item) => item.id === messageId)) {
+            return conv;
+          }
+
+          const infoMessage = enrichMessage({
+            id: messageId,
+            conversation_id: input.conversationId,
+            sender_id: currentUserId,
+            type: "text",
+            content: input.text,
+            created_at: createdAt,
+            read_by: [currentUserId],
+          });
+
+          return {
+            ...conv,
+            messages: [...conv.messages, infoMessage],
+            preview: input.text,
+            time: new Date(createdAt).toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          };
+        }),
+      );
+    },
+    [currentUserId, enrichMessage],
+  );
+
+  const handleRetryLiveKitToken = useCallback(() => {
+    if (!activeCall) {
+      return;
+    }
+
+    liveKitRequestCallIdRef.current = null;
+    void loadLiveKitToken(activeCall.callId, activeCall.conversationId);
+  }, [activeCall, loadLiveKitToken]);
+
+  useEffect(() => {
+    if (!activeCall) {
+      liveKitRequestCallIdRef.current = null;
+      setLiveKitTokenPayload(null);
+      setLiveKitTokenError(null);
+      return;
+    }
+
+    const expectedRoomName = `call-${activeCall.callId}`;
+    if (liveKitTokenPayload?.room_name === expectedRoomName) {
+      return;
+    }
+
+    void loadLiveKitToken(activeCall.callId, activeCall.conversationId);
+  }, [
+    activeCall,
+    liveKitTokenPayload?.room_name,
+    loadLiveKitToken,
+  ]);
+
+  const handleStartCall = useCallback(() => {
+    if (!activeChatId || activeCall) {
+      return;
+    }
+
+    emit("call:initiate", {
+      conversation_id: activeChatId,
+      call_type: activeChat?.type === "group" ? "group" : "direct",
+    });
+  }, [activeCall, activeChat?.type, activeChatId, emit]);
+
+  const handleEndCall = useCallback(() => {
+    if (!activeCall) {
+      return;
+    }
+
+    const conversationId = activeCall.conversationId;
+    const callId = activeCall.callId;
+
+    if (activeCall.callType === "group") {
+      // Group call: leave instead of end
+      emit("call:leave", {
+        call_id: callId,
+        conversation_id: conversationId,
+      });
+      setChatNotice("Bạn đã rời cuộc gọi nhóm");
+    } else {
+      // Direct call: end the whole call
+      emit("call:end", {
+        call_id: callId,
+        conversation_id: conversationId,
+        reason: "ended_by_user",
+      });
+      setChatNotice(
+        activeCall.connectedAt ? "Cuộc gọi đã kết thúc" : "Cuộc gọi nhỡ",
+      );
+    }
+
+    setActiveCall(null);
+    setLiveKitTokenPayload(null);
+    setLiveKitTokenError(null);
+    liveKitRequestCallIdRef.current = null;
+  }, [activeCall, emit]);
+
+  const handleAcceptIncomingCall = useCallback(() => {
+    if (!incomingCall) {
+      return;
+    }
+
+    emit("call:accept", {
+      call_id: incomingCall.callId,
+      conversation_id: incomingCall.conversationId,
+    });
+
+    setActiveCall({
+      callId: incomingCall.callId,
+      conversationId: incomingCall.conversationId,
+      status: "connected",
+      isInitiator: false,
+      connectedAt: Date.now(),
+      callType: incomingCall.callType,
+    });
+    setIncomingCall(null);
+  }, [emit, incomingCall]);
+
+  const handleDeclineIncomingCall = useCallback(() => {
+    if (!incomingCall) {
+      return;
+    }
+
+    emit("call:decline", {
+      call_id: incomingCall.callId,
+      conversation_id: incomingCall.conversationId,
+      reason: "declined_by_user",
+    });
+    setIncomingCall(null);
+  }, [emit, incomingCall]);
 
   const handleRecall = async (message: Message) => {
     try {
@@ -2512,6 +3151,11 @@ export default function ChatView({
                         {mutedByConversation[chat.id] && (
                           <BellOff className="h-3.5 w-3.5 text-slate-400" />
                         )}
+                        {missedCallsByConversation[chat.id] > 0 && (
+                          <span className="inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-amber-100 text-[10px] font-semibold text-amber-700">
+                            {missedCallsByConversation[chat.id]}
+                          </span>
+                        )}
                         {unreadByConversation[chat.id] > 0 && (
                           <span
                             className={`inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full text-[10px] font-semibold ${
@@ -2583,11 +3227,22 @@ export default function ChatView({
           <>
             <div className="h-16 bg-[#f5f7fa] border-b border-slate-200 px-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <img
-                  src={activeChat.avatar}
-                  alt={activeChat.name}
-                  className="w-9 h-9 rounded-full object-cover"
-                />
+                <button
+                  type="button"
+                  className={`relative ${activeChat.type === "direct" && activeChat.peerId ? "cursor-pointer hover:opacity-80 transition-opacity" : "cursor-default"}`}
+                  onClick={() => {
+                    if (activeChat.type === "direct" && activeChat.peerId) {
+                      setProfileUserId(activeChat.peerId);
+                    }
+                  }}
+                  aria-label="Xem trang cá nhân"
+                >
+                  <img
+                    src={activeChat.avatar}
+                    alt={activeChat.name}
+                    className="w-9 h-9 rounded-full object-cover"
+                  />
+                </button>
                 <div>
                   <h2 className="text-[16px] leading-none font-semibold">
                     {activeChat.name}
@@ -2597,14 +3252,86 @@ export default function ChatView({
                   </div>
                 </div>
               </div>
-              <button
-                type="button"
-                className="text-slate-500 hover:text-slate-700 transition-colors"
-                aria-label="Thao tác khác"
-              >
-                <MoreVertical className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeCall?.conversationId === activeChat.id) {
+                      handleEndCall();
+                    } else {
+                      handleStartCall();
+                    }
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    activeCall?.conversationId === activeChat.id
+                      ? "bg-rose-100 text-rose-700 hover:bg-rose-200"
+                      : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                  }`}
+                  aria-label={
+                    activeCall?.conversationId === activeChat.id
+                      ? "Kết thúc cuộc gọi"
+                      : "Bắt đầu cuộc gọi"
+                  }
+                >
+                  {activeCall?.conversationId === activeChat.id ? (
+                    <>
+                      <PhoneOff className="h-3.5 w-3.5" />
+                      Kết thúc
+                    </>
+                  ) : (
+                    <>
+                      <Phone className="h-3.5 w-3.5" />
+                      Gọi
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="text-slate-500 hover:text-slate-700 transition-colors"
+                  aria-label="Thao tác khác"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+              </div>
             </div>
+
+            {activeCall?.conversationId === activeChat.id && (
+              <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700">
+                {activeCall.status === "ringing"
+                  ? "Đang đổ chuông..."
+                  : "Cuộc gọi đang diễn ra"}
+              </div>
+            )}
+
+            {activeChat.type === "group" &&
+              activeGroupCalls[activeChat.id] &&
+              activeCall?.conversationId !== activeChat.id && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const groupCall = activeGroupCalls[activeChat.id];
+                    if (!groupCall) return;
+
+                    emit("call:accept", {
+                      call_id: groupCall.callId,
+                      conversation_id: activeChat.id,
+                    });
+
+                    setActiveCall({
+                      callId: groupCall.callId,
+                      conversationId: activeChat.id,
+                      status: "connected",
+                      isInitiator: false,
+                      connectedAt: Date.now(),
+                      callType: "group",
+                    });
+                  }}
+                  className="flex w-full items-center justify-center gap-2 border-b border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
+                >
+                  <Phone className="h-4 w-4" />
+                  Cuộc gọi nhóm đang diễn ra — Tham gia
+                </button>
+              )}
 
             <MessageList
               messages={activeChat.messages}
@@ -2743,6 +3470,49 @@ export default function ChatView({
         </div>
       )}
 
+      {incomingCall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+            <h3 className="text-base font-semibold text-slate-800">
+              Cuộc gọi đến
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Hội thoại {incomingCall.callType === "group" ? "nhóm" : "1-1"} muốn bắt đầu cuộc gọi.
+            </p>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleDeclineIncomingCall}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                Từ chối
+              </button>
+              <button
+                type="button"
+                onClick={handleAcceptIncomingCall}
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                Chấp nhận
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeCall && (
+        <LiveKitCallOverlay
+          open={Boolean(activeCall)}
+          callId={activeCall.callId}
+          conversationName={activeChat?.name ?? "Cuộc gọi"}
+          callType={activeChat?.type === "group" ? "group" : "direct"}
+          status={activeCall.status}
+          tokenPayload={liveKitTokenPayload}
+          tokenError={liveKitTokenError}
+          onRetryToken={handleRetryLiveKitToken}
+          onHangUp={handleEndCall}
+        />
+      )}
+
       <CreateGroupModal
         open={showCreateGroup}
         onClose={() => setShowCreateGroup(false)}
@@ -2756,6 +3526,27 @@ export default function ChatView({
         onClose={() => setShowStartConversation(false)}
         onSelectFriend={handleStartDirectConversation}
       />
+      {profileUserId && (
+        <UserProfileModal
+          userId={profileUserId}
+          onClose={() => setProfileUserId(null)}
+          onMessage={(userId) => {
+            setProfileUserId(null);
+            // Wait for modal to close before navigating
+            setTimeout(() => {
+               // We already have a function handleStartDirectConversation but it takes a full friend object.
+               // Let's just create a direct conversation if not already active
+               // Or simply close if we are already in the chat.
+               if (activeChat?.peerId !== userId) {
+                 const friend = allUsers.find(u => u.id === userId);
+                 if (friend) {
+                   void handleStartDirectConversation(friend);
+                 }
+               }
+            }, 100);
+          }}
+        />
+      )}
     </div>
   );
 }

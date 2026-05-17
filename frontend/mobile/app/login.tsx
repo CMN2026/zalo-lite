@@ -35,21 +35,21 @@ export default function LoginPage() {
     <SafeAreaView className="flex-1 bg-slate-100">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1 items-center justify-center px-4">
         <View className="items-center mb-8">
-          <View className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mb-4">
-            <Text className="text-white text-2xl font-bold">+</Text>
+          <View className="w-16 h-16 bg-zalo-blue rounded-2xl flex items-center justify-center mb-4">
+            <Text className="text-white text-3xl font-bold">Z</Text>
           </View>
           <Text className="text-3xl font-bold text-slate-800 mb-2">Zalo Lite</Text>
-          <Text className="text-slate-500">Sign In</Text>
+          <Text className="text-slate-500">Đăng nhập tài khoản Zalo</Text>
         </View>
 
         <View className="w-full max-w-md bg-white rounded-2xl shadow-md p-6">
           <View className="space-y-4">
             <View>
-              <Text className="text-xs font-bold text-slate-600 uppercase tracking-wide">EMAIL ADDRESS OR PHONE NUMBER</Text>
+              <Text className="text-xs font-bold text-slate-600 uppercase tracking-wide">SỐ ĐIỆN THOẠI HOẶC EMAIL</Text>
               <TextInput
                 value={identifier}
                 onChangeText={setIdentifier}
-                placeholder="name@example.com"
+                placeholder="Số điện thoại hoặc email"
                 className="w-full mt-2 px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm"
                 autoCapitalize="none"
               />
@@ -57,9 +57,9 @@ export default function LoginPage() {
 
             <View className="mt-4">
               <View className="flex-row justify-between items-center mb-1">
-                <Text className="text-xs font-bold text-slate-600 uppercase tracking-wide">PASSWORD</Text>
+                <Text className="text-xs font-bold text-slate-600 uppercase tracking-wide">MẬT KHẨU</Text>
                 <TouchableOpacity>
-                  <Text className="text-xs text-blue-600 font-semibold">Forgot?</Text>
+                  <Text className="text-xs text-zalo-blue font-semibold">Quên mật khẩu?</Text>
                 </TouchableOpacity>
               </View>
               <TextInput
@@ -80,12 +80,12 @@ export default function LoginPage() {
             <TouchableOpacity
               onPress={handleLogin}
               disabled={loading}
-              className={`w-full py-3 rounded-lg bg-blue-600 items-center justify-center flex-row mt-6 ${loading ? 'opacity-60' : ''}`}
+              className={`w-full py-3 rounded-lg bg-zalo-blue items-center justify-center flex-row mt-6 ${loading ? 'opacity-60' : ''}`}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" className="mr-2" />
               ) : null}
-              <Text className="text-white font-semibold">{loading ? "SIGNING IN..." : "SIGN IN"}</Text>
+              <Text className="text-white font-semibold">{loading ? "ĐANG ĐĂNG NHẬP..." : "ĐĂNG NHẬP"}</Text>
             </TouchableOpacity>
           </View>
 
@@ -103,9 +103,9 @@ export default function LoginPage() {
           </View>
 
           <View className="flex-row justify-center mt-6">
-            <Text className="text-sm text-slate-600">Don't have an account? </Text>
+            <Text className="text-sm text-slate-600">Chưa có tài khoản? </Text>
             <TouchableOpacity onPress={() => router.push("/register")}>
-              <Text className="text-blue-600 font-semibold text-sm">Sign Up</Text>
+              <Text className="text-zalo-blue font-semibold text-sm">Đăng ký</Text>
             </TouchableOpacity>
           </View>
         </View>

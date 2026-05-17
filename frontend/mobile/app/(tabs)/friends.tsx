@@ -204,21 +204,21 @@ export default function FriendsScreen() {
   ];
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
-      <View className="bg-white px-4 pt-3 pb-0 border-b border-slate-200">
-        <Text className="text-xl font-bold text-slate-800 mb-3">Danh bạ</Text>
+    <SafeAreaView className="flex-1 bg-zalo-bg">
+      <View className="bg-zalo-blue px-4 pt-3 pb-0">
+        <Text className="text-xl font-bold text-white mb-3">Danh bạ</Text>
         <View className="flex-row gap-1">
           {tabs.map((tab) => (
             <TouchableOpacity
               key={tab.id}
               onPress={() => { setActiveTab(tab.id); setError(""); setNotice(""); }}
-              className={`flex-1 items-center py-2 rounded-t-lg relative ${activeTab === tab.id ? "bg-blue-600" : "bg-slate-100"}`}
+              className={`flex-1 items-center py-2 relative border-b-2 ${activeTab === tab.id ? "border-white" : "border-transparent"}`}
             >
-              <Text className={`text-xs font-semibold ${activeTab === tab.id ? "text-white" : "text-slate-600"}`}>
+              <Text className={`text-sm font-medium ${activeTab === tab.id ? "text-white" : "text-blue-100"}`}>
                 {tab.label}
               </Text>
               {(tab.badge ?? 0) > 0 && (
-                <View className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full items-center justify-center px-1">
+                <View className="absolute -top-1 right-2 min-w-[18px] h-[18px] bg-red-500 rounded-full items-center justify-center px-1">
                   <Text className="text-white text-[10px] font-bold">{tab.badge}</Text>
                 </View>
               )}
@@ -267,24 +267,17 @@ export default function FriendsScreen() {
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  onPress={() => openChatWithFriend(item)}
-                  disabled={openingChatId === item.id}
-                  className="flex-row items-center px-4 py-3 bg-white border-b border-slate-50 active:bg-slate-50"
+                  onPress={() => router.push({ pathname: "/user/[id]", params: { id: item.id } })}
+                  className="flex-row items-center px-4 py-3 bg-white border-b border-slate-100 active:bg-slate-50"
                 >
                   <UserAvatar user={item} />
                   <View className="flex-1 ml-3">
-                    <Text className="font-semibold text-slate-800">{item.fullName}</Text>
+                    <Text className="font-semibold text-zalo-text">{item.fullName}</Text>
                     <Text className="text-xs text-slate-500 mt-0.5">{item.phone ?? "Không có số điện thoại"}</Text>
                   </View>
                   {openingChatId === item.id ? (
                     <ActivityIndicator size="small" color="#2563EB" />
-                  ) : (
-                    <View className="flex-row items-center gap-2">
-                      <View className="bg-blue-50 px-3 py-1.5 rounded-full flex-row items-center gap-1">
-                        <Text className="text-blue-600 text-xs font-semibold">💬 Nhắn tin</Text>
-                      </View>
-                    </View>
-                  )}
+                  ) : null}
                 </TouchableOpacity>
               )}
             />
@@ -336,10 +329,10 @@ export default function FriendsScreen() {
                 data={searchResults}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
-                  <View className="flex-row items-center px-4 py-3 border-b border-slate-50">
+                  <View className="flex-row items-center px-4 py-3 bg-white border-b border-slate-100">
                     <UserAvatar user={item} />
                     <View className="flex-1 ml-3">
-                      <Text className="font-semibold text-slate-800">{item.fullName}</Text>
+                      <Text className="font-semibold text-zalo-text">{item.fullName}</Text>
                       <Text className="text-xs text-slate-500 mt-0.5">{item.phone ?? "Không có số"}</Text>
                     </View>
                     <TouchableOpacity
@@ -386,10 +379,10 @@ export default function FriendsScreen() {
               renderItem={({ item }) => {
                 const requester = item.requester;
                 return (
-                  <View className="flex-row items-center px-4 py-3 bg-white border-b border-slate-50">
+                  <View className="flex-row items-center px-4 py-3 bg-white border-b border-slate-100">
                     <UserAvatar user={requester} fallbackName="?" />
                     <View className="flex-1 ml-3">
-                      <Text className="font-semibold text-slate-800">{requester?.fullName ?? "Người dùng ẩn danh"}</Text>
+                      <Text className="font-semibold text-zalo-text">{requester?.fullName ?? "Người dùng ẩn danh"}</Text>
                       <Text className="text-xs text-slate-500 mt-0.5" numberOfLines={1}>
                         {item.message ?? requester?.phone ?? "Không có lời nhắn"}
                       </Text>

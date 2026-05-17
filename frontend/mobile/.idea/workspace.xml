@@ -5,14 +5,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="854337b7-9dc9-4627-8e90-4d3a60a9eac9" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/../../backend/services/chat-service/src/repositories/conversation.repository.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/chat-service/src/repositories/conversation.repository.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/services/chat-service/src/services/conversation.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/chat-service/src/services/conversation.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/(tabs)/_layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/_layout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(tabs)/chatbot.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/chatbot.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/(tabs)/friends.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/friends.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/(tabs)/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/components/FriendsView.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/components/FriendsView.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(tabs)/profile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/profile.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/login.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/login.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/register.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/register.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/constants/theme.ts" beforeDir="false" afterPath="$PROJECT_DIR$/constants/theme.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tailwind.config.js" beforeDir="false" afterPath="$PROJECT_DIR$/tailwind.config.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

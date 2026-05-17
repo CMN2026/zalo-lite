@@ -88,7 +88,9 @@ const io = new SocketIOServer(httpServer, {
 });
 
 app.disable("x-powered-by");
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
 app.use(
   cors({
     origin: env.CORS_ORIGINS,
@@ -105,8 +107,51 @@ app.use(
   }),
 );
 
+// ── File uploads proxy (MUST come BEFORE express.json body parsing) ──────────
+// Proxied as a raw stream so binary file responses aren't corrupted by body
+// parsing middleware.  Auth is handled by the chat-service itself (via
+// ?token= query-string or Authorization header).
+app.use(
+  "/api/uploads",
+  createProxyMiddleware({
+    target: env.CHAT_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: (p, req) => {
+      const rewritten = `/${p}`.replace(/^\/\//, "/").replace(/^\//, "/uploads/");
+      console.log(`[Proxy] pathRewrite: ${p} -> ${rewritten}`);
+      return rewritten;
+    },
+    on: {
+      proxyRes(proxyRes) {
+        // Android OkHttp / Fresco throws "unexpected end of stream" when the
+        // upstream answers with Connection: close on a large binary body.
+        // Force keep-alive so the TCP socket stays open until the full
+        // Content-Length payload is delivered.
+        proxyRes.headers["connection"] = "keep-alive";
+
+        // Remove weak ETag prefix that can confuse some HTTP caches.
+        const etag = proxyRes.headers["etag"];
+        if (typeof etag === "string" && etag.startsWith('W/"')) {
+          proxyRes.headers["etag"] = etag.slice(2);
+        }
+      },
+      error(err, _req, res) {
+        console.error("[Proxy Error /api/uploads]", err);
+        const response = res as Response;
+        if (!response.headersSent) {
+          response.status(503).json({
+            message: "service_unavailable",
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      },
+    },
+  }) as unknown as express.RequestHandler,
+);
+
 // IMPORTANT: Parse body here so we can re-serialize it for the proxy.
-// Without this, http-proxy-middleware tries to forward an already-consumed stream → ERR_EMPTY_RESPONSE.
+// Without this, http-proxy-middleware tries to forward an already-consumed stream.
+// NOTE: /api/uploads is mounted ABOVE so file streaming is unaffected.
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
@@ -348,9 +393,14 @@ app.use(
 );
 
 app.use(
-  "/api/uploads",
-  buildProxy(env.CHAT_SERVICE_URL, mapApiPrefix("/api/uploads", "/uploads")),
+  "/api/calls",
+  authenticateJwt,
+  authorizeRoles("USER", "ADMIN"),
+  buildProxy(env.CHAT_SERVICE_URL, mapApiPrefix("/api/calls", "/calls")),
 );
+
+// /api/uploads is mounted before express.json() — see above.
+// Do NOT add it here; it is already registered.
 
 app.use(
   "/api/chatbot",
@@ -435,6 +485,14 @@ io.on("connection", (socket: Socket) => {
     "message:delete",
     "message:recall",
     "message:react",
+    "call:initiate",
+    "call:accept",
+    "call:decline",
+    "call:offer",
+    "call:answer",
+    "call:ice_candidate",
+    "call:participant_update",
+    "call:end",
   ];
 
   clientToUpstreamEvents.forEach((eventName) => {
@@ -455,6 +513,7 @@ io.on("connection", (socket: Socket) => {
     "message:deleted",
     "message:delete_ack",
     "message:recalled",
+    "force_logout",
     "message:reaction_updated",
     "message:recall_ack",
     "message:reaction_ack",
@@ -477,6 +536,18 @@ io.on("connection", (socket: Socket) => {
     "message:delete_error",
     "message:recall_error",
     "message:reaction_error",
+    "call:initiate",
+    "call:initiate_ack",
+    "call:accept",
+    "call:decline",
+    "call:offer",
+    "call:answer",
+    "call:ice_candidate",
+    "call:participant_update",
+    "call:end",
+    "call:missed",
+    "call:signal_ack",
+    "call:error",
   ];
 
   upstreamToClientEvents.forEach((eventName) => {
@@ -487,6 +558,12 @@ io.on("connection", (socket: Socket) => {
       }
       if (eventName === "disconnect") {
         console.log(`[Socket.io] Upstream disconnected for ${socket.id}`);
+        return;
+      }
+      if (eventName === "force_logout") {
+        console.log(`[Socket.io] Upstream received force_logout for ${socket.id}`);
+        socket.emit("force_logout", payload);
+        upstream.disconnect();
         return;
       }
       if (eventName === "connect_error") {
@@ -504,9 +581,7 @@ io.on("connection", (socket: Socket) => {
   });
 
   socket.on("disconnect", () => {
-    if (upstream.connected) {
-      upstream.disconnect();
-    }
+    upstream.disconnect();
     console.log(`[Socket.io] Disconnected: ${socket.id}`);
   });
 });
@@ -549,6 +624,7 @@ signals.forEach((signal) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function authenticateJwt(req: Request, res: Response, next: NextFunction) {
+  console.log("[authenticateJwt] Hit for URL:", req.originalUrl);
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     return res.status(401).json({ message: "missing_bearer_token" });

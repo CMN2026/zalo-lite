@@ -5,6 +5,7 @@ import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { View } from "react-native";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -13,8 +14,23 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
+        tabBarInactiveTintColor: Colors[colorScheme ?? "light"].tabIconDefault,
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarStyle: {
+          backgroundColor: '#FFFFFF',
+          borderTopWidth: 1,
+          borderTopColor: '#E0E0E0',
+          elevation: 0,
+          shadowOpacity: 0,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '500',
+        }
       }}
     >
       <Tabs.Screen
@@ -33,7 +49,7 @@ export default function TabLayout() {
         options={{
           title: "Tin nhắn",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="message.fill" color={color} />
+            <IconSymbol size={24} name="message.fill" color={color} />
           ),
         }}
       />
@@ -42,16 +58,16 @@ export default function TabLayout() {
         options={{
           title: "Danh bạ",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="person.2.fill" color={color} />
+            <IconSymbol size={24} name="person.2.fill" color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="chatbot"
         options={{
-          title: "Chatbot",
+          title: "Khám phá", // Renamed from Chatbot visually
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="house.fill" color={color} />
+            <IconSymbol size={24} name="square.grid.2x2.fill" color={color} />
           ),
         }}
       />
@@ -60,7 +76,7 @@ export default function TabLayout() {
         options={{
           title: "Cá nhân",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="person.fill" color={color} />
+            <IconSymbol size={24} name="person.fill" color={color} />
           ),
         }}
       />
