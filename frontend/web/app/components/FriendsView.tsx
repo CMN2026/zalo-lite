@@ -15,6 +15,8 @@ import {
   getMe,
   listFriends,
   listIncomingFriendRequests,
+  listOutgoingFriendRequests,
+  removeFriend,
   respondFriendRequest,
   sendFriendRequest,
   type FriendRequest,
@@ -22,28 +24,49 @@ import {
 } from "../lib/users";
 import UserProfileModal from "./UserProfileModal";
 
-type TabId = "friends" | "search" | "requests";
+type TabId = "friends" | "search" | "requests" | "sent";
+const AUTO_REFRESH_INTERVAL_MS = 30_000;
+
+type SocketListener = (event: string, callback: (data: unknown) => void) => void;
+
+type FriendNotification = {
+  id: string;
+  title: string;
+  body: string;
+};
 
 interface FriendsViewProps {
   onStartChat?: (friend: ProfileUser) => Promise<void>;
+  onRealtimeEvent?: SocketListener;
+  offRealtimeEvent?: SocketListener;
 }
 
-export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>) {
+export default function FriendsView({
+  onStartChat,
+  onRealtimeEvent,
+  offRealtimeEvent,
+}: Readonly<FriendsViewProps>) {
   const [activeTab, setActiveTab] = useState<TabId>("friends");
   const [currentPhone, setCurrentPhone] = useState("");
   const [friends, setFriends] = useState<ProfileUser[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<FriendRequest[]>([]);
+  const [outgoingRequests, setOutgoingRequests] = useState<FriendRequest[]>([]);
   const [searchResults, setSearchResults] = useState<ProfileUser[]>([]);
   const [phoneQuery, setPhoneQuery] = useState("");
   const [requestMessage, setRequestMessage] = useState("");
   const [friendFilter, setFriendFilter] = useState("");
   const [loadingFriends, setLoadingFriends] = useState(true);
   const [loadingRequests, setLoadingRequests] = useState(true);
+  const [loadingOutgoingRequests, setLoadingOutgoingRequests] = useState(true);
   const [searching, setSearching] = useState(false);
   const [busyId, setBusyId] = useState("");
   const [openingChatId, setOpeningChatId] = useState("");
+  const [friendToRemove, setFriendToRemove] = useState<ProfileUser | null>(
+    null,
+  );
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [notifications, setNotifications] = useState<FriendNotification[]>([]);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
   const filteredFriends = useMemo(() => {
@@ -63,6 +86,7 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
   useEffect(() => {
     void refreshFriends();
     void refreshRequests();
+    void refreshOutgoingRequests();
     void loadCurrentUser();
   }, []);
 
@@ -77,17 +101,69 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
 
   useEffect(() => {
     const timer = setInterval(() => {
-      void refreshRequests({ silent: true });
-
       if (activeTab === "friends") {
         void refreshFriends({ silent: true });
+        return;
       }
-    }, 4000);
+
+      if (activeTab === "requests") {
+        void refreshRequests({ silent: true });
+        return;
+      }
+
+      if (activeTab === "sent") {
+        void refreshOutgoingRequests({ silent: true });
+      }
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       clearInterval(timer);
     };
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!onRealtimeEvent || !offRealtimeEvent) {
+      return;
+    }
+
+    const handleIncomingRequest = (payload: unknown) => {
+      const requester = getPayloadProfile(payload, "requester");
+      const requesterName = requester?.fullName ?? "Một người dùng";
+      pushNotification({
+        title: "Lời mời kết bạn mới",
+        body: `${requesterName} vừa gửi lời mời kết bạn cho bạn.`,
+      });
+      void refreshRequests({ silent: true });
+    };
+
+    const handleAcceptedRequest = (payload: unknown) => {
+      const friend = getPayloadProfile(payload, "friend");
+      const friendName = friend?.fullName ?? "Một người dùng";
+      pushNotification({
+        title: "Lời mời đã được chấp nhận",
+        body: `${friendName} đã chấp nhận lời mời kết bạn của bạn.`,
+      });
+      void refreshOutgoingRequests({ silent: true });
+      void refreshFriends({ silent: true });
+    };
+
+    onRealtimeEvent("friend_request:incoming", handleIncomingRequest);
+    onRealtimeEvent("friend_request:accepted", handleAcceptedRequest);
+
+    return () => {
+      offRealtimeEvent("friend_request:incoming", handleIncomingRequest);
+      offRealtimeEvent("friend_request:accepted", handleAcceptedRequest);
+    };
+  }, [onRealtimeEvent, offRealtimeEvent]);
+
+  function pushNotification(input: Omit<FriendNotification, "id">) {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setNotifications((current) => [{ id, ...input }, ...current].slice(0, 3));
+
+    window.setTimeout(() => {
+      setNotifications((current) => current.filter((item) => item.id !== id));
+    }, 5000);
+  }
 
   async function refreshFriends(options?: { silent?: boolean }) {
     const silent = Boolean(options?.silent);
@@ -131,6 +207,27 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
     }
   }
 
+  async function refreshOutgoingRequests(options?: { silent?: boolean }) {
+    const silent = Boolean(options?.silent);
+    if (!silent) {
+      setLoadingOutgoingRequests(true);
+      setError("");
+    }
+
+    try {
+      const response = await listOutgoingFriendRequests();
+      setOutgoingRequests(response.data);
+    } catch (err) {
+      if (!silent) {
+        setError(getFriendlyError(err));
+      }
+    } finally {
+      if (!silent) {
+        setLoadingOutgoingRequests(false);
+      }
+    }
+  }
+
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const query = phoneQuery.trim();
@@ -147,7 +244,7 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
       const response = await discoverUsers(query);
       setSearchResults(response.data);
       if (response.data.length === 0) {
-        setNotice("No active users matched that phone number.");
+        setNotice("Không tìm thấy người dùng đang hoạt động với số điện thoại này.");
       }
     } catch (err) {
       setError(getFriendlyError(err));
@@ -158,7 +255,7 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
 
   async function handleSendRequest(user: ProfileUser) {
     if (!user.phone) {
-      setError("This user does not have a phone number.");
+      setError("Người dùng này chưa có số điện thoại.");
       return;
     }
 
@@ -168,12 +265,13 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
 
     try {
       await sendFriendRequest(user.phone, requestMessage || undefined);
-      setNotice(`Friend request sent to ${user.fullName}.`);
+      setNotice(`Đã gửi lời mời kết bạn đến ${user.fullName}.`);
       setSearchResults((current) =>
         current.filter((item) => item.id !== user.id),
       );
       await refreshFriends();
       await refreshRequests();
+      await refreshOutgoingRequests();
     } catch (err) {
       setError(getFriendlyError(err));
     } finally {
@@ -196,12 +294,35 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
       );
       setNotice(
         action === "accept"
-          ? "Friend request accepted."
-          : "Friend request rejected.",
+          ? "Đã chấp nhận lời mời kết bạn."
+          : "Đã từ chối lời mời kết bạn.",
       );
       if (action === "accept") {
         void refreshFriends();
       }
+    } catch (err) {
+      setError(getFriendlyError(err));
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function handleConfirmRemoveFriend() {
+    if (!friendToRemove) {
+      return;
+    }
+
+    setBusyId(friendToRemove.id);
+    setError("");
+    setNotice("");
+
+    try {
+      await removeFriend(friendToRemove.id);
+      setFriends((current) =>
+        current.filter((item) => item.id !== friendToRemove.id),
+      );
+      setNotice(`Đã hủy kết bạn với ${friendToRemove.fullName}.`);
+      setFriendToRemove(null);
     } catch (err) {
       setError(getFriendlyError(err));
     } finally {
@@ -221,7 +342,7 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
     try {
       await onStartChat(friend);
     } catch {
-      setError("Unable to open chat right now. Please try again.");
+      setError("Chưa thể mở cuộc trò chuyện. Vui lòng thử lại.");
     } finally {
       setOpeningChatId("");
     }
@@ -231,14 +352,14 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
     <div className="flex-1 overflow-y-auto bg-slate-50 p-8 h-full font-sans text-slate-800">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Friends</h1>
+          <h1 className="text-2xl font-bold">Bạn bè</h1>
           <p className="text-slate-500 text-sm mt-1">
-            Search by phone number, manage invitations, and keep your contact
-            list current.
+            Tìm kiếm bằng số điện thoại, quản lý lời mời và giữ danh bạ luôn
+            cập nhật.
           </p>
           {currentPhone && (
             <p className="text-xs text-slate-400 mt-1">
-              Signed in phone: {currentPhone}
+              Số điện thoại đang dùng: {currentPhone}
             </p>
           )}
         </div>
@@ -247,20 +368,27 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
             active={activeTab === "friends"}
             onClick={() => setActiveTab("friends")}
             icon={<Users className="w-4 h-4" />}
-            label="Friends"
+            label="Bạn bè"
           />
           <TabButton
             active={activeTab === "search"}
             onClick={() => setActiveTab("search")}
             icon={<UserPlus className="w-4 h-4" />}
-            label="Find"
+            label="Tìm kiếm"
           />
           <TabButton
             active={activeTab === "requests"}
             onClick={() => setActiveTab("requests")}
             icon={<UserCheck className="w-4 h-4" />}
-            label="Requests"
+            label="Lời mời"
             badgeCount={incomingRequests.length}
+          />
+          <TabButton
+            active={activeTab === "sent"}
+            onClick={() => setActiveTab("sent")}
+            icon={<Send className="w-4 h-4" />}
+            label="Đã gửi"
+            badgeCount={outgoingRequests.length}
           />
         </div>
       </div>
@@ -277,6 +405,24 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
         </div>
       )}
 
+      {notifications.length > 0 && (
+        <div className="fixed right-5 top-5 z-50 flex w-80 flex-col gap-3">
+          {notifications.map((notification) => (
+            <div
+              key={notification.id}
+              className="rounded-lg border border-blue-100 bg-white px-4 py-3 shadow-lg"
+            >
+              <div className="text-sm font-semibold text-slate-900">
+                {notification.title}
+              </div>
+              <div className="mt-1 text-sm text-slate-600">
+                {notification.body}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {activeTab === "friends" && (
         <section className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center gap-4">
@@ -285,7 +431,7 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
               <input
                 value={friendFilter}
                 onChange={(event) => setFriendFilter(event.target.value)}
-                placeholder="Search friends..."
+                placeholder="Tìm bạn bè..."
                 className="w-full bg-slate-50 border border-slate-200 text-sm rounded-lg py-2 pl-9 pr-4 outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -293,26 +439,26 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
               onClick={() => void refreshFriends()}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
             >
-              Refresh
+              Làm mới
             </button>
           </div>
 
           {loadingFriends ? (
-            <EmptyState text="Loading friends..." />
+            <EmptyState text="Đang tải danh sách bạn bè..." />
           ) : filteredFriends.length === 0 ? (
-            <EmptyState text="No friends found yet." />
+            <EmptyState text="Chưa tìm thấy bạn bè nào." />
           ) : (
             <div className="divide-y divide-slate-100">
               {filteredFriends.map((friend) => (
                 <UserRow
                   key={friend.id}
                   user={friend}
-                  meta={friend.phone ?? "No phone number"}
                   onClickAvatar={() => setProfileUserId(friend.id)}
+                  meta={friend.phone ?? "Chưa có số điện thoại"}
                   action={
                     <div className="flex items-center gap-2">
                       <span className="bg-green-50 text-green-700 text-xs font-semibold px-3 py-1 rounded-full">
-                        Friend
+                        Bạn bè
                       </span>
                       <button
                         type="button"
@@ -320,7 +466,15 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
                         disabled={!onStartChat || openingChatId === friend.id}
                         className="bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full disabled:opacity-60"
                       >
-                        {openingChatId === friend.id ? "Opening..." : "Nhắn tin"}
+                        {openingChatId === friend.id ? "Đang mở..." : "Nhắn tin"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFriendToRemove(friend)}
+                        disabled={busyId === friend.id}
+                        className="bg-white border border-red-200 text-red-600 text-xs font-semibold px-3 py-1 rounded-full disabled:opacity-60"
+                      >
+                        {busyId === friend.id ? "Đang hủy..." : "Hủy kết bạn"}
                       </button>
                     </div>
                   }
@@ -337,13 +491,13 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
             onSubmit={handleSearch}
             className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 h-fit"
           >
-            <h2 className="font-bold text-lg">Find by Phone</h2>
+            <h2 className="font-bold text-lg">Tìm bằng số điện thoại</h2>
             <p className="text-sm text-slate-500 mt-1 mb-5">
-              Enter a phone number or a partial match.
+              Nhập số điện thoại hoặc một phần số điện thoại.
             </p>
             <label className="block mb-4">
               <span className="text-xs font-semibold uppercase text-slate-500">
-                Phone Number
+                Số điện thoại
               </span>
               <input
                 value={phoneQuery}
@@ -354,14 +508,14 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
             </label>
             <label className="block mb-5">
               <span className="text-xs font-semibold uppercase text-slate-500">
-                Optional Message
+                Lời nhắn tùy chọn
               </span>
               <textarea
                 value={requestMessage}
                 onChange={(event) => setRequestMessage(event.target.value)}
                 rows={4}
                 maxLength={150}
-                placeholder="Let's connect."
+                placeholder="Mình kết bạn nhé."
                 className="mt-1 w-full bg-slate-50 border border-slate-200 text-sm rounded-lg py-2.5 px-3 outline-none resize-none focus:ring-2 focus:ring-blue-500"
               />
             </label>
@@ -370,27 +524,27 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
               className="w-full bg-blue-600 text-white flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium disabled:opacity-70"
             >
               <Search className="w-4 h-4" />
-              {searching ? "Searching..." : "Search"}
+              {searching ? "Đang tìm..." : "Tìm kiếm"}
             </button>
           </form>
 
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="p-4 border-b border-slate-100">
-              <h2 className="font-bold">Search Results</h2>
+              <h2 className="font-bold">Kết quả tìm kiếm</h2>
               <p className="text-sm text-slate-500">
-                Send an invitation to active users returned by the server.
+                Gửi lời mời kết bạn đến người dùng đang hoạt động.
               </p>
             </div>
             {searchResults.length === 0 ? (
-              <EmptyState text="Search results will appear here." />
+              <EmptyState text="Kết quả tìm kiếm sẽ hiển thị ở đây." />
             ) : (
               <div className="divide-y divide-slate-100">
                 {searchResults.map((user) => (
                   <UserRow
                     key={user.id}
                     user={user}
-                    meta={user.phone ?? "No phone number"}
                     onClickAvatar={() => setProfileUserId(user.id)}
+                    meta={user.phone ?? "Chưa có số điện thoại"}
                     action={
                       <button
                         onClick={() => void handleSendRequest(user)}
@@ -398,7 +552,7 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
                         className="bg-blue-600 text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-70"
                       >
                         <Send className="w-4 h-4" />
-                        {busyId === user.id ? "Sending..." : "Add Friend"}
+                        {busyId === user.id ? "Đang gửi..." : "Kết bạn"}
                       </button>
                     }
                   />
@@ -413,23 +567,23 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
         <section className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <h2 className="font-bold">Incoming Requests</h2>
+              <h2 className="font-bold">Lời mời đến</h2>
               <p className="text-sm text-slate-500">
-                Accept or reject people who want to connect with you.
+                Chấp nhận hoặc từ chối người muốn kết bạn với bạn.
               </p>
             </div>
             <button
               onClick={() => void refreshRequests()}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
             >
-              Refresh
+              Làm mới
             </button>
           </div>
 
           {loadingRequests ? (
-            <EmptyState text="Loading requests..." />
+            <EmptyState text="Đang tải lời mời..." />
           ) : incomingRequests.length === 0 ? (
-            <EmptyState text="No incoming friend requests." />
+            <EmptyState text="Không có lời mời kết bạn nào." />
           ) : (
             <div className="divide-y divide-slate-100">
               {incomingRequests.map((request) => {
@@ -438,8 +592,8 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
                   <UserRow
                     key={request.id}
                     user={requester}
-                    fallbackName="Unknown requester"
-                    meta={request.message || requester?.phone || "No message"}
+                    fallbackName="Người gửi không xác định"
+                    meta={request.message || requester?.phone || "Không có lời nhắn"}
                     action={
                       <div className="flex gap-2">
                         <button
@@ -448,7 +602,7 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
                           className="bg-green-600 text-white flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-70"
                         >
                           <Check className="w-4 h-4" />
-                          Accept
+                          Chấp nhận
                         </button>
                         <button
                           onClick={() => void handleRespond(request, "reject")}
@@ -456,7 +610,7 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
                           className="bg-white border border-slate-200 text-slate-700 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-70"
                         >
                           <X className="w-4 h-4" />
-                          Reject
+                          Từ chối
                         </button>
                       </div>
                     }
@@ -467,6 +621,101 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
           )}
         </section>
       )}
+
+      {activeTab === "sent" && (
+        <section className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h2 className="font-bold">Lời mời đã gửi</h2>
+              <p className="text-sm text-slate-500">
+                Theo dõi những lời mời kết bạn đang chờ phản hồi.
+              </p>
+            </div>
+            <button
+              onClick={() => void refreshOutgoingRequests()}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
+            >
+              Làm mới
+            </button>
+          </div>
+
+          {loadingOutgoingRequests ? (
+            <EmptyState text="Đang tải lời mời đã gửi..." />
+          ) : outgoingRequests.length === 0 ? (
+            <EmptyState text="Bạn chưa gửi lời mời kết bạn nào." />
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {outgoingRequests.map((request) => {
+                const addressee = request.addressee;
+                return (
+                  <UserRow
+                    key={request.id}
+                    user={addressee}
+                    fallbackName="Người nhận không xác định"
+                    meta={request.message || addressee?.phone || "Không có lời nhắn"}
+                    action={
+                      <span className="bg-amber-50 text-amber-700 text-xs font-semibold px-3 py-1 rounded-full">
+                        Đang chờ
+                      </span>
+                    }
+                  />
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {friendToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-friend-title"
+            className="w-full max-w-md rounded-lg border border-slate-200 bg-white shadow-xl"
+          >
+            <div className="border-b border-slate-100 px-6 py-4">
+              <h2
+                id="remove-friend-title"
+                className="text-lg font-semibold text-slate-900"
+              >
+                Hủy kết bạn
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Người này sẽ bị xóa khỏi danh sách bạn bè của bạn.
+              </p>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-sm text-slate-700">
+                Bạn có chắc muốn hủy kết bạn với{" "}
+                <span className="font-semibold text-slate-900">
+                  {friendToRemove.fullName}
+                </span>
+                ?
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setFriendToRemove(null)}
+                disabled={busyId === friendToRemove.id}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Giữ lại
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmRemoveFriend()}
+                disabled={busyId === friendToRemove.id}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {busyId === friendToRemove.id ? "Đang hủy..." : "Hủy kết bạn"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {profileUserId && (
         <UserProfileModal
           userId={profileUserId}
@@ -474,7 +723,9 @@ export default function FriendsView({ onStartChat }: Readonly<FriendsViewProps>)
           onMessage={(userId) => {
             setProfileUserId(null);
             setTimeout(() => {
-              const friend = friends.find((f) => f.id === userId) || searchResults.find((f) => f.id === userId);
+              const friend =
+                friends.find((item) => item.id === userId) ||
+                searchResults.find((item) => item.id === userId);
               if (friend) {
                 void handleOpenChat(friend);
               }
@@ -521,13 +772,14 @@ function UserRow({
   user,
   meta,
   action,
-  fallbackName = "Unknown user",
+  onClickAvatar,
+  fallbackName = "Người dùng không xác định",
 }: {
   user?: ProfileUser;
   meta: string;
   action: React.ReactNode;
-  fallbackName?: string;
   onClickAvatar?: () => void;
+  fallbackName?: string;
 }) {
   const name = user?.fullName ?? fallbackName;
   const initials = name
@@ -539,10 +791,14 @@ function UserRow({
 
   return (
     <div className="p-4 flex items-center gap-3">
-      <button 
-        type="button" 
-        onClick={onClickAvatar} 
-        className={onClickAvatar ? "cursor-pointer hover:opacity-80 transition-opacity" : "cursor-default"}
+      <button
+        type="button"
+        onClick={onClickAvatar}
+        className={
+          onClickAvatar
+            ? "cursor-pointer hover:opacity-80 transition-opacity"
+            : "cursor-default"
+        }
       >
         {user?.avatarUrl ? (
           <img
@@ -569,22 +825,37 @@ function EmptyState({ text }: { text: string }) {
   return <div className="p-8 text-center text-sm text-slate-500">{text}</div>;
 }
 
+function getPayloadProfile(payload: unknown, key: "requester" | "friend") {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const value = (payload as Record<string, unknown>)[key];
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const profile = value as Partial<ProfileUser>;
+  return typeof profile.fullName === "string" ? profile : null;
+}
+
 function getFriendlyError(error: unknown) {
   const message = error instanceof Error ? error.message : "request_failed";
   const labels: Record<string, string> = {
-    missing_local_session: "Please sign in before managing friends.",
-    missing_bearer_token: "Please sign in before managing friends.",
-    invalid_or_expired_token: "Your session has expired. Please sign in again.",
-    validation_error: "Please check the input and try again.",
-    target_user_not_found: "No user exists with that phone number.",
-    target_user_inactive: "That user account is inactive.",
-    cannot_add_yourself: "You cannot add yourself as a friend.",
-    already_friends: "You are already friends with this user.",
-    friend_request_already_pending: "A friend request is already pending.",
-    friendship_blocked: "This friendship is blocked.",
-    friend_request_not_found: "This request no longer exists.",
-    friend_request_already_processed: "This request was already processed.",
+    missing_local_session: "Vui lòng đăng nhập trước khi quản lý bạn bè.",
+    missing_bearer_token: "Vui lòng đăng nhập trước khi quản lý bạn bè.",
+    invalid_or_expired_token: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+    validation_error: "Vui lòng kiểm tra thông tin và thử lại.",
+    target_user_not_found: "Không có người dùng nào với số điện thoại này.",
+    target_user_inactive: "Tài khoản người dùng này đang bị vô hiệu hóa.",
+    cannot_add_yourself: "Bạn không thể tự kết bạn với chính mình.",
+    already_friends: "Hai bạn đã là bạn bè.",
+    friend_request_already_pending: "Lời mời kết bạn đang chờ phản hồi.",
+    friendship_blocked: "Quan hệ bạn bè này đã bị chặn.",
+    friendship_not_found: "Không tìm thấy quan hệ bạn bè này.",
+    friend_request_not_found: "Lời mời này không còn tồn tại.",
+    friend_request_already_processed: "Lời mời này đã được xử lý.",
   };
 
-  return labels[message] ?? "Something went wrong. Please try again.";
+  return labels[message] ?? "Có lỗi xảy ra. Vui lòng thử lại.";
 }
