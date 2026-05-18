@@ -1,15 +1,20 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Zalo Lite",
+    "slug": "zalo-lite",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "zalo-lite",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Zalo Lite cần truy cập camera để chụp ảnh và gọi video.",
+        "NSMicrophoneUsageDescription": "Zalo Lite cần truy cập microphone để gọi thoại và gửi tin nhắn voice.",
+        "NSPhotoLibraryUsageDescription": "Zalo Lite cần truy cập thư viện ảnh để gửi ảnh trong tin nhắn."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +26,22 @@
       "usesCleartextTraffic": true,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.mobile"
+      "package": "com.zalolite.app",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "READ_MEDIA_AUDIO",
+        "VIBRATE",
+        "POST_NOTIFICATIONS",
+        "FOREGROUND_SERVICE",
+        "WAKE_LOCK"
+      ]
     },
     "web": {
       "output": "static",
