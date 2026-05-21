@@ -15,14 +15,28 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { env } from "./env.js";
 
-const client = new DynamoDBClient({
+const clientConfig: any = {
   region: env.AWS_REGION,
-  endpoint: env.DYNAMODB_ENDPOINT,
-  credentials: {
-    accessKeyId: env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-  },
-});
+};
+
+if (env.DYNAMODB_ENDPOINT && env.DYNAMODB_ENDPOINT.trim() !== "") {
+  clientConfig.endpoint = env.DYNAMODB_ENDPOINT;
+}
+
+const accessKeyId = env.AWS_ACCESS_KEY_ID;
+const secretAccessKey = env.AWS_SECRET_ACCESS_KEY;
+
+if (accessKeyId && secretAccessKey && accessKeyId !== "dummy") {
+  clientConfig.credentials = { accessKeyId, secretAccessKey };
+} else if (clientConfig.endpoint) {
+  // If local, provide dummy credentials so DynamoDB local client doesn't complain
+  clientConfig.credentials = {
+    accessKeyId: "dummy",
+    secretAccessKey: "dummy",
+  };
+}
+
+const client = new DynamoDBClient(clientConfig);
 
 export const dynamoDB = DynamoDBDocumentClient.from(client);
 
@@ -85,13 +99,9 @@ async function createTable(tableName: string): Promise<void> {
               { AttributeName: "lastMessageAt", KeyType: "RANGE" },
             ],
             Projection: { ProjectionType: "ALL" },
-            ProvisionedThroughput: {
-              ReadCapacityUnits: 5,
-              WriteCapacityUnits: 5,
-            },
           },
         ],
-        ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 },
+        BillingMode: "PAY_PER_REQUEST",
       };
       break;
 
@@ -108,13 +118,9 @@ async function createTable(tableName: string): Promise<void> {
             IndexName: "category-index",
             KeySchema: [{ AttributeName: "category", KeyType: "HASH" }],
             Projection: { ProjectionType: "ALL" },
-            ProvisionedThroughput: {
-              ReadCapacityUnits: 5,
-              WriteCapacityUnits: 5,
-            },
           },
         ],
-        ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 },
+        BillingMode: "PAY_PER_REQUEST",
       };
       break;
 
@@ -138,13 +144,9 @@ async function createTable(tableName: string): Promise<void> {
               { AttributeName: "sentAt", KeyType: "RANGE" },
             ],
             Projection: { ProjectionType: "ALL" },
-            ProvisionedThroughput: {
-              ReadCapacityUnits: 5,
-              WriteCapacityUnits: 5,
-            },
           },
         ],
-        ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 },
+        BillingMode: "PAY_PER_REQUEST",
         TimeToLiveSpecification: {
           AttributeName: "ttl",
           Enabled: true,
@@ -163,7 +165,7 @@ async function createTable(tableName: string): Promise<void> {
           { AttributeName: "date", AttributeType: "S" },
           { AttributeName: "hour", AttributeType: "N" },
         ],
-        ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 },
+        BillingMode: "PAY_PER_REQUEST",
       };
       break;
 

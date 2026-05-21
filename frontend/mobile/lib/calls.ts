@@ -1,6 +1,9 @@
 import { API_BASE_URL } from "./api";
 import { getAuthToken } from "./auth";
 
+const CHAT_SERVICE_BASE_URL =
+  process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://10.0.2.2:3002";
+
 export type CallSessionParticipant = {
   user_id: string;
   state: "initiated" | "invited" | "connected" | "declined" | "left" | "missed";
@@ -79,6 +82,21 @@ export async function endCall(input: {
   });
 }
 
+export async function leaveCall(input: {
+  call_id: string;
+  conversation_id: string;
+}) {
+  return request<ApiResponse<{ action: "participant_left" | "ended"; session: CallSession }>>(
+    `/calls/${encodeURIComponent(input.call_id)}/leave`,
+    {
+      method: "POST",
+      body: {
+        conversation_id: input.conversation_id,
+      },
+    },
+  );
+}
+
 export async function getCallHistory(limit = 50) {
   return request<ApiResponse<CallHistoryItem[]>>(
     `/calls/history?limit=${encodeURIComponent(String(limit))}`,
@@ -87,6 +105,12 @@ export async function getCallHistory(limit = 50) {
 
 export async function getActiveCalls() {
   return request<ApiResponse<CallSession[]>>("/calls/active");
+}
+
+export async function getActiveCallForConversation(conversation_id: string) {
+  return request<ApiResponse<CallSession | null>>(
+    `/calls/active-for-conversation?conversation_id=${encodeURIComponent(conversation_id)}`,
+  );
 }
 
 export async function getLiveKitToken(input: {
@@ -117,26 +141,53 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     requestPath = `${path}${sep}_ts=${Date.now()}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api${requestPath}`, {
+  const requestInit: RequestInit = {
     method,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  };
 
-  let payload: unknown = null;
-  try {
-    payload = (await response.json()) as unknown;
-  } catch {
-    payload = null;
+  const candidates = [
+    `${API_BASE_URL}/api${requestPath}`,
+    `${CHAT_SERVICE_BASE_URL}${requestPath}`,
+    `${CHAT_SERVICE_BASE_URL}/api${requestPath}`,
+  ];
+
+  let lastError: unknown = null;
+  for (let i = 0; i < candidates.length; i += 1) {
+    const endpoint = candidates[i];
+    try {
+      const response = await fetch(endpoint, requestInit);
+
+      let payload: unknown = null;
+      try {
+        payload = (await response.json()) as unknown;
+      } catch {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        const body = payload as { message?: string } | null;
+        throw new Error(body?.message ?? `http_${response.status}`);
+      }
+
+      return payload as T;
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const isNetworkError =
+        message.includes("Network request failed") ||
+        message.toLowerCase().includes("fetch failed");
+
+      // Retry next candidate only for transport-level failures.
+      if (!isNetworkError || i === candidates.length - 1) {
+        break;
+      }
+    }
   }
 
-  if (!response.ok) {
-    const body = payload as { message?: string } | null;
-    throw new Error(body?.message ?? `http_${response.status}`);
-  }
-
-  return payload as T;
+  throw (lastError instanceof Error ? lastError : new Error(String(lastError)));
 }

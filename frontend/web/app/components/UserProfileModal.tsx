@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { X, Phone, MessageSquare } from "lucide-react";
+import { WEB_GATEWAY_BASE_URL } from "../lib/runtime-base-url";
 
 interface UserProfile {
   id: string;
@@ -28,9 +29,8 @@ export default function UserProfileModal({ userId, onClose, onMessage }: UserPro
       setLoading(true);
       setError("");
       try {
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
         const token = localStorage.getItem("token");
-        const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+        const response = await fetch(`${WEB_GATEWAY_BASE_URL}/api/users/${userId}`, {
           headers: {
             Authorization: `Bearer ${token}`
           }

@@ -6,9 +6,9 @@ import { validateRequest } from "../middlewares/validate.middleware.js";
 
 export const userRoutes = Router();
 
-const avatarUrlValidator = (value: unknown) => {
+const imagePayloadValidator = (value: unknown) => {
   if (typeof value !== "string") {
-    throw new Error("avatarUrl_must_be_valid_url_or_image_data");
+    throw new Error("image_must_be_valid_url_or_image_data");
   }
 
   const isHttpUrl = /^https?:\/\/\S+$/i.test(value);
@@ -16,7 +16,7 @@ const avatarUrlValidator = (value: unknown) => {
     /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(value);
 
   if (!isHttpUrl && !isImageDataUrl) {
-    throw new Error("avatarUrl_must_be_valid_url_or_image_data");
+    throw new Error("image_must_be_valid_url_or_image_data");
   }
 
   return true;
@@ -48,8 +48,14 @@ userRoutes.patch(
 
 userRoutes.patch(
   "/me/avatar",
-  [body("avatarUrl").trim().custom(avatarUrlValidator), validateRequest],
+  [body("avatarUrl").trim().custom(imagePayloadValidator), validateRequest],
   UserController.updateAvatar,
+);
+
+userRoutes.patch(
+  "/me/cover",
+  [body("coverUrl").trim().custom(imagePayloadValidator), validateRequest],
+  UserController.updateCover,
 );
 
 userRoutes.get(

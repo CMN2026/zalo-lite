@@ -1,5 +1,4 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
+import { WEB_GATEWAY_BASE_URL } from "./runtime-base-url";
 
 export type AuthUser = {
   id: string;
@@ -97,7 +96,7 @@ export function clearAuthSession() {
 }
 
 async function post<T>(path: string, options: RequestOptions): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
+  const url = `${WEB_GATEWAY_BASE_URL}${path}`;
   const response = await fetch(url, {
     method: "POST",
     headers: {

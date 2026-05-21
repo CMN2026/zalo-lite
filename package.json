@@ -9,7 +9,7 @@
     "start:chatbot": "npm run dev --prefix backend/services/chatbot-service",
     "start:frontend": "npm run dev --prefix frontend/web",
     "install:all": "cd backend/api-gateway && npm install && cd ../../backend/services/user-service && npm install && cd ../../../backend/services/chat-service && npm install && cd ../../../backend/services/chatbot-service && npm install && cd ../../../frontend/web && npm install",
-    "start:all": "concurrently \"npm run start:gateway\" \"npm run start:chat\" \"npm run start:chatbot\" \"npm run start:frontend\""
+    "start:all": "concurrently \"npm run start:gateway\" \"npm run start:user\" \"npm run start:chat\" \"npm run start:chatbot\" \"npm run start:frontend\""
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

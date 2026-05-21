@@ -7,6 +7,7 @@ export type ProfileUser = {
   phone: string | null;
   fullName: string;
   avatarUrl: string | null;
+  coverUrl?: string | null;
   bio?: string | null;
   role?: "USER" | "ADMIN";
   plan: "FREE" | "PREMIUM";
@@ -53,6 +54,13 @@ export async function updateAvatar(avatarUrl: string) {
   return request<ApiResponse<Pick<ProfileUser, "id" | "avatarUrl" | "updatedAt">>>(
     "/users/me/avatar",
     { method: "PATCH", body: { avatarUrl } }
+  );
+}
+
+export async function updateCover(coverUrl: string) {
+  return request<ApiResponse<Pick<ProfileUser, "id" | "coverUrl" | "updatedAt">>>(
+    "/users/me/cover",
+    { method: "PATCH", body: { coverUrl } }
   );
 }
 

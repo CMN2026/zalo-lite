@@ -136,6 +136,22 @@ export class UserService {
     });
   }
 
+  async updateCover(userId: string | undefined, coverUrl: string) {
+    if (!userId) {
+      throw new HttpError(401, "unauthorized");
+    }
+
+    return prisma.user.update({
+      where: { id: userId },
+      data: { coverUrl },
+      select: {
+        id: true,
+        coverUrl: true,
+        updatedAt: true,
+      },
+    });
+  }
+
   async discoverByPhone(userId: string, phone: string) {
     if (!phone) {
       return [];

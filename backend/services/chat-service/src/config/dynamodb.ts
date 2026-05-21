@@ -7,14 +7,29 @@ import {
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { env } from "./env.js";
 
-export const dynamoClient = new DynamoDBClient({
+// Build config dynamically
+const clientConfig: any = {
   region: env.AWS_REGION,
-  endpoint: env.DYNAMODB_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "dummy",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "dummy",
-  },
-});
+};
+
+if (env.DYNAMODB_ENDPOINT && env.DYNAMODB_ENDPOINT.trim() !== "") {
+  clientConfig.endpoint = env.DYNAMODB_ENDPOINT;
+}
+
+const accessKeyId = process.env.AWS_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID;
+const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY;
+
+if (accessKeyId && secretAccessKey && accessKeyId !== "dummy") {
+  clientConfig.credentials = { accessKeyId, secretAccessKey };
+} else if (clientConfig.endpoint) {
+  // If local, provide dummy credentials so DynamoDB local client doesn't complain
+  clientConfig.credentials = {
+    accessKeyId: "dummy",
+    secretAccessKey: "dummy",
+  };
+}
+
+export const dynamoClient = new DynamoDBClient(clientConfig);
 
 export const dynamo = DynamoDBDocumentClient.from(dynamoClient, {
   marshallOptions: { removeUndefinedValues: true },

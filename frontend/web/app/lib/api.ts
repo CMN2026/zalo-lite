@@ -3,8 +3,9 @@
  * All services call this instead of inline process.env references.
  */
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
+import { WEB_GATEWAY_BASE_URL } from "./runtime-base-url";
+
+export const API_BASE_URL = WEB_GATEWAY_BASE_URL;
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -38,6 +39,11 @@ async function handleApiResponse<T = unknown>(res: Response): Promise<T> {
   }
 
   if (!res.ok) {
+    if (res.status === 401) {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("auth-error"));
+      }
+    }
     const body = payload as ApiErrorBody;
     // UX improvement: Show specific error instead of generic ones like request_failed
     const errorMessage = body.message ?? "Lỗi kết nối hoặc thực thi từ máy chủ.";

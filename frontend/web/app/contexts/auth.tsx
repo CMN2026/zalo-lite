@@ -53,6 +53,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearAuthSession();
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleAuthError = () => {
+      logout();
+    };
+    window.addEventListener("auth-error", handleAuthError);
+    return () => {
+      window.removeEventListener("auth-error", handleAuthError);
+    };
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{

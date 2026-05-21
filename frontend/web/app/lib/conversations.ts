@@ -1,5 +1,6 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
+import { WEB_GATEWAY_BASE_URL } from "./runtime-base-url";
+
+const API_BASE_URL = WEB_GATEWAY_BASE_URL;
 
 export type ConversationMember = {
   conversationId: string;

@@ -20,7 +20,10 @@ import { verifyToken } from "./utils/jwt.js";
 import { MessageService } from "./services/message.service.js";
 import { CallService } from "./services/call.service.js";
 import { ConversationRepository } from "./repositories/conversation.repository.js";
-import { initUserClientService } from "./services/user-client.service.js";
+import {
+  initUserClientService,
+  UserClientService,
+} from "./services/user-client.service.js";
 import { setRealtimeServer } from "./realtime/socket-emitter.js";
 
 const app = express();
@@ -36,7 +39,10 @@ setRealtimeServer(io);
 const messageService = new MessageService();
 const callService = new CallService();
 const conversationRepository = new ConversationRepository();
+const callUserClient = new UserClientService(env.USER_SERVICE_BASE_URL);
 const callSignalingInstanceId = randomUUID();
+const disconnectedCallTimers = new Map<string, NodeJS.Timeout>();
+const DISCONNECT_GRACE_MS = 15_000;
 
 type CallSignalEventName =
   | "call:initiate"
@@ -109,6 +115,34 @@ function emitCallSignal(
   target.user_ids?.forEach((userId) => {
     io.to(`user_${userId}`).emit(eventName, payload);
   });
+}
+
+function buildDisconnectTimerKey(callId: string, userId: string): string {
+  return `${callId}:${userId}`;
+}
+
+function clearDisconnectTimersForUser(userId: string): void {
+  const keys = Array.from(disconnectedCallTimers.keys());
+  keys.forEach((key) => {
+    if (!key.endsWith(`:${userId}`)) {
+      return;
+    }
+    const timer = disconnectedCallTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+    }
+    disconnectedCallTimers.delete(key);
+  });
+}
+
+function clearDisconnectTimer(callId: string, userId: string): void {
+  const key = buildDisconnectTimerKey(callId, userId);
+  const timer = disconnectedCallTimers.get(key);
+  if (!timer) {
+    return;
+  }
+  clearTimeout(timer);
+  disconnectedCallTimers.delete(key);
 }
 
 async function publishCallSignal(
@@ -204,6 +238,7 @@ io.on("connection", async (socket) => {
   }
 
   try {
+    clearDisconnectTimersForUser(userId);
     socket.join(`user_${userId}`);
 
     // Force disconnect other sockets of the same user (Single Device Login)
@@ -503,6 +538,21 @@ io.on("connection", async (socket) => {
         created_at: new Date().toISOString(),
       };
 
+      try {
+        const [initiatorProfile, conversation] = await Promise.all([
+          callUserClient.getUserById(userId),
+          conversationRepository.getConversationById(conversationId),
+        ]);
+
+        relayPayload.caller_name = initiatorProfile.fullName;
+        relayPayload.conversation_name =
+          conversation?.type === "group"
+            ? conversation.name || "Nhóm chat"
+            : initiatorProfile.fullName;
+      } catch {
+        relayPayload.caller_name = "Người gọi";
+      }
+
       await callService.startCall({
         call_id: callId,
         conversation_id: conversationId,
@@ -514,7 +564,15 @@ io.on("connection", async (socket) => {
             : undefined,
       });
 
-      socket.to(`conversation_${conversationId}`).emit("call:initiate", relayPayload);
+      const members =
+        await conversationRepository.getConversationMembers(conversationId);
+      const receiverUserIds = members
+        .map((member) => member.userId)
+        .filter((memberId) => memberId !== userId);
+
+      receiverUserIds.forEach((receiverUserId) => {
+        io.to(`user_${receiverUserId}`).emit("call:initiate", relayPayload);
+      });
       socket.emit("call:initiate_ack", {
         ok: true,
         call_id: callId,
@@ -523,7 +581,7 @@ io.on("connection", async (socket) => {
 
       await publishCallSignal(
         "call:initiate",
-        { conversation_id: conversationId },
+        { user_ids: receiverUserIds },
         relayPayload,
       );
     } catch (error) {
@@ -578,6 +636,7 @@ io.on("connection", async (socket) => {
         };
 
         if (eventName === "call:accept") {
+          clearDisconnectTimer(callId, userId);
           await callService.markParticipantState(
             callId,
             userId,
@@ -601,6 +660,7 @@ io.on("connection", async (socket) => {
         }
 
         if (eventName === "call:end") {
+          clearDisconnectTimer(callId, userId);
           const endReason =
             typeof sourcePayload.reason === "string" && sourcePayload.reason
               ? sourcePayload.reason
@@ -609,6 +669,7 @@ io.on("connection", async (socket) => {
         }
 
         if (eventName === "call:leave") {
+          clearDisconnectTimer(callId, userId);
           const result = await callService.leaveCall(
             callId,
             userId,
@@ -621,6 +682,7 @@ io.on("connection", async (socket) => {
               ...relayPayload,
               reason: "last_participant_left",
             };
+            socket.emit("call:end", endPayload);
             socket.to(`conversation_${conversationId}`).emit("call:end", endPayload);
             socket.emit("call:signal_ack", {
               ok: true,
@@ -759,6 +821,81 @@ io.on("connection", async (socket) => {
   });
 
   socket.on("disconnect", () => {
+    void (async () => {
+      try {
+        const sessions = await callService.listActive(userId);
+        sessions.forEach((session) => {
+          const participant = session.participants.find(
+            (item) => item.user_id === userId,
+          );
+          if (
+            !participant ||
+            (participant.state !== "connected" && participant.state !== "initiated")
+          ) {
+            return;
+          }
+
+          const key = buildDisconnectTimerKey(session.id, userId);
+          if (disconnectedCallTimers.has(key)) {
+            return;
+          }
+
+          const timer = setTimeout(() => {
+            disconnectedCallTimers.delete(key);
+            void (async () => {
+              try {
+                const result = await callService.leaveCall(
+                  session.id,
+                  userId,
+                  session.conversation_id,
+                );
+
+                if (result.action === "ended") {
+                  const endPayload = {
+                    call_id: session.id,
+                    conversation_id: session.conversation_id,
+                    sender_id: userId,
+                    reason: "disconnect_timeout",
+                    timestamp: Date.now(),
+                  };
+                  emitCallSignal("call:end", { conversation_id: session.conversation_id }, endPayload);
+                  await publishCallSignal(
+                    "call:end",
+                    { conversation_id: session.conversation_id },
+                    endPayload,
+                  );
+                } else {
+                  const leftPayload = {
+                    call_id: session.id,
+                    conversation_id: session.conversation_id,
+                    left_user_id: userId,
+                    sender_id: userId,
+                    reason: "disconnect_timeout",
+                    timestamp: Date.now(),
+                  };
+                  emitCallSignal(
+                    "call:participant_left",
+                    { conversation_id: session.conversation_id },
+                    leftPayload,
+                  );
+                  await publishCallSignal(
+                    "call:participant_left",
+                    { conversation_id: session.conversation_id },
+                    leftPayload,
+                  );
+                }
+              } catch {
+                // no-op: session may already be ended.
+              }
+            })();
+          }, DISCONNECT_GRACE_MS);
+          timer.unref();
+          disconnectedCallTimers.set(key, timer);
+        });
+      } catch {
+        // no-op
+      }
+    })();
     socket.broadcast.emit("user:online", { user_id: userId, online: false });
   });
 });
@@ -782,7 +919,7 @@ async function bootstrap() {
             const missedPayload = {
               call_id: session.id,
               conversation_id: session.conversation_id,
-              reason: "missed_timeout",
+              reason: "no_answer_timeout",
               ended_at: session.ended_at,
             };
 

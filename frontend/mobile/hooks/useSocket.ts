@@ -73,6 +73,16 @@ export const useSocket = () => {
 
         socket.on("connect_error", (error: Error) => {
           console.error("Socket.io error:", error);
+
+          const errMsg = error.message.toLowerCase();
+          if (errMsg.includes("unauthorized") || errMsg.includes("invalid_token") || errMsg.includes("invalid signature")) {
+            socket.disconnect();
+            authStorage.removeToken().then(() => {
+              DeviceEventEmitter.emit("force_logout", "Phiên đăng nhập hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.");
+            });
+            return;
+          }
+
           globalConnectErrorCount += 1;
           const isGatewayTimeout =
             !globalDidFallbackToChatService &&
