@@ -1,5 +1,6 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
+import { WEB_GATEWAY_BASE_URL } from "./runtime-base-url";
+
+const API_BASE_URL = WEB_GATEWAY_BASE_URL;
 
 export type ProfileUser = {
   id: string;
@@ -7,6 +8,7 @@ export type ProfileUser = {
   phone: string | null;
   fullName: string;
   avatarUrl: string | null;
+  coverUrl?: string | null;
   bio?: string | null;
   role?: "USER" | "ADMIN";
   plan: "FREE" | "PREMIUM";
@@ -75,6 +77,15 @@ export async function updateAvatar(avatarUrl: string) {
   >("/users/me/avatar", {
     method: "PATCH",
     body: { avatarUrl },
+  });
+}
+
+export async function updateCover(coverUrl: string) {
+  return request<
+    ApiResponse<Pick<ProfileUser, "id" | "coverUrl" | "updatedAt">>
+  >("/users/me/cover", {
+    method: "PATCH",
+    body: { coverUrl },
   });
 }
 

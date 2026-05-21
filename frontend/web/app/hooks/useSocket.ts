@@ -4,10 +4,11 @@ import { useEffect, useCallback, useState } from "react";
 import io, { Socket } from "socket.io-client";
 import { useAuth } from "../contexts/auth";
 import { getAuthToken, clearAuthSession } from "../lib/auth";
+import { WEB_GATEWAY_BASE_URL, WEB_CHAT_SERVICE_BASE_URL } from "../lib/runtime-base-url";
 
 // Use API Gateway for Socket.io connections (not direct service)
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
-const CHAT_SERVICE_BASE_URL = process.env.NEXT_PUBLIC_CHAT_SERVICE_URL ?? "http://127.0.0.1:3002";
+const API_BASE_URL = WEB_GATEWAY_BASE_URL;
+const CHAT_SERVICE_BASE_URL = WEB_CHAT_SERVICE_BASE_URL;
 
 // Module-level singletons to ensure only ONE socket exists across all components
 let sharedSocket: Socket | null = null;
@@ -79,6 +80,15 @@ export const useSocket = () => {
 
       socket.on("connect_error", (error: Error) => {
         console.error("Socket.io connection error:", error);
+
+        const errMsg = error.message.toLowerCase();
+        if (errMsg.includes("unauthorized") || errMsg.includes("invalid_token") || errMsg.includes("invalid signature")) {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("auth-error"));
+          }
+          return;
+        }
+
         globalConnectErrorCount += 1;
 
         const isGatewayTimeout =
@@ -122,6 +132,27 @@ export const useSocket = () => {
 
     sharedSocket.on("connect", onConnect);
     sharedSocket.on("disconnect", onDisconnect);
+
+    // Dev helper: expose a debug emit function so devs can simulate socket events
+    if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore - expose for debugging
+      window.__debugSocketEmit = (event: string, data: unknown) => {
+        if (sharedSocket) {
+          try {
+            sharedSocket.emit(event, data);
+            // eslint-disable-next-line no-console
+            console.log("[debugSocketEmit] emitted", event, data);
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error("[debugSocketEmit] emit failed", e);
+          }
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn("[debugSocketEmit] socket not initialized");
+        }
+      };
+    }
 
     return () => {
       if (sharedSocket) {

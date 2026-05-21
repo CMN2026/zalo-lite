@@ -23,12 +23,14 @@ import {
   Dimensions,
   PanResponder,
 } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "../../contexts/auth";
 import { useSocket } from "../../hooks/useSocket";
 import { getAuthToken } from "../../lib/auth";
 import { API_BASE_URL } from "../../lib/api";
 import { blockFriendship, unblockFriendship, getFriendshipStatus } from "../../lib/users";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface FileAttachment {
@@ -334,6 +336,7 @@ export default function ChatsScreen() {
   const { user } = useAuth();
   const { isConnected, on, off, emit, join, leave } = useSocket();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const {
     openConversationId: openConversationIdParam,
     openConversationNonce: openConversationNonceParam,
@@ -838,6 +841,71 @@ export default function ChatsScreen() {
       await loadGroupManagementDetail();
     }
   }, [loadGroupManagementDetail, activeConv?.type]);
+
+  const openVideoCall = useCallback(() => {
+    if (!activeChatId || !activeConv) return;
+    const callId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+    emit("call:initiate", {
+      call_id: callId,
+      conversation_id: activeChatId,
+      call_type: activeConv.type === "group" ? "group" : "direct",
+    });
+
+    router.push({
+      pathname: "/webcall",
+      params: {
+        callId,
+        incoming: "0",
+        conversationId: activeChatId,
+        conversationName: activeConv.name,
+        callType: activeConv.type,
+      },
+    });
+  }, [activeChatId, activeConv, emit, router]);
+
+  useEffect(() => {
+    const handleIncomingCall = (payload: unknown) => {
+      const data = payload as {
+        call_id?: unknown;
+        conversation_id?: unknown;
+        call_type?: unknown;
+        conversation_name?: unknown;
+        initiator_id?: unknown;
+      };
+
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId =
+        typeof data.conversation_id === "string" ? data.conversation_id : "";
+      const initiatorId =
+        typeof data.initiator_id === "string" ? data.initiator_id : "";
+      const callType = data.call_type === "group" ? "group" : "direct";
+      const conversationName =
+        typeof data.conversation_name === "string" && data.conversation_name.trim()
+          ? data.conversation_name
+          : "Cuộc gọi";
+
+      if (!callId || !conversationId || initiatorId === currentUserId) {
+        return;
+      }
+
+      router.push({
+        pathname: "/webcall",
+        params: {
+          callId,
+          incoming: "1",
+          conversationId,
+          conversationName,
+          callType,
+        },
+      });
+    };
+
+    on("call:initiate", handleIncomingCall);
+    return () => {
+      off("call:initiate", handleIncomingCall);
+    };
+  }, [currentUserId, off, on, router]);
 
   const handleAddMembersToGroup = useCallback(async () => {
     if (!activeChatId || selectedAddMemberIds.length === 0) return;
@@ -1502,7 +1570,10 @@ export default function ChatsScreen() {
           className="flex-1"
         >
           {/* Chat header */}
-          <View className="flex-row items-center px-3 py-2.5 bg-zalo-blue shadow-sm">
+          <View
+            className="flex-row items-center px-3 py-2.5 bg-zalo-blue shadow-sm"
+            style={{ paddingTop: insets.top + 8 }}
+          >
             <TouchableOpacity
               onPress={closeActiveChat}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1526,7 +1597,15 @@ export default function ChatsScreen() {
               </Text>
             </View>
             <TouchableOpacity
+              onPress={openVideoCall}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              className="px-2 py-2 rounded-full active:bg-blue-600 mr-1"
+            >
+              <Feather name="video" size={20} color="#ffffff" />
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => void openChatDetails()}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               className="px-3 py-1.5 rounded-xl active:bg-blue-600"
             >
               <Text style={{ fontSize: 22, color: "#ffffff" }}>≡</Text>
@@ -2058,7 +2137,10 @@ export default function ChatsScreen() {
         </KeyboardAvoidingView>
       ) : (
         <>
-          <View className="flex-row items-center justify-between px-4 py-3 bg-zalo-blue">
+          <View
+            className="flex-row items-center justify-between px-4 py-3 bg-zalo-blue"
+            style={{ paddingTop: insets.top + 8 }}
+          >
             <View className="flex-row items-center gap-3">
               <Image
                 source={{

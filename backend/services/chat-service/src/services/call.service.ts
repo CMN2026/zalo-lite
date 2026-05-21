@@ -105,6 +105,10 @@ export class CallService {
       throw new HttpError(404, "call_not_found");
     }
 
+    if (session.status !== "active") {
+      throw new HttpError(409, "call_not_active");
+    }
+
     if (session.conversation_id !== conversationId) {
       throw new HttpError(400, "conversation_mismatch");
     }
@@ -352,6 +356,21 @@ export class CallService {
     return this.callRepository.getActiveByConversationId(conversationId);
   }
 
+  async getActiveCallForConversationForUser(
+    conversationId: string,
+    userId: string,
+  ): Promise<CallSession | null> {
+    const members = await this.conversationRepository.getConversationMembers(
+      conversationId,
+    );
+    const isMember = members.some((member) => member.userId === userId);
+    if (!isMember) {
+      throw new HttpError(403, "not_a_member");
+    }
+
+    return this.callRepository.getActiveByConversationId(conversationId);
+  }
+
   async listHistory(userId: string, limit: number): Promise<CallHistoryItem[]> {
     return this.callRepository.listHistoryByUserId(userId, limit);
   }
@@ -380,12 +399,13 @@ export class CallService {
         continue;
       }
 
-      const hasConnectedParticipant = session.participants.some(
+      const hasNonInitiatorConnection = session.participants.some(
         (participant) =>
-          participant.state === "connected" || participant.state === "left",
+          participant.user_id !== session.initiator_id &&
+          (participant.state === "connected" || participant.state === "left"),
       );
 
-      if (hasConnectedParticipant) {
+      if (hasNonInitiatorConnection) {
         continue;
       }
 
@@ -394,7 +414,7 @@ export class CallService {
           session.id,
           session.initiator_id,
           session.conversation_id,
-          "missed_timeout",
+          "no_answer_timeout",
           { failIfEnded: true },
         );
         expiredSessions.push(endedSession);

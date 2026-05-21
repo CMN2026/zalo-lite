@@ -1,5 +1,4 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
+import { WEB_GATEWAY_BASE_URL } from "./runtime-base-url";
 
 export type CallSessionParticipant = {
   user_id: string;
@@ -113,7 +112,7 @@ async function request<T>(
     throw new Error("missing_local_session");
   }
 
-  const response = await fetch(`${API_BASE_URL}/api${path}`, {
+  const response = await fetch(`${WEB_GATEWAY_BASE_URL}/api${path}`, {
     method: options.method ?? "GET",
     headers: {
       "Content-Type": "application/json",

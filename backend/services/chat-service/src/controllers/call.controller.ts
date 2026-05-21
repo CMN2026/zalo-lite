@@ -58,6 +58,22 @@ export class CallController {
     }
   }
 
+  static async leave(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.auth?.userId ?? "";
+      const callId = req.params.callId;
+      const conversationId =
+        typeof req.body.conversation_id === "string"
+          ? req.body.conversation_id
+          : "";
+
+      const data = await callService.leaveCall(callId, userId, conversationId);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async history(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.auth?.userId ?? "";
@@ -97,8 +113,11 @@ export class CallController {
         return;
       }
 
-      const data =
-        await callService.getActiveCallForConversation(conversationId);
+      const userId = req.auth?.userId ?? "";
+      const data = await callService.getActiveCallForConversationForUser(
+        conversationId,
+        userId,
+      );
       res.status(200).json({ data });
     } catch (error) {
       next(error);

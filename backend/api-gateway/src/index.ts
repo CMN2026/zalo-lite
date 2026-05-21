@@ -281,6 +281,7 @@ app.use(
 // ─────────────────────────────────────────────────────────────────────────────
 
 io.use((socket: Socket, next: (err?: Error) => void) => {
+  let token: string | undefined = undefined;
   try {
     const headerToken = socket.handshake.headers.authorization;
     const authToken = socket.handshake.auth.token;
@@ -290,7 +291,7 @@ io.use((socket: Socket, next: (err?: Error) => void) => {
         ? headerToken.slice(7)
         : undefined;
 
-    const token = bearer ?? authToken;
+    token = (bearer ?? authToken) as string | undefined;
 
     if (!token || typeof token !== "string") {
       return next(new Error("unauthorized: missing_token"));

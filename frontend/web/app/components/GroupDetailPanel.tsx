@@ -43,6 +43,7 @@ import {
   unblockFriendship,
 } from "../lib/users";
 import { getAuthToken, getSavedAuthUser } from "../lib/auth";
+import { WEB_GATEWAY_BASE_URL } from "../lib/runtime-base-url";
 import type { Message } from "./MessageList";
 
 type BlockState = {
@@ -83,8 +84,7 @@ type ParsedFilePayload = {
   file_type?: string;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
+const API_BASE_URL = WEB_GATEWAY_BASE_URL;
 const FRIENDSHIP_STATUS_UNSUPPORTED_KEY =
   "zalo-lite:web:friendship-status-unsupported";
 

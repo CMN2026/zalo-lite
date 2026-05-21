@@ -28,6 +28,16 @@ callRoutes.post(
 );
 
 callRoutes.post(
+  "/:callId/leave",
+  [
+    param("callId").isString().notEmpty(),
+    body("conversation_id").isString().notEmpty(),
+    validateRequest,
+  ],
+  CallController.leave,
+);
+
+callRoutes.post(
   "/:callId/livekit-token",
   [
     param("callId").isString().notEmpty(),

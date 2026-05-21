@@ -31,6 +31,7 @@ import { useSocket } from "../hooks/useSocket";
 import { useAuth } from "../contexts/auth";
 import { getAuthToken } from "../lib/auth";
 import type { LiveKitTokenPayload } from "../lib/calls";
+import { WEB_GATEWAY_BASE_URL, WEB_CHAT_SERVICE_BASE_URL, WEB_USER_SERVICE_BASE_URL } from "../lib/runtime-base-url";
 
 interface Conversation {
   id: string;
@@ -89,6 +90,8 @@ type CallSignalPayload = {
   initiator_id?: unknown;
   sender_id?: unknown;
   call_type?: unknown;
+  caller_name?: unknown;
+  conversation_name?: unknown;
   reason?: unknown;
   left_user_id?: unknown;
 };
@@ -137,6 +140,15 @@ type IncomingCallState = {
   callType: "direct" | "group";
 };
 
+type CallNotificationState = {
+  title: string;
+  description: string;
+  callId: string;
+  conversationId: string;
+  callType: "direct" | "group";
+  initiatorId: string;
+};
+
 interface ChatViewProps {
   onFocusedConversationChange?: (conversationId: string | null) => void;
   unreadByConversation?: Record<string, number>;
@@ -152,14 +164,12 @@ interface ChatViewProps {
     messageId?: string;
   } | null;
   onPendingJumpHandled?: () => void;
+  suppressModals?: boolean;
 }
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
-const CHAT_SERVICE_BASE_URL =
-  process.env.NEXT_PUBLIC_CHAT_SERVICE_URL ?? "http://127.0.0.1:3002";
-const USER_SERVICE_BASE_URL =
-  process.env.NEXT_PUBLIC_USER_SERVICE_URL ?? "http://127.0.0.1:3001";
+const API_BASE_URL = WEB_GATEWAY_BASE_URL;
+const CHAT_SERVICE_BASE_URL = WEB_CHAT_SERVICE_BASE_URL;
+const USER_SERVICE_BASE_URL = WEB_USER_SERVICE_BASE_URL;
 const DEFAULT_SYSTEM_PREVIEW = "Hai bạn đã trở thành bạn bè. Hãy gửi lời chào.";
 const USER_SUMMARY_CACHE_KEY_PREFIX = "zalo-lite:web:user-summaries:";
 const CONVERSATION_CACHE_KEY_PREFIX = "zalo-lite:web:conversations:";
@@ -199,6 +209,13 @@ function toIsoReadTimestamp(value: unknown): string | null {
   }
 
   return null;
+}
+
+function createClientCallId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `call_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function getConversationPreviewFromMessage(
@@ -362,6 +379,7 @@ export default function ChatView({
   onMutedByConversationChange,
   pendingJump,
   onPendingJumpHandled,
+  suppressModals,
 }: Readonly<ChatViewProps>) {
   const { user } = useAuth();
   const { isConnected, on, off, emit, join, leave } = useSocket();
@@ -401,11 +419,21 @@ export default function ChatView({
   const [incomingCall, setIncomingCall] = useState<IncomingCallState | null>(
     null,
   );
+  const waitRoomTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [callNotification, setCallNotification] =
+    useState<CallNotificationState | null>(null);
   const [liveKitTokenPayload, setLiveKitTokenPayload] =
     useState<LiveKitTokenPayload | null>(null);
   const [liveKitTokenError, setLiveKitTokenError] = useState<string | null>(
     null,
   );
+  const [connectionLossModal, setConnectionLossModal] = useState<{
+    callId: string;
+    conversationId: string;
+    countdown: number;
+    state: "waiting" | "ended";
+  } | null>(null);
+  const connectionLossTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveKitRequestCallIdRef = useRef<string | null>(null);
   const [activeGroupCalls, setActiveGroupCalls] = useState<
     Record<string, ActiveGroupCallInfo>
@@ -1466,11 +1494,74 @@ export default function ChatView({
     clearTypingUsers();
   }, [activeChatId, clearTypingUsers]);
 
+  // Connection loss handling: show modal + 15s grace for active calls
+  useEffect(() => {
+    if (!activeCall) {
+      // No active call — ensure modal/timer cleared
+      if (connectionLossTimerRef.current) {
+        clearTimeout(connectionLossTimerRef.current);
+        connectionLossTimerRef.current = null;
+      }
+      setConnectionLossModal(null);
+      return;
+    }
+
+    if (isConnected) {
+      // If reconnected, clear timers and hide modal
+      if (connectionLossTimerRef.current) {
+        clearTimeout(connectionLossTimerRef.current);
+        connectionLossTimerRef.current = null;
+      }
+      setConnectionLossModal(null);
+      return;
+    }
+
+    // Socket disconnected while in an active call — start 15s grace timer
+    if (!isConnected && activeCall) {
+      const callId = activeCall.callId;
+      const conversationId = activeCall.conversationId;
+      setConnectionLossModal({ callId, conversationId, countdown: 15, state: "waiting" });
+
+      // Countdown display update every 1s
+      let remaining = 15;
+      const tick = () => {
+        remaining -= 1;
+        setConnectionLossModal((cur) => (cur ? { ...cur, countdown: remaining } : cur));
+        if (remaining <= 0) {
+          // Timeout expired: mark ended locally
+          setConnectionLossModal((cur) => (cur ? { ...cur, state: "ended" } : cur));
+          setActiveCall(null);
+          connectionLossTimerRef.current = null;
+        }
+      };
+
+      connectionLossTimerRef.current = setInterval(() => {
+        tick();
+      }, 1000) as unknown as ReturnType<typeof setTimeout>;
+
+      return () => {
+        if (connectionLossTimerRef.current) {
+          clearInterval(connectionLossTimerRef.current as unknown as number);
+          connectionLossTimerRef.current = null;
+        }
+        setConnectionLossModal(null);
+      };
+    }
+  }, [isConnected, activeCall]);
+
   useEffect(() => {
     return () => {
       clearTypingUsers();
       if (localTypingStopTimerRef.current) {
         clearTimeout(localTypingStopTimerRef.current);
+      }
+      // Clear any wait-room timers on unmount
+      Object.values(waitRoomTimersRef.current).forEach((t) => clearTimeout(t));
+      waitRoomTimersRef.current = {};
+      // Clear connection loss timer
+      if (connectionLossTimerRef.current) {
+        clearTimeout(connectionLossTimerRef.current);
+        connectionLossTimerRef.current = null;
       }
     };
   }, [clearTypingUsers]);
@@ -1511,6 +1602,13 @@ export default function ChatView({
         }
       } catch (error) {
         console.error("Failed to fetch active call for conversation:", error);
+        // If we cannot reach the server to verify, remove any optimistic
+        // activeGroupCalls entry to avoid leaving a stale "call in progress" banner.
+        setActiveGroupCalls((prev) => {
+          const next = { ...prev };
+          delete next[conversationId];
+          return next;
+        });
       }
     },
     [authJsonRequest],
@@ -2054,6 +2152,7 @@ export default function ChatView({
         ? ("group" as const)
         : ("direct" as const);
 
+      // Initiator: enter waiting room (ringing) instead of immediately "connected".
       setActiveCall({
         callId,
         conversationId,
@@ -2062,6 +2161,31 @@ export default function ChatView({
         connectedAt: undefined,
         callType,
       });
+
+      // Start a 15s wait-room timer that will auto-end the call if nobody joins.
+      try {
+        const timeoutMs = 15_000;
+        const timer = window.setTimeout(() => {
+          // If still in waiting state, request call end locally and via socket
+          setActiveCall((current) => {
+            if (!current || current.callId !== callId || current.status === "connected") {
+              return current;
+            }
+            // Emit end signal to backend
+            emit("call:end", {
+              call_id: callId,
+              conversation_id: conversationId,
+              reason: "no_answer_timeout",
+            });
+            return null;
+          });
+          // cleanup
+          delete waitRoomTimersRef.current[callId];
+        }, timeoutMs);
+        waitRoomTimersRef.current[callId] = timer;
+      } catch {
+        // no-op
+      }
 
       if (callType === "group") {
         setActiveGroupCalls((prev) => ({
@@ -2078,6 +2202,17 @@ export default function ChatView({
       const initiatorId =
         typeof data.initiator_id === "string" ? data.initiator_id.trim() : "";
       const callType = data.call_type === "group" ? "group" : "direct";
+      const callerName =
+        typeof data.caller_name === "string" && data.caller_name.trim()
+          ? data.caller_name.trim()
+          : allUsers.find((entry) => entry.id === initiatorId)?.fullName ??
+            "Người gọi";
+      const conversationName =
+        typeof data.conversation_name === "string" &&
+        data.conversation_name.trim()
+          ? data.conversation_name.trim()
+          : conversations.find((entry) => entry.id === conversationId)?.name ??
+            (callType === "group" ? "Nhóm chat" : callerName);
 
       if (!callId || !conversationId || !initiatorId) {
         return;
@@ -2092,6 +2227,20 @@ export default function ChatView({
         conversationId,
         initiatorId,
         callType,
+      });
+      setCallNotification({
+        title:
+          callType === "group"
+            ? conversationName
+            : `Cuộc gọi đến từ ${callerName}`,
+        description:
+          callType === "group"
+            ? `${callerName} đang gọi trong nhóm ${conversationName}`
+            : `${callerName} đang gọi cho bạn`,
+        callId,
+        conversationId,
+        callType,
+        initiatorId,
       });
 
       if (callType === "group") {
@@ -2110,10 +2259,26 @@ export default function ChatView({
       if (!callId || !conversationId) {
         return;
       }
+      setCallNotification((current) => (current && current.callId === callId ? null : current));
+      setIncomingCall((current) => (current && current.callId === callId ? null : current));
+
+      // Clear wait-room timer for this call (someone joined)
+      if (callId && waitRoomTimersRef.current[callId]) {
+        clearTimeout(waitRoomTimersRef.current[callId]);
+        delete waitRoomTimersRef.current[callId];
+      }
 
       setActiveCall((current) => {
         if (!current || current.callId !== callId) {
-          return current;
+          // If we don't have a local activeCall, still set connected state so UI can join
+          return {
+            callId,
+            conversationId: conversationId ?? "",
+            status: "connected",
+            isInitiator: false,
+            connectedAt: Date.now(),
+            callType: current?.callType ?? (conversationId?.startsWith("grp_") ? "group" : "direct"),
+          } as ActiveCallState;
         }
 
         return {
@@ -2138,10 +2303,25 @@ export default function ChatView({
         }
         return null;
       });
+      setCallNotification((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
 
       setLiveKitTokenPayload(null);
       setLiveKitTokenError(null);
       liveKitRequestCallIdRef.current = null;
+
+      // Clear any wait-room timer for this call
+      if (callId && waitRoomTimersRef.current[callId]) {
+        clearTimeout(waitRoomTimersRef.current[callId]);
+        delete waitRoomTimersRef.current[callId];
+      }
 
       if (callId && conversationId) {
         // Backend persists the call-info message; no local append needed.
@@ -2176,13 +2356,27 @@ export default function ChatView({
         }
         return null;
       });
+      setCallNotification((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
 
       setLiveKitTokenPayload(null);
       setLiveKitTokenError(null);
       liveKitRequestCallIdRef.current = null;
 
       if (callId && conversationId) {
-        const notice = endedCallConnectedAt ? "Cuộc gọi đã kết thúc" : "Cuộc gọi nhỡ";
+        const notice =
+          reason === "no_answer_timeout"
+            ? "Không có người nghe máy"
+            : endedCallConnectedAt
+              ? "Cuộc gọi đã kết thúc"
+              : "Cuộc gọi nhỡ";
         setChatNotice(notice);
       }
 
@@ -2193,6 +2387,8 @@ export default function ChatView({
           delete next[conversationId];
           return next;
         });
+        // Refresh authoritative active call state from server
+        void fetchActiveCallForConversation(conversationId);
       }
     };
 
@@ -2210,6 +2406,7 @@ export default function ChatView({
       const data = payload as CallSignalPayload;
       const callId = typeof data.call_id === "string" ? data.call_id : "";
       const conversationId = normalizeConversationId(data.conversation_id);
+      const reason = typeof data.reason === "string" ? data.reason : "missed";
 
       setActiveCall((current) => {
         if (!current) {
@@ -2242,9 +2439,19 @@ export default function ChatView({
       setLiveKitTokenError(null);
       liveKitRequestCallIdRef.current = null;
 
+      // Clear any wait-room timer for this call
+      if (callId && waitRoomTimersRef.current[callId]) {
+        clearTimeout(waitRoomTimersRef.current[callId]);
+        delete waitRoomTimersRef.current[callId];
+      }
+
       if (callId && conversationId) {
         // Backend persists the call-info message; no local append needed.
-        setChatNotice("📞 Cuộc gọi nhỡ");
+        setChatNotice(
+          reason === "no_answer_timeout"
+            ? "Không có người nghe máy"
+            : "📞 Cuộc gọi nhỡ",
+        );
       }
     };
 
@@ -2338,6 +2545,8 @@ export default function ChatView({
     };
   }, [
     activeChatId,
+    allUsers,
+    conversations,
     currentUserId,
     emit,
     enrichMessage,
@@ -2775,13 +2984,31 @@ export default function ChatView({
       return;
     }
 
+    const callId = createClientCallId();
+    const callType = activeChat?.type === "group" ? "group" : "direct";
+    setActiveCall({
+      callId,
+      conversationId: activeChatId,
+      status: "ringing",
+      isInitiator: true,
+      connectedAt: undefined,
+      callType,
+    });
+    if (callType === "group") {
+      setActiveGroupCalls((prev) => ({
+        ...prev,
+        [activeChatId]: { callId, callType: "group" },
+      }));
+    }
+
     emit("call:initiate", {
+      call_id: callId,
       conversation_id: activeChatId,
-      call_type: activeChat?.type === "group" ? "group" : "direct",
+      call_type: callType,
     });
   }, [activeCall, activeChat?.type, activeChatId, emit]);
 
-  const handleEndCall = useCallback(() => {
+  const handleEndCall = useCallback(async () => {
     if (!activeCall) {
       return;
     }
@@ -2790,10 +3017,44 @@ export default function ChatView({
     const callId = activeCall.callId;
 
     if (activeCall.callType === "group") {
-      // Group call: leave instead of end
-      emit("call:leave", {
-        call_id: callId,
-        conversation_id: conversationId,
+      let shouldEndImmediately = false;
+      try {
+        const activeResponse = await authJsonRequest<{
+          data?: {
+            participants?: Array<{ state?: string }>;
+          } | null;
+        }>(
+          `/api/calls/active-for-conversation?conversation_id=${conversationId}`,
+        );
+
+        const participants = Array.isArray(activeResponse.data?.participants)
+          ? activeResponse.data?.participants
+          : [];
+        const currentlyConnectedCount = participants.filter(
+          (participant) =>
+            participant.state === "connected" || participant.state === "initiated",
+        ).length;
+        shouldEndImmediately = currentlyConnectedCount <= 2;
+      } catch {
+        shouldEndImmediately = false;
+      }
+
+      if (shouldEndImmediately) {
+        emit("call:end", {
+          call_id: callId,
+          conversation_id: conversationId,
+          reason: "ended_by_user",
+        });
+      } else {
+        emit("call:leave", {
+          call_id: callId,
+          conversation_id: conversationId,
+        });
+      }
+      setActiveGroupCalls((prev) => {
+        const next = { ...prev };
+        delete next[conversationId];
+        return next;
       });
       setChatNotice("Bạn đã rời cuộc gọi nhóm");
     } else {
@@ -2812,7 +3073,7 @@ export default function ChatView({
     setLiveKitTokenPayload(null);
     setLiveKitTokenError(null);
     liveKitRequestCallIdRef.current = null;
-  }, [activeCall, emit]);
+  }, [activeCall, authJsonRequest, emit]);
 
   const handleAcceptIncomingCall = useCallback(() => {
     if (!incomingCall) {
@@ -2833,6 +3094,7 @@ export default function ChatView({
       callType: incomingCall.callType,
     });
     setIncomingCall(null);
+    setCallNotification(null);
   }, [emit, incomingCall]);
 
   const handleDeclineIncomingCall = useCallback(() => {
@@ -2846,6 +3108,7 @@ export default function ChatView({
       reason: "declined_by_user",
     });
     setIncomingCall(null);
+    setCallNotification(null);
   }, [emit, incomingCall]);
 
   const handleRecall = async (message: Message) => {
@@ -3308,9 +3571,20 @@ export default function ChatView({
               activeCall?.conversationId !== activeChat.id && (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
+                    // Re-verify authoritative active call state before joining to
+                    // avoid acting on a stale `activeGroupCalls` entry.
+                    try {
+                      await fetchActiveCallForConversation(activeChat.id);
+                    } catch {
+                      // ignore - fetchActiveCallForConversation logs errors
+                    }
+
                     const groupCall = activeGroupCalls[activeChat.id];
-                    if (!groupCall) return;
+                    if (!groupCall) {
+                      setChatNotice("Không có cuộc gọi đang diễn ra");
+                      return;
+                    }
 
                     emit("call:accept", {
                       call_id: groupCall.callId,
@@ -3378,6 +3652,54 @@ export default function ChatView({
               onCancelReply={() => setReplyingTo(null)}
               onTypingChange={handleLocalTypingChange}
             />
+            {/* Connection loss modal (shown during disconnect grace) */}
+            {!suppressModals && connectionLossModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                <div className="w-[420px] rounded-lg bg-white p-6 shadow-lg">
+                  <h3 className="text-lg font-semibold mb-2">
+                    {connectionLossModal.state === "waiting" ? "Mất kết nối" : "Cuộc gọi đã kết thúc"}
+                  </h3>
+                  {connectionLossModal.state === "waiting" ? (
+                    <p className="text-sm text-slate-600 mb-4">
+                      Đang chờ kết nối lại — tự động kết thúc sau {connectionLossModal.countdown}s nếu không khôi phục.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-slate-600 mb-4">
+                      Cuộc gọi đã bị kết thúc vì không thể kết nối lại.
+                    </p>
+                  )}
+
+                  <div className="flex justify-end gap-2">
+                    {connectionLossModal.state === "waiting" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isConnected && activeCall) {
+                            emit("call:leave", {
+                              call_id: activeCall.callId,
+                              conversation_id: activeCall.conversationId,
+                            });
+                          }
+                          setActiveCall(null);
+                          setConnectionLossModal(null);
+                        }}
+                        className="rounded-md px-3 py-2 text-sm bg-rose-100 text-rose-700 hover:bg-rose-200"
+                      >
+                        Rời cuộc gọi
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setConnectionLossModal(null)}
+                      className="rounded-md px-3 py-2 text-sm bg-slate-100 hover:bg-slate-200"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {chatNotice && (
               <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
                 {chatNotice}
@@ -3470,14 +3792,15 @@ export default function ChatView({
         </div>
       )}
 
-      {incomingCall && (
+      {!suppressModals && incomingCall && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
             <h3 className="text-base font-semibold text-slate-800">
-              Cuộc gọi đến
+              {callNotification?.title ?? "Cuộc gọi đến"}
             </h3>
             <p className="mt-2 text-sm text-slate-600">
-              Hội thoại {incomingCall.callType === "group" ? "nhóm" : "1-1"} muốn bắt đầu cuộc gọi.
+              {callNotification?.description ??
+                `Hội thoại ${incomingCall.callType === "group" ? "nhóm" : "1-1"} muốn bắt đầu cuộc gọi.`}
             </p>
             <div className="mt-4 flex items-center justify-end gap-2">
               <button
@@ -3498,7 +3821,7 @@ export default function ChatView({
           </div>
         </div>
       )}
-
+      
       {activeCall && (
         <LiveKitCallOverlay
           open={Boolean(activeCall)}
@@ -3513,14 +3836,6 @@ export default function ChatView({
         />
       )}
 
-      <CreateGroupModal
-        open={showCreateGroup}
-        onClose={() => setShowCreateGroup(false)}
-        onCreated={(conversationId) => {
-          setActiveChatId(conversationId);
-          void loadConversations();
-        }}
-      />
       <StartConversationModal
         open={showStartConversation}
         onClose={() => setShowStartConversation(false)}

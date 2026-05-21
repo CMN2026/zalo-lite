@@ -11,7 +11,9 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Ionicons, Feather } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { authStorage } from "../../lib/auth";
+import { useSocket } from "../../hooks/useSocket";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://192.168.1.5:3004";
 
@@ -29,6 +31,8 @@ interface UserProfile {
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { emit } = useSocket();
+  const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -52,7 +56,7 @@ export default function UserProfileScreen() {
         
         const data = await response.json();
         setProfile(data.data);
-      } catch (err) {
+      } catch {
         setError("Không thể tải thông tin người dùng.");
       } finally {
         setLoading(false);
@@ -62,25 +66,32 @@ export default function UserProfileScreen() {
     fetchProfile();
   }, [id]);
 
+  const createDirectConversation = async () => {
+    if (!id) return null;
+
+    const token = await authStorage.getToken();
+    const res = await fetch(`${API_BASE_URL}/api/conversations/direct`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token ?? ""}`,
+      },
+      body: JSON.stringify({ userId: id }),
+    });
+
+    if (!res.ok) {
+      return null;
+    }
+
+    const data = await res.json();
+    return data.data?.id ?? data.id ?? null;
+  };
+
   const handleMessage = async () => {
     if (!id) return;
     try {
       setLoading(true);
-      const token = await authStorage.getToken();
-      const res = await fetch(`${API_BASE_URL}/api/conversations/direct`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token ?? ""}`,
-        },
-        body: JSON.stringify({ userId: id }),
-      });
-
-      let conversationId: string | null = null;
-      if (res.ok) {
-        const data = await res.json();
-        conversationId = data.data?.id ?? data.id ?? null;
-      }
+      const conversationId = await createDirectConversation();
 
       if (conversationId) {
         router.navigate({
@@ -95,6 +106,42 @@ export default function UserProfileScreen() {
       }
     } catch {
       setError("Không thể kết nối. Vui lòng thử lại.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openVideoCall = async () => {
+    if (!id) return;
+
+    try {
+      setLoading(true);
+      const conversationId = await createDirectConversation();
+
+      if (!conversationId) {
+        setError("Không thể mở cuộc gọi.");
+        return;
+      }
+
+      const callId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      emit("call:initiate", {
+        call_id: callId,
+        conversation_id: conversationId,
+        call_type: "direct",
+      });
+
+      router.push({
+        pathname: "/webcall",
+        params: {
+          callId,
+          incoming: "0",
+          conversationId,
+          conversationName: profile?.fullName ?? "Cuộc gọi",
+          callType: "direct",
+        },
+      });
+    } catch {
+      setError("Không thể mở cuộc gọi.");
     } finally {
       setLoading(false);
     }
@@ -141,7 +188,7 @@ export default function UserProfileScreen() {
             <View style={styles.coverPlaceholder} />
           )}
           
-          <SafeAreaView style={styles.safeAreaHeader}>
+          <SafeAreaView style={[styles.safeAreaHeader, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity 
               style={styles.headerBackButton} 
               onPress={handleGoBack}
@@ -162,9 +209,9 @@ export default function UserProfileScreen() {
           <Text style={styles.nameText}>{profile.fullName}</Text>
           
           <View style={styles.actionButtonsRow}>
-            <TouchableOpacity style={styles.actionButton}>
-              <Feather name="phone" size={20} color="#1E293B" />
-              <Text style={styles.actionButtonText}>Gọi điện</Text>
+            <TouchableOpacity style={styles.actionButton} onPress={openVideoCall}>
+              <Feather name="video" size={20} color="#1E293B" />
+              <Text style={styles.actionButtonText}>Gọi video</Text>
             </TouchableOpacity>
             
             <TouchableOpacity style={[styles.actionButton, styles.primaryButton]} onPress={handleMessage}>

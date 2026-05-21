@@ -24,6 +24,10 @@ type Env = {
   LIVEKIT_API_KEY?: string;
   LIVEKIT_API_SECRET?: string;
   CALL_INVITE_TIMEOUT_SECONDS: number;
+  USE_S3: boolean;
+  S3_BUCKET_NAME?: string;
+  AWS_ACCESS_KEY_ID?: string;
+  AWS_SECRET_ACCESS_KEY?: string;
 };
 
 function getEnv(name: string, fallback?: string): string {
@@ -78,6 +82,10 @@ export const env: Env = {
   LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY,
   LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET,
   CALL_INVITE_TIMEOUT_SECONDS: Number(
-    getEnv("CALL_INVITE_TIMEOUT_SECONDS", "30"),
+    getEnv("CALL_INVITE_TIMEOUT_SECONDS", "15"),
   ),
+  USE_S3: process.env.USE_S3 === "true",
+  S3_BUCKET_NAME: process.env.S3_BUCKET_NAME,
+  AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+  AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
 };

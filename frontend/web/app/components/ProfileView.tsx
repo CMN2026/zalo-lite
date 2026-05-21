@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Camera, LogOut, RefreshCw, Save, UserRound } from "lucide-react";
+import { LogOut, Pencil, RefreshCw, Save, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { clearAuthSession } from "../lib/auth";
 import {
   getMe,
   updateAvatar,
+  updateCover,
   updateMe,
   type ProfileUser,
 } from "../lib/users";
@@ -17,11 +18,10 @@ export default function ProfileView() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [bio, setBio] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
-  const [avatarFileName, setAvatarFileName] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
+  const [savingCover, setSavingCover] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -49,8 +49,6 @@ export default function ProfileView() {
       setFullName(response.data.fullName ?? "");
       setPhone(response.data.phone ?? "");
       setBio(response.data.bio ?? "");
-      setAvatarUrl(response.data.avatarUrl ?? "");
-      setAvatarFileName("");
     } catch (err) {
       setError(getFriendlyError(err));
     } finally {
@@ -79,24 +77,21 @@ export default function ProfileView() {
     }
   }
 
-  async function handleAvatarSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!avatarUrl) {
-      setError("Please choose an image file first.");
-      return;
-    }
-
+  async function handleAvatarFileChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
     setSavingAvatar(true);
     setError("");
     setMessage("");
-
     try {
-      const response = await updateAvatar(avatarUrl);
+      const imageDataUrl = await toImageDataUrl(file, 2, "Avatar");
+      const response = await updateAvatar(imageDataUrl);
       setUser((current) =>
         current ? { ...current, avatarUrl: response.data.avatarUrl } : current,
       );
-      setAvatarFileName("");
       setMessage("Avatar updated successfully.");
     } catch (err) {
       setError(getFriendlyError(err));
@@ -105,35 +100,52 @@ export default function ProfileView() {
     }
   }
 
-  function handleAvatarFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleCoverFileChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
     const file = event.target.files?.[0];
-    if (!file) {
-      return;
+    event.target.value = "";
+    if (!file) return;
+    setSavingCover(true);
+    setError("");
+    setMessage("");
+    try {
+      const imageDataUrl = await toImageDataUrl(file, 4, "Cover");
+      const response = await updateCover(imageDataUrl);
+      setUser((current) =>
+        current ? { ...current, coverUrl: response.data.coverUrl ?? null } : current,
+      );
+      setMessage("Cover photo updated successfully.");
+    } catch (err) {
+      setError(getFriendlyError(err));
+    } finally {
+      setSavingCover(false);
     }
+  }
+
+  function toImageDataUrl(file: File, maxMb: number, label: string) {
+    const maxBytes = maxMb * 1024 * 1024;
 
     if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file.");
-      return;
+      throw new Error(`${label}_image_must_be_image_file`);
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      setError("Avatar image must be 2MB or smaller.");
-      return;
+    if (file.size > maxBytes) {
+      throw new Error(`${label}_image_must_be_${maxMb}MB_or_smaller`);
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setAvatarUrl(reader.result);
-        setAvatarFileName(file.name);
-        setError("");
-        setMessage("Avatar selected. Click Update Avatar to save it.");
-      }
-    };
-    reader.onerror = () => {
-      setError("Could not read the selected image.");
-    };
-    reader.readAsDataURL(file);
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          resolve(reader.result);
+          return;
+        }
+        reject(new Error("Could_not_read_the_selected_image"));
+      };
+      reader.onerror = () => reject(new Error("Could_not_read_the_selected_image"));
+      reader.readAsDataURL(file);
+    });
   }
 
   function handleLogout() {
@@ -188,17 +200,50 @@ export default function ProfileView() {
         <div className="grid grid-cols-[320px_1fr] gap-6">
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 h-fit">
             <div className="flex flex-col items-center text-center">
-              {user?.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt={user.fullName}
-                  className="h-24 w-24 rounded-full object-cover border-4 border-white shadow-sm"
-                />
-              ) : (
-                <div className="h-24 w-24 rounded-full bg-blue-600 text-white flex items-center justify-center text-2xl font-bold shadow-sm">
-                  {initials}
+              <div className="relative w-full">
+                <div className="h-28 w-full overflow-hidden rounded-xl bg-slate-100">
+                  {user?.coverUrl ? (
+                    <img
+                      src={user.coverUrl}
+                      alt="Cover"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : null}
                 </div>
-              )}
+                <label className="absolute bottom-2 right-2 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white text-slate-700 shadow border border-slate-200 hover:bg-slate-50">
+                  <Pencil className="h-4 w-4" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleCoverFileChange}
+                    disabled={savingCover}
+                    className="sr-only"
+                  />
+                </label>
+              </div>
+              <div className="relative -mt-10">
+                {user?.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.fullName}
+                    className="h-24 w-24 rounded-full object-cover border-4 border-white shadow-sm"
+                  />
+                ) : (
+                  <div className="h-24 w-24 rounded-full bg-blue-600 text-white flex items-center justify-center text-2xl font-bold shadow-sm border-4 border-white">
+                    {initials}
+                  </div>
+                )}
+                <label className="absolute bottom-1 right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white text-slate-700 shadow border border-slate-200 hover:bg-slate-50">
+                  <Pencil className="h-4 w-4" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarFileChange}
+                    disabled={savingAvatar}
+                    className="sr-only"
+                  />
+                </label>
+              </div>
               <h2 className="mt-4 text-lg font-bold">{user?.fullName}</h2>
               <p className="text-sm text-slate-500 mt-1">{user?.email}</p>
               <div className="flex gap-2 mt-4">
@@ -210,32 +255,13 @@ export default function ProfileView() {
                 </span>
               </div>
             </div>
-
-            <form onSubmit={handleAvatarSubmit} className="mt-6 space-y-3">
-              <label className="text-xs font-semibold uppercase text-slate-500">
-                Avatar Image
-              </label>
-              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-600 transition hover:border-blue-400 hover:text-blue-600">
-                <Camera className="w-4 h-4" />
-                Choose image from device
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarFileChange}
-                  className="sr-only"
-                />
-              </label>
-              <p className="min-h-5 text-xs text-slate-500">
-                {avatarFileName || "PNG, JPG, or WEBP up to 2MB."}
-              </p>
-              <button
-                disabled={savingAvatar || !avatarUrl}
-                className="w-full bg-blue-600 text-white flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-70"
-              >
-                <Camera className="w-4 h-4" />
-                {savingAvatar ? "Saving avatar..." : "Update Avatar"}
-              </button>
-            </form>
+            <p className="mt-4 text-xs text-slate-500">
+              {savingAvatar
+                ? "Updating avatar..."
+                : savingCover
+                  ? "Updating cover..."
+                  : "Click the pencil icons to change avatar and cover photo."}
+            </p>
           </div>
 
           <form
@@ -338,6 +364,11 @@ function getFriendlyError(error: unknown) {
     phone_already_used: "This phone number is already used by another account.",
     validation_error: "Please check the fields and try again.",
     user_not_found: "We could not find your user account.",
+    Avatar_image_must_be_image_file: "Please choose an image file for avatar.",
+    Cover_image_must_be_image_file: "Please choose an image file for cover photo.",
+    Avatar_image_must_be_2MB_or_smaller: "Avatar image must be 2MB or smaller.",
+    Cover_image_must_be_4MB_or_smaller: "Cover image must be 4MB or smaller.",
+    Could_not_read_the_selected_image: "Could not read the selected image.",
   };
 
   return labels[message] ?? "Something went wrong. Please try again.";

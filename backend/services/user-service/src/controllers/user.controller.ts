@@ -45,6 +45,16 @@ export class UserController {
     }
   }
 
+  static async updateCover(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.updateCover(userId, req.body.coverUrl);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async discoverByPhone(
     req: Request,
     res: Response,

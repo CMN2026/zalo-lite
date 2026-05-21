@@ -9,6 +9,15 @@ import { AuthProvider, useAuth } from '../contexts/auth';
 import { useEffect } from 'react';
 import ForceLogoutModal from '../components/ForceLogoutModal';
 
+try {
+  const liveKitModule = require('@livekit/react-native') as {
+    registerGlobals?: () => void;
+  };
+  liveKitModule.registerGlobals?.();
+} catch {
+  // Expo Go may not include native WebRTC. Keep app booting for non-call routes.
+}
+
 export const unstable_settings = {
   anchor: '(tabs)',
 };

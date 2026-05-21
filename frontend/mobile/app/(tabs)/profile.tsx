@@ -10,8 +10,10 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useAuth } from "../../contexts/auth";
-import { getMe, updateMe, type ProfileUser } from "../../lib/users";
+import { getMe, updateAvatar, updateCover, updateMe, type ProfileUser } from "../../lib/users";
 
 function getFriendlyError(error: unknown) {
   const message = error instanceof Error ? error.message : "request_failed";
@@ -21,6 +23,7 @@ function getFriendlyError(error: unknown) {
     phone_already_used: "Số điện thoại này đã được sử dụng bởi tài khoản khác.",
     validation_error: "Kiểm tra lại thông tin đã nhập.",
     user_not_found: "Không tìm thấy tài khoản.",
+    image_must_be_valid_url_or_image_data: "Ảnh không hợp lệ, vui lòng chọn lại.",
   };
   return labels[message] ?? "Đã xảy ra lỗi. Vui lòng thử lại.";
 }
@@ -43,6 +46,8 @@ export default function ProfileScreen() {
   const [bio, setBio] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingAvatar, setSavingAvatar] = useState(false);
+  const [savingCover, setSavingCover] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -86,6 +91,67 @@ export default function ProfileScreen() {
     }
   }
 
+  async function pickAndUploadImage(kind: "avatar" | "cover") {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError("Vui lòng cấp quyền truy cập thư viện ảnh.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.85,
+      base64: true,
+    });
+
+    if (result.canceled || !result.assets[0]) {
+      return;
+    }
+
+    const asset = result.assets[0];
+    if (!asset.base64 || !asset.mimeType) {
+      setError("Không thể đọc ảnh đã chọn.");
+      return;
+    }
+
+    const limitBytes = kind === "avatar" ? 2 * 1024 * 1024 : 4 * 1024 * 1024;
+    if (typeof asset.fileSize === "number" && asset.fileSize > limitBytes) {
+      setError(
+        kind === "avatar"
+          ? "Ảnh đại diện phải <= 2MB."
+          : "Ảnh bìa phải <= 4MB.",
+      );
+      return;
+    }
+
+    const imageDataUrl = `data:${asset.mimeType};base64,${asset.base64}`;
+    setError("");
+    setMessage("");
+    try {
+      if (kind === "avatar") {
+        setSavingAvatar(true);
+        const res = await updateAvatar(imageDataUrl);
+        setProfile((current) =>
+          current ? { ...current, avatarUrl: res.data.avatarUrl ?? null } : current,
+        );
+        setMessage("Đã cập nhật ảnh đại diện.");
+      } else {
+        setSavingCover(true);
+        const res = await updateCover(imageDataUrl);
+        setProfile((current) =>
+          current ? { ...current, coverUrl: res.data.coverUrl ?? null } : current,
+        );
+        setMessage("Đã cập nhật ảnh bìa.");
+      }
+    } catch (err) {
+      setError(getFriendlyError(err));
+    } finally {
+      setSavingAvatar(false);
+      setSavingCover(false);
+    }
+  }
+
   function handleLogout() {
     Alert.alert("Đăng xuất", "Bạn có chắc muốn đăng xuất?", [
       { text: "Huỷ", style: "cancel" },
@@ -103,15 +169,47 @@ export default function ProfileScreen() {
       </View>
 
       <ScrollView>
-        {/* Avatar Card */}
+        {/* Cover + Avatar Card */}
         <View className="bg-white mt-4 mx-4 rounded-2xl border border-slate-100 p-6 items-center shadow-sm">
-          {profile?.avatarUrl ? (
-            <Image source={{ uri: profile.avatarUrl }} className="w-24 h-24 rounded-full border-4 border-white bg-slate-200" style={{ shadowOpacity: 0.1 }} />
-          ) : (
-            <View className="w-24 h-24 rounded-full bg-blue-600 items-center justify-center">
-              <Text className="text-white text-3xl font-bold">{initials}</Text>
+          <View className="w-full relative">
+            <View className="w-full h-28 rounded-xl overflow-hidden bg-slate-100">
+              {profile?.coverUrl ? (
+                <Image source={{ uri: profile.coverUrl }} className="w-full h-full" />
+              ) : null}
             </View>
-          )}
+            <TouchableOpacity
+              onPress={() => void pickAndUploadImage("cover")}
+              disabled={savingCover}
+              className="absolute bottom-2 right-2 w-9 h-9 rounded-full bg-white border border-slate-200 items-center justify-center"
+            >
+              {savingCover ? (
+                <ActivityIndicator size="small" color="#334155" />
+              ) : (
+                <MaterialIcons name="edit" size={16} color="#334155" />
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View className="-mt-10 relative">
+            {profile?.avatarUrl ? (
+              <Image source={{ uri: profile.avatarUrl }} className="w-24 h-24 rounded-full border-4 border-white bg-slate-200" style={{ shadowOpacity: 0.1 }} />
+            ) : (
+              <View className="w-24 h-24 rounded-full bg-blue-600 items-center justify-center border-4 border-white">
+                <Text className="text-white text-3xl font-bold">{initials}</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              onPress={() => void pickAndUploadImage("avatar")}
+              disabled={savingAvatar}
+              className="absolute bottom-1 right-1 w-8 h-8 rounded-full bg-white border border-slate-200 items-center justify-center"
+            >
+              {savingAvatar ? (
+                <ActivityIndicator size="small" color="#334155" />
+              ) : (
+                <MaterialIcons name="edit" size={14} color="#334155" />
+              )}
+            </TouchableOpacity>
+          </View>
           <Text className="text-xl font-bold text-slate-800 mt-4">{profile?.fullName ?? authUser?.fullName}</Text>
           <Text className="text-sm text-slate-500 mt-1">{profile?.email ?? authUser?.email}</Text>
           <View className="flex-row gap-2 mt-3">

@@ -13,6 +13,7 @@ import { useSocket } from "./hooks/useSocket";
 import { getAuthToken } from "./lib/auth";
 
 import Sidebar from "../app/components/Sidebar";
+// CallModal removed: incoming-call modal moved to ChatView
 import ChatView from "../app/components/ChatView";
 import ChatbotView from "../app/components/ChatbotView";
 import FriendsView from "../app/components/FriendsView";
@@ -20,6 +21,7 @@ import HistoryView from "../app/components/HistoryView";
 import ProfileView from "../app/components/ProfileView";
 import StatsView from "../app/components/StatsView";
 import type { ProfileUser } from "./lib/users";
+import { WEB_GATEWAY_BASE_URL, WEB_USER_SERVICE_BASE_URL } from "./lib/runtime-base-url";
 
 type TopupNotification = {
   id: string;
@@ -27,6 +29,8 @@ type TopupNotification = {
   messageId?: string;
   title: string;
   body: string;
+  kind?: "message" | "call";
+  callId?: string;
 };
 
 function normalizeRealtimeId(value: unknown): string | null {
@@ -39,10 +43,8 @@ function normalizeRealtimeId(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3004";
-const USER_SERVICE_BASE_URL =
-  process.env.NEXT_PUBLIC_USER_SERVICE_URL ?? "http://127.0.0.1:3001";
+const API_BASE_URL = WEB_GATEWAY_BASE_URL;
+const USER_SERVICE_BASE_URL = WEB_USER_SERVICE_BASE_URL;
 const unreadStorageKeyPrefix = "zalo-lite:web:unread:";
 const mutedStorageKeyPrefix = "zalo-lite:web:muted:";
 
@@ -79,6 +81,7 @@ export default function DashboardLayout() {
   >({});
   const [friendNames, setFriendNames] = useState<Record<string, string>>({});
   const [topups, setTopups] = useState<TopupNotification[]>([]);
+  // global incoming-call modal removed; ChatView will show incoming UI
   const [pendingJump, setPendingJump] = useState<{
     conversationId: string;
     messageId?: string;
@@ -95,7 +98,12 @@ export default function DashboardLayout() {
   );
 
   const pushTopup = useCallback(
-    (conversationId: string, body: string, messageId?: string) => {
+    (
+      conversationId: string,
+      body: string,
+      messageId?: string,
+      options?: { title?: string; kind?: "message" | "call"; callId?: string },
+    ) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
       setTopups((prev) =>
@@ -104,8 +112,10 @@ export default function DashboardLayout() {
             id,
             conversationId,
             messageId,
-            title: "Tin nhắn mới",
+            title: options?.title ?? "Tin nhắn mới",
             body,
+            kind: options?.kind ?? "message",
+            callId: options?.callId,
           },
           ...prev,
         ].slice(0, 4),
@@ -132,6 +142,71 @@ export default function DashboardLayout() {
     });
     setTopups((prev) => prev.filter((item) => item.id !== topup.id));
   }, []);
+
+  useEffect(() => {
+    const handleIncomingCallNotification = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+        call_id?: unknown;
+        initiator_id?: unknown;
+        caller_name?: unknown;
+        conversation_name?: unknown;
+        call_type?: unknown;
+      };
+
+      const conversationId = normalizeRealtimeId(data.conversation_id);
+      const callId = normalizeRealtimeId(data.call_id);
+      const initiatorId = normalizeRealtimeId(data.initiator_id);
+      if (!conversationId || !callId || !initiatorId) {
+        return;
+      }
+      if (initiatorId === currentUserId) {
+        return;
+      }
+
+      const callType = data.call_type === "group" ? "group" : "direct";
+      const callerName =
+        typeof data.caller_name === "string" && data.caller_name.trim()
+          ? data.caller_name.trim()
+          : friendNames[initiatorId] ?? "Người gọi";
+      const conversationName =
+        typeof data.conversation_name === "string" &&
+        data.conversation_name.trim()
+          ? data.conversation_name.trim()
+          : callType === "group"
+            ? "Nhóm chat"
+            : callerName;
+
+      const title =
+        callType === "group"
+          ? conversationName
+          : `Cuộc gọi đến từ ${callerName}`;
+      const body =
+        callType === "group"
+          ? `${callerName} đang gọi trong nhóm ${conversationName}`
+          : `${callerName} đang gọi cho bạn`;
+
+      pushTopup(conversationId, body, undefined, {
+        title,
+        kind: "call",
+        callId,
+      });
+
+      // push topup notification only; ChatView handles incoming-call UI
+      pushTopup(conversationId, body, undefined, {
+        title,
+        kind: "call",
+        callId,
+      });
+    };
+
+    on("call:initiate", handleIncomingCallNotification);
+    return () => {
+      off("call:initiate", handleIncomingCallNotification);
+    };
+  }, [currentUserId, friendNames, off, on, pushTopup]);
+
+  const { emit } = useSocket();
 
   const handleFocusedConversationChange = useCallback(
     (conversationId: string | null) => {
@@ -535,6 +610,9 @@ export default function DashboardLayout() {
         unreadCount={unreadCount}
       />
 
+      {/* Global incoming call modal */}
+      {/* Global incoming-call modal removed; ChatView shows incoming UI */}
+
       {/* Hiển thị Component động dựa vào State */}
       <div className="flex-1 flex overflow-hidden">
         {currentView === "chat" && (
@@ -546,6 +624,7 @@ export default function DashboardLayout() {
             onMutedByConversationChange={setMutedByConversation}
             pendingJump={pendingJump}
             onPendingJumpHandled={() => setPendingJump(null)}
+            
           />
         )}
         {currentView === "chatbot" && <ChatbotView />}
