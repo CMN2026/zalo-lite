@@ -2850,30 +2850,52 @@ export default function ChatView({
 
   const requestLiveKitToken = useCallback(
     async (callId: string, conversationId: string) => {
-      try {
-        const response = await authJsonRequest<{
-          data?: {
-            token: string;
-            ws_url: string;
-            room_name: string;
-            expires_at: string;
-          };
-        }>(`/api/calls/${encodeURIComponent(callId)}/livekit-token`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            conversation_id: conversationId,
-          }),
+      const sleep = (ms: number) =>
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, ms);
         });
 
-        if (!response.data) {
-          setChatNotice("Không nhận được media token cho cuộc gọi.");
-          return null;
-        }
+      const maxAttempts = 6;
+      const retryDelayMs = 250;
 
-        return response.data;
+      try {
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          try {
+            const response = await authJsonRequest<{
+              data?: {
+                token: string;
+                ws_url: string;
+                room_name: string;
+                expires_at: string;
+              };
+            }>(`/api/calls/${encodeURIComponent(callId)}/livekit-token`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                conversation_id: conversationId,
+              }),
+            });
+
+            if (!response.data) {
+              setChatNotice("Không nhận được media token cho cuộc gọi.");
+              return null;
+            }
+
+            return response.data;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "request_failed";
+            const isNotReadyYet = message === "http_404";
+            const isLastAttempt = attempt >= maxAttempts;
+
+            if (!isNotReadyYet || isLastAttempt) {
+              throw error;
+            }
+
+            await sleep(retryDelayMs);
+          }
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "request_failed";
         setChatNotice(`Không thể cấp media token: ${message}`);
