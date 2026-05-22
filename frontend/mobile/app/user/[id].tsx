@@ -16,7 +16,7 @@ import { authStorage } from "../../lib/auth";
 import { useSocket } from "../../hooks/useSocket";
 
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://3.27.239.232:3004";
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://3.27.105.189:3004";
 
 interface UserProfile {
   id: string;

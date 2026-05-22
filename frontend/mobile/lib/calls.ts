@@ -2,7 +2,7 @@ import { API_BASE_URL } from "./api";
 import { getAuthToken } from "./auth";
 
 const CHAT_SERVICE_BASE_URL =
-  process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://3.27.239.232:3002";
+  process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://3.27.105.189:3002";
 
 export type CallSessionParticipant = {
   user_id: string;

@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://3.27.239.232:3004";
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://3.27.105.189:3004";
 
 export type AuthUser = {
   id: string;
@@ -78,10 +78,10 @@ async function post<T>(path: string, options: { body: Record<string, unknown> })
   let payload: any = null;
   try {
     payload = JSON.parse(raw);
-  } catch(e) {
+  } catch (e) {
     throw new Error(raw.slice(0, 120));
   }
-  
+
   if (!response.ok) {
     throw new Error(payload?.message || "Request failed");
   }

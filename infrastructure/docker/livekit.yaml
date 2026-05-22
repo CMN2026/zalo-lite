@@ -10,7 +10,7 @@ rtc:
   # container-internal IP). For local dev we set node_ip explicitly.
   # In production, set this to the server's public IP.
   use_external_ip: false
-  node_ip: 3.27.239.232
+  node_ip: 3.27.105.189
   # Enable ICE/TCP fallback so clients behind restrictive firewalls can
   # still establish media connections when UDP is blocked.
   tcp_port: 7881
