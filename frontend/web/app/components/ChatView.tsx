@@ -419,9 +419,7 @@ export default function ChatView({
   const [incomingCall, setIncomingCall] = useState<IncomingCallState | null>(
     null,
   );
-  const waitRoomTimersRef = useRef<
-    Record<string, ReturnType<typeof window.setTimeout>>
-  >({});
+  const waitRoomTimersRef = useRef<Record<string, number | NodeJS.Timeout>>({});
   const [callNotification, setCallNotification] =
     useState<CallNotificationState | null>(null);
   const [liveKitTokenPayload, setLiveKitTokenPayload] =
