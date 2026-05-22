@@ -210,12 +210,13 @@ export default function LiveKitCallOverlay({
     });
     room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
       if (track.kind === Track.Kind.Audio) {
+        const audioKey = track.sid ?? `${participant.sid}:${track.kind}:${Date.now()}`;
         const audioEl = document.createElement("audio");
         audioEl.autoplay = true;
-        audioEl.playsInline = true;
+        audioEl.setAttribute("playsinline", "true");
         audioEl.muted = false;
         track.attach(audioEl);
-        remoteAudioElementsRef.current.set(track.sid, audioEl);
+        remoteAudioElementsRef.current.set(audioKey, audioEl);
         void audioEl.play().catch((error) => {
           console.warn("Remote audio autoplay blocked", {
             participant: participant.identity,
@@ -231,7 +232,9 @@ export default function LiveKitCallOverlay({
     });
     room.on(RoomEvent.TrackUnsubscribed, (track) => {
       if (track.kind === Track.Kind.Audio) {
-        const audioEl = remoteAudioElementsRef.current.get(track.sid);
+        const audioEl = track.sid
+          ? remoteAudioElementsRef.current.get(track.sid)
+          : undefined;
         if (audioEl) {
           try {
             track.detach(audioEl);
@@ -239,7 +242,16 @@ export default function LiveKitCallOverlay({
             // Ignore detach errors while tearing down.
           }
           audioEl.remove();
-          remoteAudioElementsRef.current.delete(track.sid);
+          if (track.sid) {
+            remoteAudioElementsRef.current.delete(track.sid);
+          } else {
+            for (const [key, value] of remoteAudioElementsRef.current.entries()) {
+              if (value === audioEl) {
+                remoteAudioElementsRef.current.delete(key);
+                break;
+              }
+            }
+          }
         }
       }
       refresh();

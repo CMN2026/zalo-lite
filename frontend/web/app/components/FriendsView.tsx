@@ -522,6 +522,7 @@ function UserRow({
   meta,
   action,
   fallbackName = "Unknown user",
+  onClickAvatar,
 }: {
   user?: ProfileUser;
   meta: string;
