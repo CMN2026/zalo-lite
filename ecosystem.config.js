@@ -2,9 +2,10 @@ module.exports = {
   apps: [
     {
       name: "gateway",
-      cwd: "/home/ubuntu/server/zalo-lite",
-      script: "npm",
+      cwd: __dirname,
+      script: "/usr/bin/npm",
       args: "run start --prefix backend/api-gateway",
+      interpreter: "none",
       autorestart: true,
       watch: false,
       env: {
@@ -13,9 +14,10 @@ module.exports = {
     },
     {
       name: "user-service",
-      cwd: "/home/ubuntu/server/zalo-lite",
-      script: "npm",
+      cwd: __dirname,
+      script: "/usr/bin/npm",
       args: "run start --prefix backend/services/user-service",
+      interpreter: "none",
       autorestart: true,
       watch: false,
       env: {
@@ -24,9 +26,10 @@ module.exports = {
     },
     {
       name: "chat-service",
-      cwd: "/home/ubuntu/server/zalo-lite",
-      script: "npm",
+      cwd: __dirname,
+      script: "/usr/bin/npm",
       args: "run start --prefix backend/services/chat-service",
+      interpreter: "none",
       autorestart: true,
       watch: false,
       env: {
@@ -35,9 +38,10 @@ module.exports = {
     },
     {
       name: "chatbot-service",
-      cwd: "/home/ubuntu/server/zalo-lite",
-      script: "npm",
+      cwd: __dirname,
+      script: "/usr/bin/npm",
       args: "run start --prefix backend/services/chatbot-service",
+      interpreter: "none",
       autorestart: true,
       watch: false,
       env: {
@@ -46,9 +50,10 @@ module.exports = {
     },
     {
       name: "frontend",
-      cwd: "/home/ubuntu/server/zalo-lite",
-      script: "npm",
+      cwd: __dirname,
+      script: "/usr/bin/npm",
       args: "run start --prefix frontend/web",
+      interpreter: "none",
       autorestart: true,
       watch: false,
       env: {

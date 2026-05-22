@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://3.27.105.189:3004";
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://32.236.47.127:3004";
 
 export type AuthUser = {
   id: string;
