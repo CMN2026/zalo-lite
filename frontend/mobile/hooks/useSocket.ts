@@ -5,9 +5,9 @@ import { getAuthToken, authStorage } from "../lib/auth";
 import { DeviceEventEmitter } from "react-native";
 
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://3.27.105.189:3004";
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://32.236.47.127:3004";
 const CHAT_SERVICE_BASE_URL =
-  process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://3.27.105.189:3002";
+  process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://32.236.47.127:3002";
 
 // Module-level singletons to ensure only ONE socket exists across all components
 let sharedSocket: Socket | null = null;
