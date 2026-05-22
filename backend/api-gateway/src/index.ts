@@ -28,14 +28,14 @@ type AuthPayload = {
 
 const env = {
   PORT: Number(process.env.PORT ?? 3004),
-  USER_SERVICE_URL: process.env.USER_SERVICE_URL ?? "http://localhost:3001",
-  CHAT_SERVICE_URL: process.env.CHAT_SERVICE_URL ?? "http://localhost:3002",
+  USER_SERVICE_URL: process.env.USER_SERVICE_URL ?? "http://3.27.239.232:3001",
+  CHAT_SERVICE_URL: process.env.CHAT_SERVICE_URL ?? "http://3.27.239.232:3002",
   CHATBOT_SERVICE_URL:
-    process.env.CHATBOT_SERVICE_URL ?? "http://localhost:3003",
+    process.env.CHATBOT_SERVICE_URL ?? "http://3.27.239.232:3003",
   JWT_SECRET: process.env.JWT_SECRET ?? "dev-secret",
   JWT_ISSUER: process.env.JWT_ISSUER ?? "zalo-lite-user-service",
   JWT_AUDIENCE: process.env.JWT_AUDIENCE ?? "zalo-lite-clients",
-  CORS_ORIGINS: (process.env.CORS_ORIGINS ?? "http://localhost:3000")
+  CORS_ORIGINS: (process.env.CORS_ORIGINS ?? "http://3.27.239.232:3000")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean),
@@ -511,3 +511,4 @@ function authorizeRoles(...roles: Array<"USER" | "ADMIN">) {
     return next();
   };
 }
+

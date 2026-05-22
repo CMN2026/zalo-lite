@@ -4,8 +4,10 @@ import { useAuth } from "../contexts/auth";
 import { getAuthToken, authStorage } from "../lib/auth";
 import { DeviceEventEmitter } from "react-native";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://10.0.2.2:3004";
-const CHAT_SERVICE_BASE_URL = process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://10.0.2.2:3002";
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://3.27.239.232:3004";
+const CHAT_SERVICE_BASE_URL =
+  process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://3.27.239.232:3002";
 
 // Module-level singletons to ensure only ONE socket exists across all components
 let sharedSocket: Socket | null = null;
@@ -192,3 +194,4 @@ export const useSocket = () => {
 
   return { isConnected, emit, on, off, join, leave };
 };
+

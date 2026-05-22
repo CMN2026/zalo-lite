@@ -2,7 +2,7 @@ import { API_BASE_URL } from "./api";
 import { getAuthToken } from "./auth";
 
 const CHAT_SERVICE_BASE_URL =
-  process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://10.0.2.2:3002";
+  process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://3.27.239.232:3002";
 
 export type CallSessionParticipant = {
   user_id: string;
@@ -191,3 +191,4 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   throw (lastError instanceof Error ? lastError : new Error(String(lastError)));
 }
+

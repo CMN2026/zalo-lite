@@ -4,7 +4,7 @@
  */
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3004";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://3.27.239.232:3004";
 
 export interface SendMessageRequest {
   message: string;
@@ -172,3 +172,4 @@ export async function getChatbotFAQ(token: string): Promise<{
 }
 
 // Dev clear-all API removed intentionally to prevent misuse.
+

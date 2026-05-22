@@ -14,7 +14,7 @@ export function getRuntimeBaseUrl(
   envValue: string | undefined,
   defaultPort: number,
 ): string {
-  const fallback = `http://127.0.0.1:${defaultPort}`;
+  const fallback = `http://3.27.239.232:${defaultPort}`;
 
   if (typeof window === "undefined") {
     return envValue ?? fallback;
@@ -53,3 +53,4 @@ export const WEB_CHAT_SERVICE_BASE_URL = getRuntimeBaseUrl(
   process.env.NEXT_PUBLIC_CHAT_SERVICE_URL,
   DEFAULT_CHAT_SERVICE_PORT,
 );
+

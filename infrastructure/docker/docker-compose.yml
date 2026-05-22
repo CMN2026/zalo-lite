@@ -56,7 +56,7 @@ services:
       BCRYPT_ROUNDS: 10
       RATE_LIMIT_WINDOW_MS: 60000
       RATE_LIMIT_MAX: 200
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: http://3.27.239.232:3000,http://3.27.239.232:3004
     ports:
       - "3001:3001"
       - "50051:50051"
@@ -105,11 +105,11 @@ services:
       TABLE_CALL_SESSIONS: call_sessions
       TABLE_CALL_HISTORY: call_history
       LIVEKIT_URL: ws://livekit:7880
-      LIVEKIT_PUBLIC_URL: ws://localhost:7880
+      LIVEKIT_PUBLIC_URL: ws://3.27.239.232:7880
       LIVEKIT_API_KEY: dev-livekit-api-key-zalo-lite-2026
       LIVEKIT_API_SECRET: dev-livekit-api-secret-zalo-lite-2026-production-ready
       CALL_INVITE_TIMEOUT_SECONDS: 30
-      CORS_ORIGINS: http://localhost:3000,http://localhost:3004,http://localhost:19006
+      CORS_ORIGINS: http://3.27.239.232:3000,http://3.27.239.232:3004
     ports:
       - "3002:3002"
     volumes:
@@ -153,7 +153,7 @@ services:
       TABLE_ANALYTICS: chatbot_analytics
       AUTO_CLOSE_INACTIVE_HOURS: 24
       REDIS_NOTIFICATION_CHANNEL: notifications:broadcast
-      CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002
+      CORS_ORIGINS: http://3.27.239.232:3000,http://3.27.239.232:3004
       ENABLE_AI_ENGINE: "true"
       GEMINI_API_KEY: AIzaSyAT_rd1_cJxwNUYSBUDiLCLU-AJU-CWVMY
     ports:
@@ -210,7 +210,7 @@ services:
       JWT_SECRET: super-strong-jwt-secret
       JWT_ISSUER: zalo-lite-user-service
       JWT_AUDIENCE: zalo-lite-clients
-      CORS_ORIGINS: http://localhost:3000,http://localhost:3004,http://localhost:19006
+      CORS_ORIGINS: http://3.27.239.232:3000,http://3.27.239.232:3004
     ports:
       - "3004:3004"
     healthcheck:
@@ -224,3 +224,4 @@ volumes:
   postgres_data:
   redis_data:
   chat_uploads:
+

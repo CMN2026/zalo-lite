@@ -10,12 +10,12 @@ rtc:
   # container-internal IP). For local dev we set node_ip explicitly.
   # In production, set this to the server's public IP.
   use_external_ip: false
-  node_ip: 127.0.0.1
+  node_ip: 3.27.239.232
   # Enable ICE/TCP fallback so clients behind restrictive firewalls can
   # still establish media connections when UDP is blocked.
   tcp_port: 7881
-  # Required for localhost development (browser and server on same host)
-  enable_loopback_candidate: true
+  # Disable loopback candidate in EC2 deployment.
+  enable_loopback_candidate: false
 
 # Redis is required for multi-node deployments and persisting room state
 # across restarts. When a single instance is sufficient, you may remove
@@ -58,3 +58,4 @@ turn:
 logging:
   level: info
   json: false
+
