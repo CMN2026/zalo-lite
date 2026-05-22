@@ -15,7 +15,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { authStorage } from "../../lib/auth";
 import { useSocket } from "../../hooks/useSocket";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://192.168.1.5:3004";
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://3.27.239.232:3004";
 
 interface UserProfile {
   id: string;
@@ -409,3 +410,4 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   }
 });
+
