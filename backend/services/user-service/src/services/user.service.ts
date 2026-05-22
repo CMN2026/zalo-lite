@@ -260,6 +260,9 @@ export class UserService {
           message: message ?? null,
         },
         include: {
+          requester: {
+            select: { id: true, fullName: true, phone: true, avatarUrl: true },
+          },
           addressee: {
             select: { id: true, fullName: true, phone: true, avatarUrl: true },
           },
@@ -277,6 +280,9 @@ export class UserService {
         respondedAt: null,
       },
       include: {
+        requester: {
+          select: { id: true, fullName: true, phone: true, avatarUrl: true },
+        },
         addressee: {
           select: { id: true, fullName: true, phone: true, avatarUrl: true },
         },
@@ -296,6 +302,31 @@ export class UserService {
       },
       include: {
         requester: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            avatarUrl: true,
+            plan: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async listOutgoingRequests(userId: string | undefined) {
+    if (!userId) {
+      throw new HttpError(401, "unauthorized");
+    }
+
+    return prisma.friendship.findMany({
+      where: {
+        requesterId: userId,
+        status: FriendshipStatus.PENDING,
+      },
+      include: {
+        addressee: {
           select: {
             id: true,
             fullName: true,
@@ -390,6 +421,32 @@ export class UserService {
 
     const uniqueById = new Map(friends.map((friend) => [friend.id, friend]));
     return Array.from(uniqueById.values());
+  }
+
+  async removeFriend(userId: string | undefined, otherUserId: string) {
+    if (!userId) {
+      throw new HttpError(401, "unauthorized");
+    }
+
+    if (userId === otherUserId) {
+      throw new HttpError(400, "invalid_friendship_target");
+    }
+
+    const relationships = await this.findFriendshipPair(userId, otherUserId);
+    const accepted = relationships.find(
+      (item) => item.status === FriendshipStatus.ACCEPTED,
+    );
+
+    if (!accepted) {
+      throw new HttpError(404, "friendship_not_found");
+    }
+
+    await prisma.friendship.delete({ where: { id: accepted.id } });
+
+    return {
+      id: accepted.id,
+      removedUserId: otherUserId,
+    };
   }
 
   async getFriendshipStatus(userId: string | undefined, otherUserId: string) {

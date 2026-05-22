@@ -82,6 +82,11 @@ userRoutes.get(
   UserController.listIncomingRequests,
 );
 
+userRoutes.get(
+  "/friend-requests/outgoing",
+  UserController.listOutgoingRequests,
+);
+
 userRoutes.post(
   "/friend-requests/:requestId/respond",
   [
@@ -93,6 +98,17 @@ userRoutes.post(
 );
 
 userRoutes.get("/friends", UserController.listFriends);
+userRoutes.delete(
+  "/friendships/:otherUserId",
+  [param("otherUserId").isUUID(), validateRequest],
+  UserController.removeFriend,
+);
+// Backward-compatible alias for older frontend bundles.
+userRoutes.delete(
+  "/friendship/:otherUserId",
+  [param("otherUserId").isUUID(), validateRequest],
+  UserController.removeFriend,
+);
 userRoutes.get(
   "/friendships/:otherUserId",
   [param("otherUserId").isUUID(), validateRequest],
