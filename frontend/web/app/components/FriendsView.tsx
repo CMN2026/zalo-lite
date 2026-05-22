@@ -772,8 +772,8 @@ function UserRow({
   user,
   meta,
   action,
-  onClickAvatar,
   fallbackName = "Người dùng không xác định",
+  onClickAvatar,
 }: {
   user?: ProfileUser;
   meta: string;
