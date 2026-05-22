@@ -5,9 +5,9 @@ import { getAuthToken, authStorage } from "../lib/auth";
 import { DeviceEventEmitter } from "react-native";
 
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://3.27.239.232:3004";
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://3.27.105.189:3004";
 const CHAT_SERVICE_BASE_URL =
-  process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://3.27.239.232:3002";
+  process.env.EXPO_PUBLIC_CHAT_SERVICE_URL ?? "http://3.27.105.189:3002";
 
 // Module-level singletons to ensure only ONE socket exists across all components
 let sharedSocket: Socket | null = null;
@@ -25,7 +25,7 @@ export const useSocket = () => {
     }
 
     let isMounted = true;
-    
+
     const initSocket = async () => {
       const token = await getAuthToken();
       if (!token || !isMounted) {
@@ -131,7 +131,7 @@ export const useSocket = () => {
     };
 
     let cleanupListeners: (() => void) | undefined;
-    
+
     initSocket().then((cleanupFn) => {
       cleanupListeners = cleanupFn as unknown as () => void;
     });
@@ -141,19 +141,19 @@ export const useSocket = () => {
       if (cleanupListeners) {
         cleanupListeners();
       }
-      
+
       // We only decrement subscribers if we actually incremented them.
       // Since initSocket is async, it's possible this unmounts before initSocket finishes.
       // To keep it simple, we just assume if it was mounted, it will eventually decrement.
       // Actually, a safer way is just to check subscribersCount directly:
       setTimeout(() => {
-         subscribersCount = Math.max(0, subscribersCount - 1);
-         if (subscribersCount === 0 && sharedSocket) {
-           sharedSocket.removeAllListeners();
-           sharedSocket.disconnect();
-           sharedSocket = null;
-           globalConnectErrorCount = 0;
-         }
+        subscribersCount = Math.max(0, subscribersCount - 1);
+        if (subscribersCount === 0 && sharedSocket) {
+          sharedSocket.removeAllListeners();
+          sharedSocket.disconnect();
+          sharedSocket = null;
+          globalConnectErrorCount = 0;
+        }
       }, 0);
     };
   }, [user]);

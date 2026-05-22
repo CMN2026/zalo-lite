@@ -14,7 +14,7 @@ export function getRuntimeBaseUrl(
   envValue: string | undefined,
   defaultPort: number,
 ): string {
-  const fallback = `http://3.27.239.232:${defaultPort}`;
+  const fallback = `http://3.27.105.189:${defaultPort}`;
 
   if (typeof window === "undefined") {
     return envValue ?? fallback;
