@@ -146,6 +146,7 @@ export default function LiveKitCallOverlay({
   onHangUp,
 }: Readonly<LiveKitCallOverlayProps>) {
   const roomRef = useRef<Room | null>(null);
+  const remoteAudioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const [renderTick, setRenderTick] = useState(0);
   const [connecting, setConnecting] = useState(false);
   const [roomReady, setRoomReady] = useState(false);
@@ -171,6 +172,9 @@ export default function LiveKitCallOverlay({
 
     const room = new Room({ adaptiveStream: true, dynacast: true });
     roomRef.current = room;
+    if (typeof window !== "undefined") {
+      (window as any).__lkRoom = room;
+    }
     let cancelled = false;
 
     const syncMediaState = () => {
@@ -204,8 +208,42 @@ export default function LiveKitCallOverlay({
       setRoomReady(false);
       refresh();
     });
-    room.on(RoomEvent.TrackSubscribed, refresh);
-    room.on(RoomEvent.TrackUnsubscribed, refresh);
+    room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+      if (track.kind === Track.Kind.Audio) {
+        const audioEl = document.createElement("audio");
+        audioEl.autoplay = true;
+        audioEl.playsInline = true;
+        audioEl.muted = false;
+        track.attach(audioEl);
+        remoteAudioElementsRef.current.set(track.sid, audioEl);
+        void audioEl.play().catch((error) => {
+          console.warn("Remote audio autoplay blocked", {
+            participant: participant.identity,
+            error,
+          });
+        });
+        console.log("LiveKit remote audio subscribed", {
+          participant: participant.identity,
+          trackSid: track.sid,
+        });
+      }
+      refresh();
+    });
+    room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      if (track.kind === Track.Kind.Audio) {
+        const audioEl = remoteAudioElementsRef.current.get(track.sid);
+        if (audioEl) {
+          try {
+            track.detach(audioEl);
+          } catch {
+            // Ignore detach errors while tearing down.
+          }
+          audioEl.remove();
+          remoteAudioElementsRef.current.delete(track.sid);
+        }
+      }
+      refresh();
+    });
     room.on(RoomEvent.ParticipantConnected, refresh);
     room.on(RoomEvent.ParticipantDisconnected, refresh);
     room.on(RoomEvent.LocalTrackPublished, () => {
@@ -258,6 +296,13 @@ export default function LiveKitCallOverlay({
         }
 
         syncMediaState();
+        console.log("LiveKit local media state", {
+          microphoneEnabled: room.localParticipant.isMicrophoneEnabled,
+          cameraEnabled: room.localParticipant.isCameraEnabled,
+          publications: room.localParticipant
+            .getTrackPublications()
+            .map((pub) => ({ source: pub.source, kind: pub.kind, muted: pub.isMuted })),
+        });
         refresh();
       } catch (error) {
         if (cancelled) {
@@ -278,9 +323,16 @@ export default function LiveKitCallOverlay({
     return () => {
       cancelled = true;
       room.removeAllListeners();
+      remoteAudioElementsRef.current.forEach((audioEl) => {
+        audioEl.remove();
+      });
+      remoteAudioElementsRef.current.clear();
       room.disconnect();
       if (roomRef.current === room) {
         roomRef.current = null;
+      }
+      if (typeof window !== "undefined" && (window as any).__lkRoom === room) {
+        (window as any).__lkRoom = undefined;
       }
     };
   }, [open, tokenPayload?.token, tokenPayload?.ws_url, tokenPayload?.room_name]);
