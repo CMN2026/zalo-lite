@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-grpc-proto.mjs",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"
   },
