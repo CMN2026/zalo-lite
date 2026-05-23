@@ -942,7 +942,7 @@ export default function ChatsScreen() {
     return () => {
       off("call:initiate", handleIncomingCall);
     };
-  }, [currentUserId, off, on, router]);
+  }, [currentUserId, emit, off, on, router]);
 
   const handleAddMembersToGroup = useCallback(async () => {
     if (!activeChatId || selectedAddMemberIds.length === 0) return;
