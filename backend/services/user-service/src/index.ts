@@ -16,6 +16,10 @@ const authService = new AuthService();
 let grpcServer: GrpcServer | undefined;
 const startTime = Date.now();
 
+// This service runs behind Nginx/API gateway in production.
+// Enable trusted proxy headers so express-rate-limit can read client IP correctly.
+app.set("trust proxy", 1);
+
 app.disable("x-powered-by");
 app.use(helmet());
 app.use(
