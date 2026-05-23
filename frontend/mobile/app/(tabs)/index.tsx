@@ -619,9 +619,32 @@ export default function ChatsScreen() {
           };
         });
 
-        setConversations(mapped);
-        conversationsRef.current = mapped;
-        void hydrateConversationPreviews(mapped);
+        setConversations((prev) => {
+          const onlineByPeerId = new Map(
+            prev
+              .filter((item) => item.type === "direct" && item.peerId)
+              .map((item) => [item.peerId as string, item.online]),
+          );
+          const onlineByConversationId = new Map(
+            prev.map((item) => [item.id, item.online]),
+          );
+
+          const merged = mapped.map((item) => {
+            const preservedOnline =
+              item.type === "direct" && item.peerId
+                ? onlineByPeerId.get(item.peerId) ??
+                  onlineByConversationId.get(item.id)
+                : onlineByConversationId.get(item.id);
+            return {
+              ...item,
+              online: preservedOnline ?? item.online,
+            };
+          });
+
+          conversationsRef.current = merged;
+          void hydrateConversationPreviews(merged);
+          return merged;
+        });
 
         // Auto-open a specific conversation if requested
         const targetId = autoOpenId ?? openConversationId;

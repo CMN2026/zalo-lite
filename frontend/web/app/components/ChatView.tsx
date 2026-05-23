@@ -1094,16 +1094,29 @@ export default function ChatView({
       );
 
       setConversations((prev) => {
+        const onlineByPeerId = new Map(
+          prev
+            .filter((item) => item.type === "direct" && item.peerId)
+            .map((item) => [item.peerId as string, item.online]),
+        );
+        const onlineByConversationId = new Map(
+          prev.map((item) => [item.id, item.online]),
+        );
         const currentMessages = new Map(
           prev.map((item) => [item.id, item.messages]),
         );
         return mapped.map((item) => {
           const preservedMessages = currentMessages.get(item.id) ?? [];
           const lastMessage = preservedMessages[preservedMessages.length - 1];
+          const preservedOnline =
+            item.type === "direct" && item.peerId
+              ? onlineByPeerId.get(item.peerId) ?? onlineByConversationId.get(item.id)
+              : onlineByConversationId.get(item.id);
 
           if (!lastMessage) {
             return {
               ...item,
+              online: preservedOnline ?? item.online,
               messages: preservedMessages,
               preview:
                 item.type === "direct" ? DEFAULT_SYSTEM_PREVIEW : item.preview,
@@ -1112,6 +1125,7 @@ export default function ChatView({
 
           return {
             ...item,
+            online: preservedOnline ?? item.online,
             messages: preservedMessages,
             preview: getConversationPreviewFromMessage(
               lastMessage,
