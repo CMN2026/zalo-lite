@@ -25,6 +25,15 @@ export class UserController {
     }
   }
 
+  static async getById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await userService.getByIdOrThrow(req.params.id);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async updateMe(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.auth?.userId;
