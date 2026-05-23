@@ -5,45 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="854337b7-9dc9-4627-8e90-4d3a60a9eac9" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/../../backend/api-gateway/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/api-gateway/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/api-gateway/src/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/api-gateway/src/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/services/chat-service/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/chat-service/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/services/chat-service/src/config/env.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/chat-service/src/config/env.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/services/chat-service/src/controllers/call.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/chat-service/src/controllers/call.controller.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/services/chat-service/src/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/chat-service/src/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/services/chat-service/src/routes/call.routes.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/chat-service/src/routes/call.routes.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/services/chat-service/src/services/call.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/chat-service/src/services/call.service.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/services/user-service/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/user-service/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/services/user-service/src/controllers/user.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/user-service/src/controllers/user.controller.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/services/user-service/src/routes/user.routes.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/user-service/src/routes/user.routes.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../backend/services/user-service/src/services/user.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../../backend/services/user-service/src/services/user.service.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.json" beforeDir="false" afterPath="$PROJECT_DIR$/app.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(tabs)/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(tabs)/profile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/profile.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/_layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/_layout.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/user/[id].tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/user/[id].tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hooks/useSocket.ts" beforeDir="false" afterPath="$PROJECT_DIR$/hooks/useSocket.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/calls.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/calls.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/users.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/users.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/components/ChatView.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/components/ChatView.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/components/GroupDetailPanel.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/components/GroupDetailPanel.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/components/ProfileView.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/components/ProfileView.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/components/UserProfileModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/components/UserProfileModal.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/contexts/auth.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/contexts/auth.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/hooks/useSocket.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/hooks/useSocket.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/lib/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/lib/api.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/lib/auth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/lib/auth.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/lib/calls.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/lib/calls.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/lib/conversations.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/lib/conversations.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/lib/users.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/lib/users.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../web/app/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../web/next.config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../web/next.config.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../infrastructure/docker/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/../../infrastructure/docker/docker-compose.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../package.json" beforeDir="false" afterPath="$PROJECT_DIR$/../../package.json" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
