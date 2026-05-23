@@ -1193,6 +1193,14 @@ export default function ChatsScreen() {
 
   useEffect(() => {
     if (!activeChatId || !isConnected) {
+      return;
+    }
+
+    join(activeChatId);
+  }, [activeChatId, isConnected, join]);
+
+  useEffect(() => {
+    if (!activeChatId || !isConnected) {
       if (localTypingStopTimerRef.current) {
         clearTimeout(localTypingStopTimerRef.current);
         localTypingStopTimerRef.current = null;
@@ -1286,15 +1294,28 @@ export default function ChatsScreen() {
         user_id?: unknown;
         userId?: unknown;
         is_typing?: unknown;
+        isTyping?: unknown;
       };
 
       const conversationIdRaw = data.conversation_id ?? data.conversationId;
+      const conversationIdValue = Array.isArray(conversationIdRaw)
+        ? conversationIdRaw[0]
+        : conversationIdRaw;
       const conversationId =
-        typeof conversationIdRaw === "string" ? conversationIdRaw.trim() : "";
+        typeof conversationIdValue === "string"
+          ? conversationIdValue.trim()
+          : "";
       const senderIdRaw = data.user_id ?? data.userId;
+      const senderIdValue = Array.isArray(senderIdRaw) ? senderIdRaw[0] : senderIdRaw;
       const senderId =
-        typeof senderIdRaw === "string" ? senderIdRaw.trim() : "";
-      const isTyping = data.is_typing !== false;
+        typeof senderIdValue === "string" ? senderIdValue.trim() : "";
+      const isTypingRaw = data.is_typing ?? data.isTyping;
+      const isTyping =
+        typeof isTypingRaw === "boolean"
+          ? isTypingRaw
+          : typeof isTypingRaw === "string"
+            ? isTypingRaw.toLowerCase() !== "false"
+            : isTypingRaw !== false;
 
       if (!conversationId || !activeChatId || conversationId !== activeChatId) {
         return;
