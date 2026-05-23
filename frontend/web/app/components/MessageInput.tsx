@@ -296,6 +296,7 @@ export default function MessageInput({
               type="text"
               value={safeMessage}
               onChange={(e) => setMessage(e.target.value)}
+              onBlur={() => onTypingChange?.("")}
               placeholder="Thêm chú thích (tùy chọn)..."
               className="w-full text-sm bg-transparent outline-none"
             />
@@ -361,6 +362,7 @@ export default function MessageInput({
             type="text"
             value={safeMessage}
             onChange={(e) => setMessage(e.target.value)}
+            onBlur={() => onTypingChange?.("")}
             onKeyDown={handleKeyDown}
             placeholder={isConnected ? "Nhập tin nhắn..." : "Đang kết nối..."}
             disabled={!isConnected || disabled}
