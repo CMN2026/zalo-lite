@@ -898,16 +898,44 @@ export default function ChatsScreen() {
         return;
       }
 
-      router.push({
-        pathname: "/webcall",
-        params: {
-          callId,
-          incoming: "1",
-          conversationId,
-          conversationName,
-          callType,
-        },
-      });
+      Alert.alert(
+        "Cuộc gọi đến",
+        `${conversationName} đang gọi cho bạn`,
+        [
+          {
+            text: "Từ chối",
+            style: "destructive",
+            onPress: () => {
+              emit("call:decline", {
+                call_id: callId,
+                conversation_id: conversationId,
+                reason: "declined_by_user",
+              });
+            },
+          },
+          {
+            text: "Nhận",
+            onPress: () => {
+              emit("call:accept", {
+                call_id: callId,
+                conversation_id: conversationId,
+              });
+
+              router.push({
+                pathname: "/webcall",
+                params: {
+                  callId,
+                  incoming: "1",
+                  conversationId,
+                  conversationName,
+                  callType,
+                },
+              });
+            },
+          },
+        ],
+        { cancelable: false },
+      );
     };
 
     on("call:initiate", handleIncomingCall);

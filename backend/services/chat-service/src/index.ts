@@ -43,6 +43,7 @@ const callUserClient = new UserClientService(env.USER_SERVICE_BASE_URL);
 const callSignalingInstanceId = randomUUID();
 const disconnectedCallTimers = new Map<string, NodeJS.Timeout>();
 const DISCONNECT_GRACE_MS = 15_000;
+const onlineUserIds = new Set<string>();
 
 type CallSignalEventName =
   | "call:initiate"
@@ -255,6 +256,13 @@ io.on("connection", async (socket) => {
         }, 500);
       }
     }
+
+    // Send current online snapshot to the newly connected socket first.
+    for (const onlineUserId of onlineUserIds) {
+      socket.emit("user:online", { user_id: onlineUserId, online: true });
+    }
+
+    onlineUserIds.add(userId);
 
     // Emit online event
     socket.broadcast.emit("user:online", { user_id: userId, online: true });
@@ -896,7 +904,18 @@ io.on("connection", async (socket) => {
         // no-op
       }
     })();
-    socket.broadcast.emit("user:online", { user_id: userId, online: false });
+    void io
+      .in(`user_${userId}`)
+      .fetchSockets()
+      .then((sockets) => {
+        if (sockets.length === 0) {
+          onlineUserIds.delete(userId);
+          socket.broadcast.emit("user:online", { user_id: userId, online: false });
+        }
+      })
+      .catch(() => {
+        // no-op
+      });
   });
 });
 
