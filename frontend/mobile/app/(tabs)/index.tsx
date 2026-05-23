@@ -366,6 +366,7 @@ export default function ChatsScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [inputText, setInputText] = useState("");
+  const [isComposerFocused, setIsComposerFocused] = useState(false);
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -405,6 +406,10 @@ export default function ChatsScreen() {
   const localTypingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const localTypingHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const localTypingHasTextRef = useRef(false);
   const localTypingActiveRef = useRef(false);
   const activeConv = conversations.find((c) => c.id === activeChatId);
   const currentGroupMember = useMemo(
@@ -793,7 +798,15 @@ export default function ChatsScreen() {
           msgs = (fallback.data ?? []) as Message[];
         }
 
-        setMessages(msgs.reverse());
+        const orderedMessages = [...msgs].sort((a, b) => {
+          const aTime = new Date(a.created_at).getTime();
+          const bTime = new Date(b.created_at).getTime();
+          if (aTime !== bTime) {
+            return aTime - bTime;
+          }
+          return String(a.id).localeCompare(String(b.id));
+        });
+        setMessages(orderedMessages);
       } catch {
         setMessages([]);
       } finally {
@@ -1120,6 +1133,11 @@ export default function ChatsScreen() {
       clearTimeout(localTypingStopTimerRef.current);
       localTypingStopTimerRef.current = null;
     }
+    if (localTypingHeartbeatRef.current) {
+      clearInterval(localTypingHeartbeatRef.current);
+      localTypingHeartbeatRef.current = null;
+    }
+    localTypingHasTextRef.current = false;
 
     if (localTypingActiveRef.current) {
       emit("message:typing", {
@@ -1142,6 +1160,18 @@ export default function ChatsScreen() {
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimistic]);
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeChatId
+          ? {
+              ...c,
+              preview: text,
+              time: formatTime(optimistic.created_at),
+              lastMessageAt: optimistic.created_at,
+            }
+          : c,
+      ),
+    );
     scrollRef.current?.scrollToEnd({ animated: true });
 
     try {
@@ -1167,30 +1197,35 @@ export default function ChatsScreen() {
         clearTimeout(localTypingStopTimerRef.current);
         localTypingStopTimerRef.current = null;
       }
+      if (localTypingHeartbeatRef.current) {
+        clearInterval(localTypingHeartbeatRef.current);
+        localTypingHeartbeatRef.current = null;
+      }
 
       if (localTypingActiveRef.current) {
+        emit("message:typing", {
+          conversation_id: activeChatId,
+          is_typing: false,
+        });
         localTypingActiveRef.current = false;
       }
 
       return;
     }
 
-    const hasText = inputText.trim().length > 0;
+    const hasText = inputText.trim().length > 0 && isComposerFocused;
+    localTypingHasTextRef.current = hasText;
 
-    if (hasText && !localTypingActiveRef.current) {
+    if (hasText) {
       emit("message:typing", {
         conversation_id: activeChatId,
         is_typing: true,
       });
       localTypingActiveRef.current = true;
-    }
-
-    if (localTypingStopTimerRef.current) {
-      clearTimeout(localTypingStopTimerRef.current);
-      localTypingStopTimerRef.current = null;
-    }
-
-    if (hasText) {
+      if (localTypingStopTimerRef.current) {
+        clearTimeout(localTypingStopTimerRef.current);
+        localTypingStopTimerRef.current = null;
+      }
       localTypingStopTimerRef.current = setTimeout(() => {
         if (!localTypingActiveRef.current) {
           return;
@@ -1202,7 +1237,32 @@ export default function ChatsScreen() {
         });
         localTypingActiveRef.current = false;
       }, 3000);
+
+      if (!localTypingHeartbeatRef.current) {
+        localTypingHeartbeatRef.current = setInterval(() => {
+          if (
+            localTypingHasTextRef.current &&
+            activeChatId &&
+            isConnected
+          ) {
+            emit("message:typing", {
+              conversation_id: activeChatId,
+              is_typing: true,
+            });
+            localTypingActiveRef.current = true;
+          }
+        }, 2000);
+      }
       return;
+    }
+
+    if (localTypingStopTimerRef.current) {
+      clearTimeout(localTypingStopTimerRef.current);
+      localTypingStopTimerRef.current = null;
+    }
+    if (localTypingHeartbeatRef.current) {
+      clearInterval(localTypingHeartbeatRef.current);
+      localTypingHeartbeatRef.current = null;
     }
 
     if (localTypingActiveRef.current) {
@@ -1212,7 +1272,7 @@ export default function ChatsScreen() {
       });
       localTypingActiveRef.current = false;
     }
-  }, [activeChatId, emit, inputText, isConnected]);
+  }, [activeChatId, emit, inputText, isComposerFocused, isConnected]);
 
   useEffect(() => {
     clearTypingUsers();
@@ -1275,6 +1335,9 @@ export default function ChatsScreen() {
     return () => {
       if (localTypingStopTimerRef.current) {
         clearTimeout(localTypingStopTimerRef.current);
+      }
+      if (localTypingHeartbeatRef.current) {
+        clearInterval(localTypingHeartbeatRef.current);
       }
       clearTypingUsers();
     };
@@ -1487,6 +1550,18 @@ export default function ChatsScreen() {
         setMessages((prev) => {
           const exists = prev.some((m) => m.id === newMsg.id);
           if (exists) return prev;
+          const optimisticIndex = prev.findIndex(
+            (m) =>
+              m.id.startsWith("temp-") &&
+              m.conversation_id === convId &&
+              m.sender_id === currentUserId &&
+              m.content === newMsg.content,
+          );
+          if (optimisticIndex >= 0) {
+            const next = [...prev];
+            next[optimisticIndex] = newMsg;
+            return next;
+          }
           return [...prev, newMsg];
         });
         scrollRef.current?.scrollToEnd({ animated: true });
@@ -1515,6 +1590,7 @@ export default function ChatsScreen() {
                 ...c,
                 preview: previewText || c.preview,
                 time: formatTime(newMsg.created_at),
+                lastMessageAt: newMsg.created_at,
               }
             : c,
         ),
@@ -1523,11 +1599,9 @@ export default function ChatsScreen() {
 
     on("receive_message", handler);
     on("message:receive", handler);
-    on("notification:new_message", handler);
     return () => {
       off("receive_message", handler);
       off("message:receive", handler);
-      off("notification:new_message", handler);
     };
   }, [activeChatId, currentUserId, on, off]);
 
@@ -1582,9 +1656,19 @@ export default function ChatsScreen() {
     setMessageReactions,
   ]);
 
-  const filteredConversations = conversations.filter((c) =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const filteredConversations = useMemo(() => {
+    const keyword = searchTerm.toLowerCase();
+    return conversations
+      .filter((c) => c.name.toLowerCase().includes(keyword))
+      .sort((a, b) => {
+        const aTs = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const bTs = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        if (aTs !== bTs) {
+          return bTs - aTs;
+        }
+        return b.name.localeCompare(a.name);
+      });
+  }, [conversations, searchTerm]);
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
 
   // ── Message renderer ─────────────────────────────────────────────────────
@@ -1923,6 +2007,26 @@ export default function ChatsScreen() {
             <TextInput
               value={inputText}
               onChangeText={setInputText}
+              onFocus={() => setIsComposerFocused(true)}
+              onBlur={() => {
+                setIsComposerFocused(false);
+                if (localTypingStopTimerRef.current) {
+                  clearTimeout(localTypingStopTimerRef.current);
+                  localTypingStopTimerRef.current = null;
+                }
+                if (localTypingHeartbeatRef.current) {
+                  clearInterval(localTypingHeartbeatRef.current);
+                  localTypingHeartbeatRef.current = null;
+                }
+                localTypingHasTextRef.current = false;
+                if (localTypingActiveRef.current && activeChatId) {
+                  emit("message:typing", {
+                    conversation_id: activeChatId,
+                    is_typing: false,
+                  });
+                  localTypingActiveRef.current = false;
+                }
+              }}
               placeholder="Nhập tin nhắn..."
               multiline
               className="flex-1 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm bg-slate-50"

@@ -67,7 +67,7 @@ export default function TabLayout() {
         options={{
           title: "Khám phá", // Renamed from Chatbot visually
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="square.grid.2x2.fill" color={color} />
+            <IconSymbol size={24} name="brain.head.profile" color={color} />
           ),
         }}
       />

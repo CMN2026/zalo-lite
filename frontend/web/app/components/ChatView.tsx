@@ -474,6 +474,10 @@ export default function ChatView({
   const localTypingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const localTypingHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const localTypingHasTextRef = useRef(false);
   const localTypingActiveRef = useRef(false);
   const conversationsRef = useRef<Conversation[]>([]);
   const isLoadingConversationsRef = useRef(false);
@@ -930,11 +934,16 @@ export default function ChatView({
   const handleLocalTypingChange = useCallback(
     (value: string) => {
       const hasText = value.trim().length > 0;
+      localTypingHasTextRef.current = hasText;
 
       if (!activeChatId || !isConnected || isComposerBlocked) {
         if (localTypingStopTimerRef.current) {
           clearTimeout(localTypingStopTimerRef.current);
           localTypingStopTimerRef.current = null;
+        }
+        if (localTypingHeartbeatRef.current) {
+          clearInterval(localTypingHeartbeatRef.current);
+          localTypingHeartbeatRef.current = null;
         }
 
         if (localTypingActiveRef.current) {
@@ -943,21 +952,39 @@ export default function ChatView({
         return;
       }
 
-      if (hasText && !localTypingActiveRef.current) {
-        emitTypingState(true);
-      }
-
       if (localTypingStopTimerRef.current) {
         clearTimeout(localTypingStopTimerRef.current);
       }
 
-      localTypingStopTimerRef.current = setTimeout(() => {
-        if (localTypingActiveRef.current) {
-          emitTypingState(false);
-        }
-      }, 3000);
+      if (hasText) {
+        emitTypingState(true);
+        localTypingStopTimerRef.current = setTimeout(() => {
+          if (localTypingActiveRef.current) {
+            emitTypingState(false);
+          }
+        }, 3000);
 
-      if (!hasText && localTypingActiveRef.current) {
+        if (!localTypingHeartbeatRef.current) {
+          localTypingHeartbeatRef.current = setInterval(() => {
+            if (
+              localTypingHasTextRef.current &&
+              activeChatId &&
+              isConnected &&
+              !isComposerBlocked
+            ) {
+              emitTypingState(true);
+            }
+          }, 2000);
+        }
+        return;
+      }
+
+      if (localTypingHeartbeatRef.current) {
+        clearInterval(localTypingHeartbeatRef.current);
+        localTypingHeartbeatRef.current = null;
+      }
+
+      if (localTypingActiveRef.current) {
         emitTypingState(false);
       }
     },
@@ -1611,6 +1638,9 @@ export default function ChatView({
       clearTypingUsers();
       if (localTypingStopTimerRef.current) {
         clearTimeout(localTypingStopTimerRef.current);
+      }
+      if (localTypingHeartbeatRef.current) {
+        clearInterval(localTypingHeartbeatRef.current);
       }
       // Clear any wait-room timers on unmount
       Object.values(waitRoomTimersRef.current).forEach((t) => clearTimeout(t));
@@ -2626,6 +2656,11 @@ export default function ChatView({
       clearTimeout(localTypingStopTimerRef.current);
       localTypingStopTimerRef.current = null;
     }
+    if (localTypingHeartbeatRef.current) {
+      clearInterval(localTypingHeartbeatRef.current);
+      localTypingHeartbeatRef.current = null;
+    }
+    localTypingHasTextRef.current = false;
     if (localTypingActiveRef.current) {
       emitTypingState(false);
     }

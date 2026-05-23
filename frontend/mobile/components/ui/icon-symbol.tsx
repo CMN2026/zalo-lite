@@ -22,6 +22,7 @@ const MAPPING = {
   'person.2.fill': 'people',
   'person.fill': 'person',
   'gearshape.fill': 'settings',
+  'brain.head.profile': 'smart-toy',
 } as IconMapping;
 
 /**
