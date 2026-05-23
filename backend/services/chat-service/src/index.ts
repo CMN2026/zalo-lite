@@ -432,7 +432,7 @@ io.on("connection", async (socket) => {
   });
 
   // TYPING EVENT
-  socket.on("message:typing", (payload) => {
+  socket.on("message:typing", async (payload) => {
     const conversationId =
       payload && typeof payload.conversation_id === "string"
         ? payload.conversation_id.trim()
@@ -442,13 +442,28 @@ io.on("connection", async (socket) => {
     }
 
     const isTyping = payload?.is_typing !== false;
-
-    socket.to(`conversation_${conversationId}`).emit("message:typing", {
+    const typingPayload = {
       conversation_id: conversationId,
       user_id: userId,
       is_typing: isTyping,
       timestamp: Date.now(),
-    });
+    };
+
+    socket.to(`conversation_${conversationId}`).emit("message:typing", typingPayload);
+
+    // Fallback route: emit directly to each member user room.
+    // This prevents missed typing signals when a client reconnects but has not yet re-joined the conversation room.
+    try {
+      const members =
+        await conversationRepository.getConversationMembers(conversationId);
+      members
+        .filter((member) => member.userId !== userId)
+        .forEach((member) => {
+          io.to(`user_${member.userId}`).emit("message:typing", typingPayload);
+        });
+    } catch {
+      // no-op: room broadcast above remains the primary path.
+    }
   });
 
   // READ RECEIPT EVENT
