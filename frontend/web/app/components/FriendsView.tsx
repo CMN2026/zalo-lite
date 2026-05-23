@@ -342,7 +342,7 @@ export default function FriendsView({
     try {
       await onStartChat(friend);
     } catch {
-      setError("Chưa thể mở cuộc trò chuyện. Vui lòng thử lại.");
+      setError("Chỉ có thể nhắn tin khi là đã là bạn bè.");
     } finally {
       setOpeningChatId("");
     }

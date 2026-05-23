@@ -14,6 +14,7 @@ let sharedSocket: Socket | null = null;
 let subscribersCount = 0;
 let globalConnectErrorCount = 0;
 let globalDidFallbackToChatService = false;
+const pendingListeners = new Map<string, Set<(data: any) => void>>();
 
 export const useSocket = () => {
   const { user } = useAuth();
@@ -55,6 +56,11 @@ export const useSocket = () => {
         }
         sharedSocket = createSocket(baseUrl);
         attachGlobalListeners(sharedSocket);
+        pendingListeners.forEach((handlers, event) => {
+          handlers.forEach((handler) => {
+            sharedSocket?.on(event, handler);
+          });
+        });
       };
 
       const attachGlobalListeners = (socket: Socket) => {
@@ -108,6 +114,11 @@ export const useSocket = () => {
       if (!sharedSocket) {
         sharedSocket = createSocket(API_BASE_URL);
         attachGlobalListeners(sharedSocket);
+        pendingListeners.forEach((handlers, event) => {
+          handlers.forEach((handler) => {
+            sharedSocket?.on(event, handler);
+          });
+        });
       }
 
       // Sync local state with sharedSocket
@@ -165,12 +176,28 @@ export const useSocket = () => {
   }, [isConnected]);
 
   const on = useCallback((event: string, callback: (data: any) => void) => {
+    const handlers = pendingListeners.get(event) ?? new Set<(data: any) => void>();
+    handlers.add(callback);
+    pendingListeners.set(event, handlers);
+
     if (sharedSocket) {
       sharedSocket.on(event, callback);
     }
   }, []);
 
   const off = useCallback((event: string, callback?: (data: any) => void) => {
+    if (callback) {
+      const handlers = pendingListeners.get(event);
+      if (handlers) {
+        handlers.delete(callback);
+        if (handlers.size === 0) {
+          pendingListeners.delete(event);
+        }
+      }
+    } else {
+      pendingListeners.delete(event);
+    }
+
     if (sharedSocket) {
       if (callback) {
         sharedSocket.off(event, callback);

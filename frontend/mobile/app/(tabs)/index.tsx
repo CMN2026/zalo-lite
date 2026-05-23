@@ -793,7 +793,15 @@ export default function ChatsScreen() {
           msgs = (fallback.data ?? []) as Message[];
         }
 
-        setMessages(msgs.reverse());
+        const orderedMessages = [...msgs].sort((a, b) => {
+          const aTime = new Date(a.created_at).getTime();
+          const bTime = new Date(b.created_at).getTime();
+          if (aTime !== bTime) {
+            return aTime - bTime;
+          }
+          return String(a.id).localeCompare(String(b.id));
+        });
+        setMessages(orderedMessages);
       } catch {
         setMessages([]);
       } finally {
@@ -1142,6 +1150,18 @@ export default function ChatsScreen() {
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimistic]);
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeChatId
+          ? {
+              ...c,
+              preview: text,
+              time: formatTime(optimistic.created_at),
+              lastMessageAt: optimistic.created_at,
+            }
+          : c,
+      ),
+    );
     scrollRef.current?.scrollToEnd({ animated: true });
 
     try {
@@ -1487,6 +1507,18 @@ export default function ChatsScreen() {
         setMessages((prev) => {
           const exists = prev.some((m) => m.id === newMsg.id);
           if (exists) return prev;
+          const optimisticIndex = prev.findIndex(
+            (m) =>
+              m.id.startsWith("temp-") &&
+              m.conversation_id === convId &&
+              m.sender_id === currentUserId &&
+              m.content === newMsg.content,
+          );
+          if (optimisticIndex >= 0) {
+            const next = [...prev];
+            next[optimisticIndex] = newMsg;
+            return next;
+          }
           return [...prev, newMsg];
         });
         scrollRef.current?.scrollToEnd({ animated: true });
@@ -1515,6 +1547,7 @@ export default function ChatsScreen() {
                 ...c,
                 preview: previewText || c.preview,
                 time: formatTime(newMsg.created_at),
+                lastMessageAt: newMsg.created_at,
               }
             : c,
         ),
@@ -1523,11 +1556,9 @@ export default function ChatsScreen() {
 
     on("receive_message", handler);
     on("message:receive", handler);
-    on("notification:new_message", handler);
     return () => {
       off("receive_message", handler);
       off("message:receive", handler);
-      off("notification:new_message", handler);
     };
   }, [activeChatId, currentUserId, on, off]);
 
@@ -1582,9 +1613,19 @@ export default function ChatsScreen() {
     setMessageReactions,
   ]);
 
-  const filteredConversations = conversations.filter((c) =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const filteredConversations = useMemo(() => {
+    const keyword = searchTerm.toLowerCase();
+    return conversations
+      .filter((c) => c.name.toLowerCase().includes(keyword))
+      .sort((a, b) => {
+        const aTs = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const bTs = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        if (aTs !== bTs) {
+          return bTs - aTs;
+        }
+        return b.name.localeCompare(a.name);
+      });
+  }, [conversations, searchTerm]);
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
 
   // ── Message renderer ─────────────────────────────────────────────────────

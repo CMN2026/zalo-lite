@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, LogBox, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSocket } from '../hooks/useSocket';
@@ -36,6 +36,8 @@ type LiveKitModule = {
     connect: boolean;
     audio: boolean;
     video: boolean;
+    onDisconnected?: () => void;
+    onError?: (error: Error) => void;
     children: React.ReactNode;
   }>;
   VideoTrack: React.ComponentType<{
@@ -152,10 +154,49 @@ export default function WebCallScreen() {
   const connectionRef = useRef<LiveKitConnection | null>(null);
   const endedRef = useRef(false);
   const [connection, setConnection] = useState<LiveKitConnection | null>(null);
+  const [shouldConnectRoom, setShouldConnectRoom] = useState(true);
   const [loading, setLoading] = useState(true);
   const [ending, setEnding] = useState(false);
   const [error, setError] = useState('');
   const { emit, on, off } = useSocket();
+
+  useEffect(() => {
+    LogBox.ignoreLogs([
+      'NegotiationError: PC manager is closed',
+      'Uncaught (in promise, id:',
+    ]);
+  }, []);
+
+  useEffect(() => {
+    const globalScope = globalThis as {
+      onunhandledrejection?: ((event: { reason?: unknown; preventDefault?: () => void }) => void) | null;
+    };
+    const previousHandler = globalScope.onunhandledrejection ?? null;
+
+    globalScope.onunhandledrejection = (event) => {
+      const reasonText =
+        typeof event?.reason === 'string'
+          ? event.reason
+          : event?.reason instanceof Error
+            ? event.reason.message
+            : String(event?.reason ?? '');
+      const normalized = reasonText.toLowerCase();
+      const isLiveKitCloseRace =
+        normalized.includes('pc manager is closed') ||
+        normalized.includes('negotiationerror');
+
+      if (isLiveKitCloseRace) {
+        event?.preventDefault?.();
+        return;
+      }
+
+      previousHandler?.(event);
+    };
+
+    return () => {
+      globalScope.onunhandledrejection = previousHandler;
+    };
+  }, []);
 
   const conversationId = useMemo(() => firstValue(params.conversationId), [params.conversationId]);
   const conversationName = useMemo(
@@ -172,16 +213,17 @@ export default function WebCallScreen() {
     connectionRef.current = connection;
   }, [connection]);
 
-  const terminateCall = useCallback(async (reason: string) => {
+  const terminateCall = useCallback(async (reason: string, notifyServer = true) => {
     if (endedRef.current) {
       return;
     }
 
     endedRef.current = true;
+    setShouldConnectRoom(false);
     const current = connectionRef.current;
 
     try {
-      if (current) {
+      if (current && notifyServer) {
         if (callType === 'group') {
           emit('call:leave', {
             call_id: current.callId,
@@ -237,13 +279,6 @@ export default function WebCallScreen() {
         await liveKit.AudioSession.startAudioSession();
 
         let callId = initialCallId;
-
-        if (incoming && callId) {
-          emit('call:accept', {
-            call_id: callId,
-            conversation_id: conversationId,
-          });
-        }
 
         // For outgoing calls, always persist/start the call session here as source of truth.
         // This removes race conditions where socket signaling arrives before call session exists.
@@ -363,18 +398,22 @@ export default function WebCallScreen() {
         return;
       }
 
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace('/');
-      }
+      void (async () => {
+        await terminateCall('remote_hangup', false);
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/');
+        }
+      })();
     };
 
     on('call:end', handleCallEnd);
     return () => {
       off('call:end', handleCallEnd);
     };
-  }, [off, on, router]);
+  }, [off, on, router, terminateCall]);
 
   const handleHangup = useCallback(async () => {
     setEnding(true);
@@ -430,9 +469,28 @@ export default function WebCallScreen() {
     <LiveKitRoom
       serverUrl={connection.serverUrl}
       token={connection.token}
-      connect
+      connect={shouldConnectRoom}
       audio
       video
+      onDisconnected={() => {
+        if (endedRef.current) {
+          return;
+        }
+      }}
+      onError={(error) => {
+        const message = (error?.message ?? "").toLowerCase();
+        const isTeardownRace =
+          endedRef.current &&
+          (message.includes("pc manager is closed") ||
+            message.includes("negotiationerror") ||
+            message.includes("negotiation"));
+
+        if (isTeardownRace) {
+          return;
+        }
+
+        console.error("[webcall] LiveKitRoom error", error);
+      }}
     >
       <Stack.Screen options={{ headerShown: false }} />
       <SafeAreaView style={styles.screen}>
