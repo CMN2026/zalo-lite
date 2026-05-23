@@ -1046,7 +1046,7 @@ export default function ChatView({
                   minute: "2-digit",
                 })
               : "",
-            online: true,
+            online: Boolean((conv as { online?: unknown }).online),
             messages: [],
             createdBy: conv.createdBy,
             type: "group",
@@ -1080,7 +1080,7 @@ export default function ChatView({
                 hour: "2-digit",
                 minute: "2-digit",
               }),
-          online: true,
+          online: Boolean((conv as { online?: unknown }).online),
           messages: [],
           createdBy: conv.createdBy,
           type: "direct",
@@ -1483,6 +1483,49 @@ export default function ChatView({
 
     void fetchMessages();
   }, [activeChatId, currentUserId, enrichMessage]);
+
+  useEffect(() => {
+    const handleUserOnline = (payload: unknown) => {
+      const raw = payload as {
+        user_id?: unknown;
+        userId?: unknown;
+        id?: unknown;
+        online?: unknown;
+        isOnline?: unknown;
+        status?: unknown;
+      };
+
+      const userId =
+        typeof raw.user_id === "string"
+          ? raw.user_id
+          : typeof raw.userId === "string"
+            ? raw.userId
+            : typeof raw.id === "string"
+              ? raw.id
+              : "";
+      if (!userId) return;
+
+      const online =
+        typeof raw.online === "boolean"
+          ? raw.online
+          : typeof raw.isOnline === "boolean"
+            ? raw.isOnline
+            : typeof raw.status === "string"
+              ? raw.status.toLowerCase() === "online"
+              : true;
+
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.type === "direct" && conv.peerId === userId
+            ? { ...conv, online }
+            : conv,
+        ),
+      );
+    };
+
+    on("user:online", handleUserOnline);
+    return () => off("user:online", handleUserOnline);
+  }, [off, on]);
 
   useEffect(() => {
     if (!activeChatId || !isConnected) return;
@@ -3422,11 +3465,18 @@ export default function ChatView({
                   onClick={() => handleSelectConversation(chat.id)}
                   className="flex flex-1 min-w-0 gap-3 text-left"
                 >
-                  <img
-                    src={chat.avatar}
-                    alt={chat.name}
-                    className="w-10 h-10 rounded-full object-cover"
-                  />
+                  <div className="relative">
+                    <img
+                      src={chat.avatar}
+                      alt={chat.name}
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                    <span
+                      className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${
+                        chat.online ? "bg-emerald-500" : "bg-slate-400"
+                      }`}
+                    />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-1">
                       <p className="text-[11px] font-bold text-blue-600 tracking-wide truncate">
@@ -3532,8 +3582,13 @@ export default function ChatView({
                   <h2 className="text-[16px] leading-none font-semibold">
                     {activeChat.name}
                   </h2>
-                  <div className="text-xs text-slate-500">
-                    {activeChat.online ? "Trực tuyến" : "Ngoại tuyến"}
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        activeChat.online ? "bg-emerald-500" : "bg-slate-400"
+                      }`}
+                    />
+                    <span>{activeChat.online ? "Trực tuyến" : "Ngoại tuyến"}</span>
                   </div>
                 </div>
               </div>

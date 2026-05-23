@@ -12,7 +12,7 @@ import {
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { authStorage } from "../../lib/auth";
+import { getAuthToken } from "../../lib/auth";
 import { useSocket } from "../../hooks/useSocket";
 
 const API_BASE_URL =
@@ -44,10 +44,10 @@ export default function UserProfileScreen() {
       
       setLoading(true);
       try {
-        const token = await authStorage.getToken();
+        const token = await getAuthToken();
         const response = await fetch(`${API_BASE_URL}/api/users/${id}`, {
           headers: {
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token ?? ""}`
           }
         });
         
@@ -70,7 +70,7 @@ export default function UserProfileScreen() {
   const createDirectConversation = async () => {
     if (!id) return null;
 
-    const token = await authStorage.getToken();
+    const token = await getAuthToken();
     const res = await fetch(`${API_BASE_URL}/api/conversations/direct`, {
       method: "POST",
       headers: {
@@ -410,4 +410,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   }
 });
-
