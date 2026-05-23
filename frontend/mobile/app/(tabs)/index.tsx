@@ -584,17 +584,26 @@ export default function ChatsScreen() {
             : (conv.memberIds as string[]).find(
                 (id: string) => id !== currentUserId,
               );
+          const groupOwnerId =
+            typeof conv.createdBy === "string" && conv.createdBy.trim().length > 0
+              ? conv.createdBy
+              : undefined;
 
           // Resolve name from cache
           const peerInfo = peerId ? cache[peerId] : undefined;
+          const groupOwnerInfo = groupOwnerId ? cache[groupOwnerId] : undefined;
           const resolvedName = isGroup
             ? conv.name || "Nhóm"
             : peerInfo?.fullName || conv.name || "Đang tải...";
 
           const resolvedAvatar = isGroup
-            ? "https://api.dicebear.com/7.x/shapes/svg?seed=group"
-            : peerInfo?.avatarUrl ||
-              `https://api.dicebear.com/7.x/avataaars/svg?seed=${peerId ?? conv.id}`;
+            ? ((typeof conv.avatarUrl === "string" ? conv.avatarUrl : null) ??
+              groupOwnerInfo?.avatarUrl ??
+              ((groupOwnerId === currentUserId ? user?.avatarUrl : null) ??
+                `https://api.dicebear.com/7.x/identicon/png?seed=${groupOwnerId ?? conv.id}`))
+            : (peerInfo?.avatarUrl ??
+              (typeof conv.avatarUrl === "string" ? conv.avatarUrl : null) ??
+              `https://api.dicebear.com/7.x/avataaars/png?seed=${peerId ?? conv.id}`);
 
           return {
             id: conv.id,
@@ -603,7 +612,7 @@ export default function ChatsScreen() {
             preview: conv.lastMessageAt ? "Đang tải..." : SYSTEM_GREETING,
             time: conv.lastMessageAt ? formatTime(conv.lastMessageAt) : "",
             lastMessageAt: conv.lastMessageAt ?? null,
-            online: false,
+            online: Boolean(conv.online),
             type: conv.type ?? "direct",
             peerId,
             unread: 0,
@@ -1361,6 +1370,46 @@ export default function ChatsScreen() {
 
   // ── Real-time messages ────────────────────────────────────────────────────
   useEffect(() => {
+    const handleUserOnline = (payload: unknown) => {
+      const raw = payload as {
+        user_id?: unknown;
+        userId?: unknown;
+        id?: unknown;
+        online?: unknown;
+        isOnline?: unknown;
+        status?: unknown;
+      };
+      const userId =
+        typeof raw.user_id === "string"
+          ? raw.user_id
+          : typeof raw.userId === "string"
+            ? raw.userId
+            : typeof raw.id === "string"
+              ? raw.id
+              : "";
+      if (!userId) return;
+
+      const online =
+        typeof raw.online === "boolean"
+          ? raw.online
+          : typeof raw.isOnline === "boolean"
+            ? raw.isOnline
+            : typeof raw.status === "string"
+              ? raw.status.toLowerCase() === "online"
+              : true;
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.type === "direct" && c.peerId === userId ? { ...c, online } : c,
+        ),
+      );
+    };
+
+    on("user:online", handleUserOnline);
+    return () => off("user:online", handleUserOnline);
+  }, [on, off]);
+
+  useEffect(() => {
     const handler = (payload: unknown) => {
       const data = payload as any;
       const convId: string = Array.isArray(data.conversation_id)
@@ -1593,7 +1642,11 @@ export default function ChatsScreen() {
               </Text>
               <Text className="text-xs text-blue-100">
                 {typingIndicatorText ??
-                  (activeConv.type === "group" ? "Nhóm" : "Trực tiếp")}
+                  (activeConv.type === "group"
+                    ? "Nhóm"
+                    : activeConv.online
+                      ? "● Trực tuyến"
+                      : "● Ngoại tuyến")}
               </Text>
             </View>
             <TouchableOpacity
@@ -1676,7 +1729,7 @@ export default function ChatsScreen() {
                         source={{
                           uri:
                             userCache[msg.sender_id]?.avatarUrl ||
-                            `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.sender_id}`,
+                            `https://api.dicebear.com/7.x/avataaars/png?seed=${msg.sender_id}`,
                         }}
                         className="w-8 h-8 rounded-full bg-slate-200 mr-2"
                       />
@@ -2146,7 +2199,7 @@ export default function ChatsScreen() {
                 source={{
                   uri:
                     user?.avatarUrl ||
-                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUserId}`,
+                    `https://api.dicebear.com/7.x/avataaars/png?seed=${currentUserId}`,
                 }}
                 className="w-10 h-10 rounded-full bg-slate-200"
               />
@@ -2155,7 +2208,7 @@ export default function ChatsScreen() {
                   Tin nhắn
                 </Text>
                 <Text className="text-xs text-blue-100">
-                  {isConnected ? "● Đã kết nối" : "○ Đang kết nối..."}
+                  {isConnected ? "● Trực tuyến" : "○ Ngoại tuyến..."}
                 </Text>
               </View>
             </View>
@@ -2221,9 +2274,11 @@ export default function ChatsScreen() {
                         source={{ uri: item.avatar }}
                         className="w-14 h-14 rounded-full bg-slate-200"
                       />
-                      {item.online && (
-                        <View className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
-                      )}
+                      <View
+                        className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white ${
+                          item.online ? "bg-green-500" : "bg-slate-400"
+                        }`}
+                      />
                     </View>
                     <View className="flex-1 ml-4">
                       <View className="flex-row justify-between items-center mb-0.5">
@@ -2238,12 +2293,20 @@ export default function ChatsScreen() {
                         </Text>
                       </View>
                       <View className="flex-row justify-between items-center">
-                        <Text
-                          className={`text-sm flex-1 mr-3 ${item.unread > 0 ? "text-zalo-text font-semibold" : "text-zalo-gray"}`}
-                          numberOfLines={1}
-                        >
-                          {displayPreview}
-                        </Text>
+                        <View className="flex-1 mr-3">
+                          <Text
+                            className={`text-[11px] ${item.online ? "text-emerald-600" : "text-slate-400"}`}
+                            numberOfLines={1}
+                          >
+                            {item.online ? "Trực tuyến" : "Ngoại tuyến"}
+                          </Text>
+                          <Text
+                            className={`text-sm ${item.unread > 0 ? "text-zalo-text font-semibold" : "text-zalo-gray"}`}
+                            numberOfLines={1}
+                          >
+                            {displayPreview}
+                          </Text>
+                        </View>
                         {item.unread > 0 && (
                           <View className="bg-red-500 rounded-full min-w-[20px] h-5 items-center justify-center px-1">
                             <Text className="text-white text-xs font-bold">
