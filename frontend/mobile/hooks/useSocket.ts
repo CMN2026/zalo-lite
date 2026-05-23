@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from "react";
 import io, { Socket } from "socket.io-client";
 import { useAuth } from "../contexts/auth";
-import { getAuthToken, authStorage } from "../lib/auth";
+import { clearAuthSession, getAuthToken } from "../lib/auth";
 import { DeviceEventEmitter } from "react-native";
 
 const API_BASE_URL =
@@ -79,7 +79,7 @@ export const useSocket = () => {
           const errMsg = error.message.toLowerCase();
           if (errMsg.includes("unauthorized") || errMsg.includes("invalid_token") || errMsg.includes("invalid signature")) {
             socket.disconnect();
-            authStorage.removeToken().then(() => {
+            clearAuthSession().then(() => {
               DeviceEventEmitter.emit("force_logout", "Phiên đăng nhập hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.");
             });
             return;
@@ -100,7 +100,7 @@ export const useSocket = () => {
         socket.on("force_logout", async (data: { message?: string }) => {
           const message = data?.message || "Tài khoản của bạn đã được đăng nhập ở thiết bị khác. Vui lòng đăng nhập lại.";
           socket.disconnect();
-          await authStorage.removeToken();
+          await clearAuthSession();
           DeviceEventEmitter.emit("force_logout", message);
         });
       };
@@ -194,4 +194,3 @@ export const useSocket = () => {
 
   return { isConnected, emit, on, off, join, leave };
 };
-

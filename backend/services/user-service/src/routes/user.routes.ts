@@ -142,4 +142,9 @@ userRoutes.post(
   [param("otherUserId").isUUID(), validateRequest],
   UserController.unblockFriendship,
 );
+userRoutes.get(
+  "/:id",
+  [param("id").isUUID(), validateRequest],
+  UserController.getById,
+);
 userRoutes.get("/admin/list", UserController.listUsersForAdmin);
