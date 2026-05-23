@@ -43,7 +43,6 @@ const callUserClient = new UserClientService(env.USER_SERVICE_BASE_URL);
 const callSignalingInstanceId = randomUUID();
 const disconnectedCallTimers = new Map<string, NodeJS.Timeout>();
 const DISCONNECT_GRACE_MS = 15_000;
-const onlineUserIds = new Set<string>();
 
 type CallSignalEventName =
   | "call:initiate"
@@ -257,15 +256,24 @@ io.on("connection", async (socket) => {
       }
     }
 
-    // Send current online snapshot to the newly connected socket first.
-    for (const onlineUserId of onlineUserIds) {
-      socket.emit("user:online", { user_id: onlineUserId, online: true });
+    // Send current online snapshot to the newly connected socket.
+    try {
+      const allSockets = await io.fetchSockets();
+      const uniqueUserIds = new Set<string>();
+      allSockets.forEach((s) => {
+        const auth = s.data.auth as { user_id?: string; userId?: string } | undefined;
+        const id = auth?.user_id ?? auth?.userId;
+        if (id) uniqueUserIds.add(id);
+      });
+      uniqueUserIds.forEach((id) => {
+        socket.emit("user:online", { user_id: id, online: true });
+      });
+    } catch {
+      // no-op
     }
 
-    onlineUserIds.add(userId);
-
-    // Emit online event
-    socket.broadcast.emit("user:online", { user_id: userId, online: true });
+    // Emit online event (including current socket for consistent state).
+    io.emit("user:online", { user_id: userId, online: true });
 
     try {
       const conversations = await conversationRepository.listByUserId(userId);
@@ -909,8 +917,7 @@ io.on("connection", async (socket) => {
       .fetchSockets()
       .then((sockets) => {
         if (sockets.length === 0) {
-          onlineUserIds.delete(userId);
-          socket.broadcast.emit("user:online", { user_id: userId, online: false });
+          io.emit("user:online", { user_id: userId, online: false });
         }
       })
       .catch(() => {
