@@ -24,6 +24,7 @@ import {
   PanResponder,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "../../contexts/auth";
 import { useSocket } from "../../hooks/useSocket";
@@ -31,6 +32,31 @@ import { getAuthToken } from "../../lib/auth";
 import { API_BASE_URL } from "../../lib/api";
 import { blockFriendship, unblockFriendship, getFriendshipStatus } from "../../lib/users";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+let documentPickerModule:
+  | {
+      getDocumentAsync: (options?: {
+        type?: string | string[];
+        multiple?: boolean;
+        copyToCacheDirectory?: boolean;
+      }) => Promise<{
+        canceled: boolean;
+        assets?: Array<{
+          uri: string;
+          name: string;
+          mimeType?: string | null;
+          size?: number;
+        }>;
+      }>;
+    }
+  | null = null;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  documentPickerModule = require("expo-document-picker");
+} catch {
+  documentPickerModule = null;
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface FileAttachment {
@@ -53,6 +79,13 @@ interface Message {
   recalled_by?: string | null;
   reactions?: MessageReaction[];
 }
+
+type ComposerAttachment = {
+  uri: string;
+  name: string;
+  mimeType: string;
+  size?: number;
+};
 
 type MessageReaction = {
   user_id: string;
@@ -92,15 +125,23 @@ const REACTION_EMOJI: Record<MessageReaction["reaction"], string> = {
   wow: "😮",
   phan_no: "😡",
 };
+const EMOJI_LIST = ["😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎", "🤗", "🤔", "😢", "😭", "😡", "👍", "👏", "🙏", "🔥", "❤️", "🎉", "✨"];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 async function authFetch(path: string, init: RequestInit = {}) {
   const token = await getAuthToken();
+  const isFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
+  const baseHeaders: Record<string, string> = {
+    Authorization: `Bearer ${token ?? ""}`,
+  };
+  if (!isFormData) {
+    baseHeaders["Content-Type"] = "application/json";
+  }
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token ?? ""}`,
+      ...baseHeaders,
       ...((init.headers as object) ?? {}),
     },
   });
@@ -366,6 +407,9 @@ export default function ChatsScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [inputText, setInputText] = useState("");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [composerAttachment, setComposerAttachment] =
+    useState<ComposerAttachment | null>(null);
   const [isComposerFocused, setIsComposerFocused] = useState(false);
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
@@ -1190,6 +1234,112 @@ export default function ChatsScreen() {
       setSending(false);
     }
   }, [activeChatId, currentUserId, emit, inputText, sending]);
+
+  const sendAttachment = useCallback(async () => {
+    if (!activeChatId || !composerAttachment || sending) return;
+    const caption = inputText.trim();
+
+    if (localTypingStopTimerRef.current) {
+      clearTimeout(localTypingStopTimerRef.current);
+      localTypingStopTimerRef.current = null;
+    }
+    if (localTypingHeartbeatRef.current) {
+      clearInterval(localTypingHeartbeatRef.current);
+      localTypingHeartbeatRef.current = null;
+    }
+    localTypingHasTextRef.current = false;
+    if (localTypingActiveRef.current) {
+      emit("message:typing", {
+        conversation_id: activeChatId,
+        is_typing: false,
+      });
+      localTypingActiveRef.current = false;
+    }
+
+    setSending(true);
+    setInputText("");
+    setShowEmojiPicker(false);
+    setShowEmojiPicker(false);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", {
+        uri: composerAttachment.uri,
+        name: composerAttachment.name,
+        type: composerAttachment.mimeType || "application/octet-stream",
+      } as any);
+      if (caption) {
+        formData.append("content", caption);
+      }
+
+      await authFetch(
+        `/api/messages/${encodeURIComponent(activeChatId)}/upload`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      setComposerAttachment(null);
+      if (activeConv) {
+        await openChat(activeConv);
+      }
+    } catch {
+      Alert.alert("Lỗi", "Không thể gửi tệp. Vui lòng thử lại.");
+    } finally {
+      setSending(false);
+    }
+  }, [activeChatId, activeConv, emit, inputText, openChat, composerAttachment, sending]);
+
+  const pickImageAttachment = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Thiếu quyền", "Bạn cần cấp quyền thư viện ảnh để gửi ảnh.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+      allowsEditing: false,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    const fileName = asset.fileName ?? `image_${Date.now()}.jpg`;
+    setComposerAttachment({
+      uri: asset.uri,
+      name: fileName,
+      mimeType: asset.mimeType ?? "image/jpeg",
+      size: asset.fileSize,
+    });
+    setShowEmojiPicker(false);
+  }, []);
+
+  const pickFileAttachment = useCallback(async () => {
+    if (!documentPickerModule) {
+      Alert.alert(
+        "Chưa hỗ trợ trên runtime hiện tại",
+        "Tính năng chọn file cần custom dev build. Vui lòng rebuild app để dùng.",
+      );
+      return;
+    }
+
+    const result = await documentPickerModule.getDocumentAsync({
+      type: "*/*",
+      multiple: false,
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    setComposerAttachment({
+      uri: asset.uri,
+      name: asset.name,
+      mimeType: asset.mimeType ?? "application/octet-stream",
+      size: asset.size,
+    });
+    setShowEmojiPicker(false);
+  }, []);
 
   useEffect(() => {
     if (!activeChatId || !isConnected) {
@@ -2023,8 +2173,78 @@ export default function ChatsScreen() {
             </View>
           )}
 
+          {typingIndicatorText && (
+            <View className="px-4 pb-2">
+              <View className="self-start flex-row items-center gap-2 bg-white/90 border border-blue-100 rounded-full px-3 py-1.5">
+                <View className="flex-row items-center">
+                  <Text className="text-[10px] text-blue-500">●</Text>
+                  <Text className="text-[10px] text-blue-500 ml-0.5">●</Text>
+                  <Text className="text-[10px] text-blue-500 ml-0.5">●</Text>
+                </View>
+                <Text className="text-xs text-slate-600">{typingIndicatorText}</Text>
+              </View>
+            </View>
+          )}
+
+          {showEmojiPicker && (
+            <View className="px-4 pb-2">
+              <View className="bg-white border border-slate-200 rounded-xl p-2 flex-row flex-wrap">
+                {EMOJI_LIST.map((emoji) => (
+                  <TouchableOpacity
+                    key={emoji}
+                    onPress={() => setInputText((prev) => `${prev}${emoji}`)}
+                    className="w-9 h-9 items-center justify-center"
+                  >
+                    <Text style={{ fontSize: 20 }}>{emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {composerAttachment && (
+            <View className="px-4 pb-2">
+              <View className="flex-row items-center bg-slate-100 border border-slate-200 rounded-xl px-3 py-2">
+                <Text className="text-base mr-2">
+                  {composerAttachment.mimeType.startsWith("image/") ? "🖼️" : "📎"}
+                </Text>
+                <View className="flex-1">
+                  <Text className="text-sm text-slate-700" numberOfLines={1}>
+                    {composerAttachment.name}
+                  </Text>
+                  {typeof composerAttachment.size === "number" ? (
+                    <Text className="text-xs text-slate-500">
+                      {(composerAttachment.size / 1024).toFixed(1)} KB
+                    </Text>
+                  ) : null}
+                </View>
+                <TouchableOpacity onPress={() => setComposerAttachment(null)}>
+                  <Text className="text-slate-500 text-base">✕</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* Input */}
           <View className="flex-row items-end gap-2 px-4 py-3 border-t border-slate-200 bg-white">
+            <TouchableOpacity
+              onPress={() => void pickFileAttachment()}
+              className="w-9 h-9 rounded-full bg-slate-100 items-center justify-center"
+            >
+              <Feather name="paperclip" size={18} color="#475569" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => void pickImageAttachment()}
+              className="w-9 h-9 rounded-full bg-slate-100 items-center justify-center"
+            >
+              <Feather name="image" size={18} color="#475569" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowEmojiPicker((prev) => !prev)}
+              className="w-9 h-9 rounded-full bg-slate-100 items-center justify-center"
+            >
+              <Feather name="smile" size={18} color="#475569" />
+            </TouchableOpacity>
             <TextInput
               value={inputText}
               onChangeText={setInputText}
@@ -2054,15 +2274,15 @@ export default function ChatsScreen() {
               style={{ maxHeight: 100 }}
             />
             <TouchableOpacity
-              onPress={sendMessage}
-              disabled={!inputText.trim() || sending}
-              className={`px-4 py-2.5 rounded-2xl ${inputText.trim() && !sending ? "bg-blue-600" : "bg-slate-200"}`}
+              onPress={composerAttachment ? () => void sendAttachment() : sendMessage}
+              disabled={(!inputText.trim() && !composerAttachment) || sending}
+              className={`px-4 py-2.5 rounded-2xl ${(inputText.trim() || composerAttachment) && !sending ? "bg-blue-600" : "bg-slate-200"}`}
             >
               {sending ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text
-                  className={`font-semibold text-sm ${inputText.trim() ? "text-white" : "text-slate-400"}`}
+                  className={`font-semibold text-sm ${(inputText.trim() || composerAttachment) ? "text-white" : "text-slate-400"}`}
                 >
                   Gửi
                 </Text>
