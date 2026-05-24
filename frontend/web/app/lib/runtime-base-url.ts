@@ -1,6 +1,7 @@
 const DEFAULT_GATEWAY_PORT = 3004;
 const DEFAULT_USER_SERVICE_PORT = 3001;
 const DEFAULT_CHAT_SERVICE_PORT = 3002;
+const DEFAULT_POST_SERVICE_PORT = 3005;
 
 function isLoopbackHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1";
@@ -54,3 +55,7 @@ export const WEB_CHAT_SERVICE_BASE_URL = getRuntimeBaseUrl(
   DEFAULT_CHAT_SERVICE_PORT,
 );
 
+export const WEB_POST_SERVICE_BASE_URL = getRuntimeBaseUrl(
+  process.env.NEXT_PUBLIC_POST_SERVICE_URL,
+  DEFAULT_POST_SERVICE_PORT,
+);

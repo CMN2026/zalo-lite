@@ -18,6 +18,7 @@ import ChatView from "../app/components/ChatView";
 import ChatbotView from "../app/components/ChatbotView";
 import FriendsView from "../app/components/FriendsView";
 import HistoryView from "../app/components/HistoryView";
+import PostView from "../app/components/PostView";
 import ProfileView from "../app/components/ProfileView";
 import StatsView from "../app/components/StatsView";
 import type { ProfileUser } from "./lib/users";
@@ -628,6 +629,7 @@ export default function DashboardLayout() {
           />
         )}
         {currentView === "chatbot" && <ChatbotView />}
+        {currentView === "posts" && <PostView />}
         {currentView === "history" && <HistoryView />}
         {currentView === "stats" && <StatsView />}
         {currentView === "friends" && (

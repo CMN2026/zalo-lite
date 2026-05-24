@@ -52,6 +52,8 @@ const env = {
   CHAT_SERVICE_URL: process.env.CHAT_SERVICE_URL ?? "http://32.236.47.127:3002",
   CHATBOT_SERVICE_URL:
     process.env.CHATBOT_SERVICE_URL ?? "http://32.236.47.127:3003",
+  POST_SERVICE_URL:
+    process.env.POST_SERVICE_URL ?? "http://32.236.47.127:3005",
   JWT_SECRET: process.env.JWT_SECRET ?? "dev-secret",
   JWT_ISSUER: process.env.JWT_ISSUER ?? "zalo-lite-user-service",
   JWT_AUDIENCE: process.env.JWT_AUDIENCE ?? "zalo-lite-clients",
@@ -407,6 +409,42 @@ app.use(
   authenticateJwt,
   authorizeRoles("USER", "ADMIN"),
   buildProxy(env.CHATBOT_SERVICE_URL, mapApiPrefix("/api/chatbot", "/chatbot")),
+);
+
+// ── Post Service Routes ──────────────────────────────────────────────────────
+app.use(
+  "/api/posts",
+  authenticateJwt,
+  authorizeRoles("USER", "ADMIN"),
+  buildProxy(env.POST_SERVICE_URL, mapApiPrefix("/api/posts", "/posts")),
+);
+
+// Post uploads proxy (file serving, needs raw stream like /api/uploads)
+app.use(
+  "/api/post-uploads",
+  createProxyMiddleware({
+    target: env.POST_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: (p) => {
+      const rewritten = `/${p}`.replace(/^\/\//, "/").replace(/^\//, "/post-uploads/");
+      return rewritten;
+    },
+    on: {
+      proxyRes(proxyRes) {
+        proxyRes.headers["connection"] = "keep-alive";
+      },
+      error(err, _req, res) {
+        console.error("[Proxy Error /api/post-uploads]", err);
+        const response = res as Response;
+        if (!response.headersSent) {
+          response.status(503).json({
+            message: "service_unavailable",
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      },
+    },
+  }) as unknown as express.RequestHandler,
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
