@@ -14,7 +14,8 @@
         "NSCameraUsageDescription": "Zalo Lite cần truy cập camera để chụp ảnh và gọi video.",
         "NSMicrophoneUsageDescription": "Zalo Lite cần truy cập microphone để gọi thoại và gửi tin nhắn voice.",
         "NSPhotoLibraryUsageDescription": "Zalo Lite cần truy cập thư viện ảnh để gửi ảnh trong tin nhắn."
-      }
+      },
+      "bitcode": false
     },
     "android": {
       "adaptiveIcon": {
@@ -40,7 +41,15 @@
         "VIBRATE",
         "POST_NOTIFICATIONS",
         "FOREGROUND_SERVICE",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CAMERA",
+        "android.permission.INTERNET",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WAKE_LOCK",
+        "android.permission.BLUETOOTH"
       ]
     },
     "web": {
@@ -66,6 +75,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0ed744a1-96e6-4b83-8f9a-b2eaa1320926"
+      }
     }
   }
 }

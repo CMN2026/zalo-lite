@@ -5,7 +5,6 @@ import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { View } from "react-native";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -50,6 +49,15 @@ export default function TabLayout() {
           title: "Tin nhắn",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={24} name="message.fill" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="posts"
+        options={{
+          title: "Bảng tin",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={24} name="newspaper.fill" color={color} />
           ),
         }}
       />

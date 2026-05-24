@@ -23,6 +23,7 @@ const MAPPING = {
   'person.fill': 'person',
   'gearshape.fill': 'settings',
   'brain.head.profile': 'smart-toy',
+  'newspaper.fill': 'newspaper',
 } as IconMapping;
 
 /**

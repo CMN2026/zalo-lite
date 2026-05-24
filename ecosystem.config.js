@@ -49,6 +49,18 @@ module.exports = {
       },
     },
     {
+      name: "post-service",
+      cwd: __dirname,
+      script: "/usr/bin/bash",
+      args: "-lc 'npm run start --prefix backend/services/post-service'",
+      interpreter: "none",
+      autorestart: true,
+      watch: false,
+      env: {
+        NODE_ENV: "production",
+      },
+    },
+    {
       name: "frontend",
       cwd: __dirname,
       script: "/usr/bin/bash",

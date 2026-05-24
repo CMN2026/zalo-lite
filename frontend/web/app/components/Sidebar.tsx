@@ -7,6 +7,7 @@ import {
   LogIn,
   LogOut,
   MessageSquare,
+  Newspaper,
   Settings,
   Users,
 } from "lucide-react";
@@ -74,6 +75,14 @@ export default function Sidebar({
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
+      </button>
+
+      <button
+        onClick={() => setCurrentView("posts")}
+        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "posts" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
+        title="Bảng tin"
+      >
+        <Newspaper className="w-6 h-6" />
       </button>
 
       <button
