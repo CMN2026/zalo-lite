@@ -35,8 +35,7 @@ if (!fs.existsSync(uploadsDir)) {
 // Configure multer storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const postId = req.params.postId || "temp";
-    const dir = path.join(uploadsDir, postId);
+    const dir = path.join(uploadsDir, "post-uploads");
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -93,9 +92,8 @@ export const upload = {
           for (const file of files) {
             const filepath = file.path;
             try {
-              const postId = req.params.postId || "temp";
               const bucketName = env.S3_BUCKET_NAME || "zalo-lite-uploads";
-              const s3Key = `post-uploads/${postId}/${file.filename}`;
+              const s3Key = `post-uploads/${file.filename}`;
 
               const fileStream = fs.createReadStream(filepath);
 
@@ -151,12 +149,12 @@ export const setupPostFileServer = (app: Express) => {
           return res.status(401).json({ message: "Unauthorized" });
         }
 
-        const { postId, filename } = req.params;
+        const { filename } = req.params;
 
         // AWS S3 Mode: Stream file directly from S3
         if (env.USE_S3 && s3Client) {
           const bucketName = env.S3_BUCKET_NAME || "zalo-lite-uploads";
-          const s3Key = `post-uploads/${postId}/${filename}`;
+          const s3Key = `post-uploads/${filename}`;
 
           try {
             const s3Response = await s3Client.send(
@@ -193,14 +191,14 @@ export const setupPostFileServer = (app: Express) => {
         }
 
         // Local Storage Fallback Mode
-        const filepath = path.join(uploadsDir, postId, filename);
+        const filepath = path.join(uploadsDir, "post-uploads", filename);
 
         if (!fs.existsSync(filepath)) {
           return res.status(404).json({ message: "file_not_found" });
         }
 
         const realPath = fs.realpathSync(filepath);
-        const allowedPath = fs.realpathSync(path.join(uploadsDir, postId));
+        const allowedPath = fs.realpathSync(path.join(uploadsDir, "post-uploads"));
 
         if (!realPath.startsWith(allowedPath)) {
           return res.status(403).json({ message: "Forbidden" });
