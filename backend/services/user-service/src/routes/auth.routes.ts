@@ -56,6 +56,25 @@ authRoutes.post(
 );
 
 authRoutes.post(
+  "/register/verify",
+  [
+    body("verificationSessionId").trim().isUUID(),
+    body("code").trim().matches(/^\d{6}$/),
+    validateRequest,
+  ],
+  AuthController.verifyRegisterCode,
+);
+
+authRoutes.post(
+  "/register/resend",
+  [
+    body("verificationSessionId").trim().isUUID(),
+    validateRequest,
+  ],
+  AuthController.resendRegisterCode,
+);
+
+authRoutes.post(
   "/google",
   [
     normalizeNameFieldsMiddleware,

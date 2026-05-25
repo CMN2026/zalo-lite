@@ -32,13 +32,15 @@
     "express-validator": "^7.2.1",
     "google-auth-library": "^10.3.0",
     "helmet": "^8.1.0",
-    "jsonwebtoken": "^9.0.3"
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^7.0.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/nodemailer": "^7.0.1",
     "@types/node": "^25.0.9",
     "prisma": "^6.6.0",
     "tsx": "^4.19.2",

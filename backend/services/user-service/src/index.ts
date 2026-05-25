@@ -10,6 +10,7 @@ import { errorHandler } from "./middlewares/error.middleware.js";
 import { AuthService } from "./services/auth.service.js";
 import { startGRPCServer, stopGRPCServer } from "./grpc/auth-server.js";
 import type { Server as GrpcServer } from "@grpc/grpc-js";
+import { ensureEmailVerificationSchema } from "./config/bootstrap-db.js";
 
 const app = express();
 const authService = new AuthService();
@@ -103,6 +104,7 @@ const seedDevUsers = async () => {
 
 async function start() {
   try {
+    await ensureEmailVerificationSchema();
     await seedDevUsers();
 
     // Start gRPC server

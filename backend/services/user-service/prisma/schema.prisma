@@ -36,6 +36,15 @@ enum FriendshipStatus {
   @@map("friendship_status")
 }
 
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+  CANCELLED
+
+  @@map("verification_status")
+}
+
 enum UserGender {
   MALE
   FEMALE
@@ -62,12 +71,37 @@ model User {
 
   identities       AuthIdentity[]
   localCredential  LocalCredential?
+  verificationSessions EmailVerificationSession[]
   sentRequests     Friendship[] @relation("FriendshipRequester")
   receivedRequests Friendship[] @relation("FriendshipAddressee")
 
   @@index([phone], map: "idx_users_phone")
   @@index([role], map: "idx_users_role")
   @@map("users")
+}
+
+model EmailVerificationSession {
+  id                String             @id @default(uuid()) @db.Uuid
+  email             String             @db.VarChar(255)
+  fullName          String             @map("full_name") @db.VarChar(100)
+  phone             String?            @db.VarChar(20)
+  avatarUrl         String?            @map("avatar_url")
+  passwordHash      String             @map("password_hash") @db.VarChar(255)
+  otpHash           String             @map("otp_hash") @db.VarChar(255)
+  otpExpiresAt      DateTime           @map("otp_expires_at") @db.Timestamptz(6)
+  resendAvailableAt DateTime           @map("resend_available_at") @db.Timestamptz(6)
+  attemptCount      Int                @default(0) @map("attempt_count")
+  status            VerificationStatus @default(PENDING)
+  userId            String?            @map("user_id") @db.Uuid
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email], map: "idx_email_verification_sessions_email")
+  @@index([status], map: "idx_email_verification_sessions_status")
+  @@index([otpExpiresAt], map: "idx_email_verification_sessions_otp_expires_at")
+  @@map("email_verification_sessions")
 }
 
 model LocalCredential {

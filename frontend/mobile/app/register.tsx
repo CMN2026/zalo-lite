@@ -1,12 +1,10 @@
 import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import { register, saveAuthSession } from "../lib/auth";
-import { useAuth } from "../contexts/auth";
+import { register } from "../lib/auth";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { login } = useAuth();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -50,10 +48,14 @@ export default function RegisterPage() {
         password,
         avatarUrl: undefined,
       });
-
-      await saveAuthSession(response.data.token, response.data.user);
-      login(response.data.user);
-      router.replace("/");
+      router.push({
+        pathname: "/register-verify",
+        params: {
+          session: response.data.verificationSessionId,
+          email: response.data.email,
+          expiresAt: response.data.expiresAt,
+        },
+      } as any);
     } catch (err) {
       const authError = err as Error & { errors?: Array<{ field: string; message: string }> };
 
@@ -61,6 +63,8 @@ export default function RegisterPage() {
         setError("Email này đã được sử dụng");
       } else if (authError.message === "phone_already_used") {
         setError("Số điện thoại này đã được sử dụng");
+      } else if (authError.message === "email_service_not_configured") {
+        setError("Hệ thống email chưa được cấu hình. Vui lòng liên hệ quản trị viên.");
       } else if (authError.message === "validation_error") {
         const firstError = authError.errors?.[0];
         if (firstError?.field === "password") {
