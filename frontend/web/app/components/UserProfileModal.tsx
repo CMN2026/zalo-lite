@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { X, Phone, MessageSquare } from "lucide-react";
 import { WEB_GATEWAY_BASE_URL } from "../lib/runtime-base-url";
+import { getFriendshipStatus } from "../lib/users";
 
 interface UserProfile {
   id: string;
@@ -23,6 +24,8 @@ export default function UserProfileModal({ userId, onClose, onMessage }: UserPro
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isFriend, setIsFriend] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -53,6 +56,30 @@ export default function UserProfileModal({ userId, onClose, onMessage }: UserPro
       fetchProfile();
     }
   }, [userId]);
+
+  useEffect(() => {
+    const checkFriendship = async () => {
+      if (!userId) return;
+      try {
+        const result = await getFriendshipStatus(userId);
+        const status = result.data?.status ?? null;
+        setIsFriend(status === "ACCEPTED");
+      } catch {
+        setIsFriend(false);
+      }
+    };
+
+    void checkFriendship();
+  }, [userId]);
+
+  const requireFriendship = () => {
+    setActionError("");
+    if (!isFriend) {
+      setActionError("Bạn cần kết bạn trước khi gọi điện hoặc nhắn tin.");
+      return false;
+    }
+    return true;
+  };
 
   if (!userId) return null;
 
@@ -100,18 +127,30 @@ export default function UserProfileModal({ userId, onClose, onMessage }: UserPro
           
           {/* Action Buttons */}
           <div className="flex gap-3 mt-6">
-            <button className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2.5 rounded-lg flex items-center justify-center gap-2 font-medium transition-colors">
+            <button
+              onClick={() => {
+                if (!requireFriendship()) return;
+                setActionError("Tính năng gọi điện từ modal sẽ được mở ở màn chat.");
+              }}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2.5 rounded-lg flex items-center justify-center gap-2 font-medium transition-colors"
+            >
               <Phone size={18} />
               Gọi điện
             </button>
             <button 
-              onClick={() => onMessage(userId)}
+              onClick={() => {
+                if (!requireFriendship()) return;
+                onMessage(userId);
+              }}
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg flex items-center justify-center gap-2 font-medium transition-colors"
             >
               <MessageSquare size={18} />
               Nhắn tin
             </button>
           </div>
+          {actionError ? (
+            <p className="mt-3 text-sm text-red-400">{actionError}</p>
+          ) : null}
 
           {/* Details Section */}
           <div className="mt-8 space-y-4">
