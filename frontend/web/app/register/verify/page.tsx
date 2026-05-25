@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   resendRegisterCode,
@@ -13,6 +13,14 @@ const RESEND_SECONDS = 60;
 const MAX_ATTEMPTS = 3;
 
 export default function VerifyRegisterPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-100" />}>
+      <VerifyRegisterPageContent />
+    </Suspense>
+  );
+}
+
+function VerifyRegisterPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuth();
