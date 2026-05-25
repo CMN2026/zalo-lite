@@ -17,6 +17,7 @@ type Env = {
   SMTP_USER: string;
   SMTP_PASS: string;
   SMTP_FROM: string;
+  PASSWORD_RESET_URL_BASE: string;
 };
 
 function getEnv(name: string, fallback?: string): string {
@@ -62,4 +63,9 @@ export const env: Env = {
   SMTP_USER: process.env.SMTP_USER?.trim() ?? "",
   SMTP_PASS: process.env.SMTP_PASS?.trim() ?? "",
   SMTP_FROM: process.env.SMTP_FROM?.trim() ?? "no-reply@zalolite.local",
+  PASSWORD_RESET_URL_BASE:
+    process.env.PASSWORD_RESET_URL_BASE?.trim() ||
+    `${parseCorsOrigins(
+      getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3003"),
+    )[0]}/reset-password`,
 };
