@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../contexts/auth";
 import { getAuthToken } from "../lib/auth";
+import { WEB_GATEWAY_BASE_URL } from "../lib/runtime-base-url";
 import {
   createPost,
   getFeed,
@@ -18,16 +20,12 @@ import {
   type ReactionSummary,
 } from "../lib/posts";
 import {
-  Heart,
   MessageCircle,
   Send,
   Image as ImageIcon,
   X,
   Trash2,
   ThumbsUp,
-  Smile,
-  Frown,
-  Angry,
   Loader2,
   RefreshCw,
 } from "lucide-react";
@@ -127,7 +125,7 @@ function CreatePostCard({ onPostCreated }: { onPostCreated: () => void }) {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-5 mb-4">
+    <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 mb-4">
       <div className="flex items-start gap-3">
         <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-md">
           {user?.avatarUrl ? (
@@ -141,7 +139,7 @@ function CreatePostCard({ onPostCreated }: { onPostCreated: () => void }) {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Bạn đang nghĩ gì?"
-            className="w-full resize-none border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-white transition-all min-h-[48px]"
+            className="w-full resize-none border-0 bg-slate-100/90 rounded-2xl px-5 py-4 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-white transition-all min-h-[48px]"
             rows={2}
           />
 
@@ -162,7 +160,7 @@ function CreatePostCard({ onPostCreated }: { onPostCreated: () => void }) {
             </div>
           )}
 
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-200">
             <div className="flex items-center gap-1">
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -184,7 +182,7 @@ function CreatePostCard({ onPostCreated }: { onPostCreated: () => void }) {
             <button
               onClick={handleSubmit}
               disabled={isSubmitting || (!content.trim() && selectedImages.length === 0)}
-              className="px-5 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-semibold rounded-xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md flex items-center gap-2"
+              className="px-5 py-2.5 bg-blue-400 text-white text-sm font-semibold rounded-2xl hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2"
             >
               {isSubmitting ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -204,11 +202,9 @@ function CreatePostCard({ onPostCreated }: { onPostCreated: () => void }) {
 
 function CommentSection({
   postId,
-  commentCount,
   onCommentCountChange,
 }: {
   postId: string;
-  commentCount: number;
   onCommentCountChange: (delta: number) => void;
 }) {
   const { user } = useAuth();
@@ -357,7 +353,6 @@ function ReactionBar({
   reactionSummary: ReactionSummary;
   onReactionSummaryChange: (summary: ReactionSummary) => void;
 }) {
-  const { user } = useAuth();
   const [myReaction, setMyReaction] = useState<ReactionType | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -491,9 +486,15 @@ function ReactionBar({
 
 function PostCard({
   post,
+  authorName,
+  authorAvatarUrl,
+  onOpenProfile,
   onDelete,
 }: {
   post: Post;
+  authorName?: string;
+  authorAvatarUrl?: string | null;
+  onOpenProfile: (userId: string) => void;
   onDelete: (postId: string) => void;
 }) {
   const { user } = useAuth();
@@ -519,17 +520,29 @@ function PostCard({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 mb-4 overflow-hidden hover:shadow-md transition-shadow duration-300">
+    <div className="bg-white rounded-3xl shadow-sm border border-slate-200 mb-4 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-4 pb-2">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-bold shadow-md">
-            {post.user_id.slice(0, 2).toUpperCase()}
-          </div>
+          <button
+            type="button"
+            onClick={() => onOpenProfile(post.user_id)}
+            className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-bold shadow-md overflow-hidden"
+          >
+            {authorAvatarUrl ? (
+              <img src={authorAvatarUrl} alt={authorName ?? "Avatar"} className="w-full h-full object-cover" />
+            ) : (
+              post.user_id.slice(0, 2).toUpperCase()
+            )}
+          </button>
           <div>
-            <p className="text-sm font-semibold text-slate-800">
-              {post.user_id.slice(0, 8)}...
-            </p>
+            <button
+              type="button"
+              onClick={() => onOpenProfile(post.user_id)}
+              className="text-sm font-semibold text-slate-800 hover:text-blue-600 transition-colors"
+            >
+              {authorName ?? `${post.user_id.slice(0, 8)}...`}
+            </button>
             <p className="text-xs text-slate-400">{timeAgo(post.created_at)}</p>
           </div>
         </div>
@@ -598,16 +611,12 @@ function PostCard({
           />
           <button
             onClick={() => setShowComments(!showComments)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              showComments
-                ? "text-blue-600 bg-blue-50"
-                : "text-slate-500 hover:bg-slate-50 hover:text-blue-600"
-            }`}
+            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 transition-colors"
           >
-            <MessageCircle className="w-4 h-4" />
+            <MessageCircle className="w-5 h-5" />
             <span>Bình luận</span>
             {commentCount > 0 && (
-              <span className="ml-0.5 text-xs text-slate-400">
+              <span className="ml-0.5 text-sm text-slate-400">
                 ({commentCount})
               </span>
             )}
@@ -618,7 +627,6 @@ function PostCard({
         {showComments && (
           <CommentSection
             postId={post.id}
-            commentCount={commentCount}
             onCommentCountChange={(delta) =>
               setCommentCount((prev) => Math.max(0, prev + delta))
             }
@@ -632,10 +640,46 @@ function PostCard({
 // ─── Main PostView ───────────────────────────────────────────────────────────
 
 export default function PostView() {
-  const { user } = useAuth();
+  const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
+  const [authorProfiles, setAuthorProfiles] = useState<
+    Record<string, { fullName: string; avatarUrl: string | null }>
+  >({});
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadAuthorProfiles = useCallback(async (feedPosts: Post[], token: string) => {
+    const authorIds = Array.from(new Set(feedPosts.map((post) => post.user_id))).filter(Boolean);
+
+    const profileEntries = await Promise.all(
+      authorIds.map(async (userId) => {
+        try {
+          const response = await fetch(`${WEB_GATEWAY_BASE_URL}/api/users/${userId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!response.ok) return null;
+          const payload = (await response.json()) as {
+            data?: { fullName?: string; email?: string; avatarUrl?: string | null };
+          };
+          const name = payload.data?.fullName?.trim() || payload.data?.email?.trim() || userId;
+          return [userId, { fullName: name, avatarUrl: payload.data?.avatarUrl ?? null }] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    const nextEntries = profileEntries.filter((entry): entry is readonly [string, { fullName: string; avatarUrl: string | null }] => Boolean(entry));
+    if (nextEntries.length === 0) return;
+
+    setAuthorProfiles((prev) => {
+      const merged = { ...prev };
+      nextEntries.forEach(([userId, profile]) => {
+        merged[userId] = profile;
+      });
+      return merged;
+    });
+  }, []);
 
   const loadFeed = useCallback(async (showLoadingSpinner = true) => {
     const token = getAuthToken();
@@ -647,13 +691,14 @@ export default function PostView() {
     try {
       const data = await getFeed(token, 50);
       setPosts(data);
+      await loadAuthorProfiles(data, token);
     } catch (err) {
       console.error("Failed to load feed:", err);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [loadAuthorProfiles]);
 
   useEffect(() => {
     loadFeed();
@@ -667,12 +712,16 @@ export default function PostView() {
     setPosts((prev) => prev.filter((p) => p.id !== postId));
   };
 
+  const handleOpenProfile = useCallback((userId: string) => {
+    router.push(`/user/${encodeURIComponent(userId)}`);
+  }, [router]);
+
   return (
-    <div className="flex-1 bg-gradient-to-b from-slate-50 to-slate-100/50 overflow-hidden">
+    <div className="flex-1 bg-slate-100 overflow-hidden">
       <div className="h-full overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-lg border-b border-slate-200/60">
-          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="sticky top-0 z-40 bg-white border-b border-slate-200">
+          <div className="max-w-[760px] mx-auto px-4 py-3 flex items-center justify-between">
             <h1 className="text-lg font-bold text-slate-800">Bảng tin</h1>
             <button
               onClick={() => loadFeed(false)}
@@ -688,7 +737,7 @@ export default function PostView() {
         </div>
 
         {/* Content */}
-        <div className="max-w-2xl mx-auto px-4 py-4">
+        <div className="max-w-[760px] mx-auto px-4 py-4">
           {/* Create Post */}
           <CreatePostCard onPostCreated={handlePostCreated} />
 
@@ -715,6 +764,9 @@ export default function PostView() {
               <PostCard
                 key={post.id}
                 post={post}
+                authorName={authorProfiles[post.user_id]?.fullName}
+                authorAvatarUrl={authorProfiles[post.user_id]?.avatarUrl}
+                onOpenProfile={handleOpenProfile}
                 onDelete={handlePostDeleted}
               />
             ))

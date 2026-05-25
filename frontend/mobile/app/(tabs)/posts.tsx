@@ -243,12 +243,14 @@ function PostCard({
   token,
   currentUserId,
   usersMap,
+  onOpenProfile,
   onDelete,
 }: {
   post: Post;
   token: string;
   currentUserId: string;
   usersMap: Record<string, { fullName: string; avatarUrl: string | null }>;
+  onOpenProfile: (userId: string) => void;
   onDelete: (postId: string) => void;
 }) {
   const [showComments, setShowComments] = useState(false);
@@ -389,11 +391,15 @@ function PostCard({
       {/* Header */}
       <View className="flex-row items-center justify-between mb-3">
         <View className="flex-row items-center gap-3">
-          <AuthorAvatar userId={post.user_id} usersMap={usersMap} />
+          <TouchableOpacity onPress={() => onOpenProfile(post.user_id)} activeOpacity={0.8}>
+            <AuthorAvatar userId={post.user_id} usersMap={usersMap} />
+          </TouchableOpacity>
           <View>
-            <Text className="font-semibold text-slate-800 text-[15px]">
-              {getAuthorName(post.user_id, usersMap)}
-            </Text>
+            <TouchableOpacity onPress={() => onOpenProfile(post.user_id)} activeOpacity={0.7}>
+              <Text className="font-semibold text-slate-800 text-[15px]">
+                {getAuthorName(post.user_id, usersMap)}
+              </Text>
+            </TouchableOpacity>
             <Text className="text-[11px] text-slate-400 mt-0.5">
               {timeAgo(post.created_at)}
             </Text>
@@ -664,18 +670,46 @@ export default function PostsScreen() {
       console.log("Error loading friends in feed profiles:", err);
     }
 
-    // Add any missing authors from the post list itself (if any)
-    feedPosts.forEach((post) => {
-      if (!map[post.user_id]) {
-        map[post.user_id] = {
-          fullName: `User_${post.user_id.slice(0, 6)}`,
-          avatarUrl: null,
-        };
-      }
-    });
+    // Resolve remaining post authors directly from user API
+    const missingAuthorIds = Array.from(
+      new Set(feedPosts.map((post) => post.user_id).filter((id) => !map[id]))
+    );
+
+    await Promise.all(
+      missingAuthorIds.map(async (userId) => {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+            headers: { Authorization: `Bearer ${tokenString}` },
+          });
+          if (!response.ok) throw new Error("fetch_user_failed");
+          const payload = (await response.json()) as {
+            data?: { fullName?: string; email?: string; avatarUrl?: string | null };
+          };
+          map[userId] = {
+            fullName:
+              payload.data?.fullName?.trim() ||
+              payload.data?.email?.trim() ||
+              `User_${userId.slice(0, 6)}`,
+            avatarUrl: payload.data?.avatarUrl ?? null,
+          };
+        } catch {
+          map[userId] = {
+            fullName: `User_${userId.slice(0, 6)}`,
+            avatarUrl: null,
+          };
+        }
+      })
+    );
 
     setUsersMap(map);
   };
+
+  const handleOpenProfile = useCallback(
+    (userId: string) => {
+      router.push(`/user/${encodeURIComponent(userId)}`);
+    },
+    [router]
+  );
 
   const bootstrap = async (tokenString: string, showSpinner = true) => {
     if (showSpinner) setLoading(true);
@@ -800,6 +834,7 @@ export default function PostsScreen() {
               token={token}
               currentUserId={currentUserId}
               usersMap={usersMap}
+              onOpenProfile={handleOpenProfile}
               onDelete={handlePostDeleted}
             />
           )}
