@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "../contexts/auth";
 import { getAuthToken } from "../lib/auth";
 import { WEB_GATEWAY_BASE_URL } from "../lib/runtime-base-url";
+import UserProfileModal from "./UserProfileModal";
 import {
   createPost,
   getFeed,
@@ -640,13 +640,13 @@ function PostCard({
 // ─── Main PostView ───────────────────────────────────────────────────────────
 
 export default function PostView() {
-  const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [authorProfiles, setAuthorProfiles] = useState<
     Record<string, { fullName: string; avatarUrl: string | null }>
   >({});
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(null);
 
   const loadAuthorProfiles = useCallback(async (feedPosts: Post[], token: string) => {
     const authorIds = Array.from(new Set(feedPosts.map((post) => post.user_id))).filter(Boolean);
@@ -713,10 +713,11 @@ export default function PostView() {
   };
 
   const handleOpenProfile = useCallback((userId: string) => {
-    router.push(`/user/${encodeURIComponent(userId)}`);
-  }, [router]);
+    setSelectedProfileUserId(userId);
+  }, []);
 
   return (
+    <>
     <div className="flex-1 bg-slate-100 overflow-hidden">
       <div className="h-full overflow-y-auto">
         {/* Header */}
@@ -774,5 +775,13 @@ export default function PostView() {
         </div>
       </div>
     </div>
+    {selectedProfileUserId && (
+      <UserProfileModal
+        userId={selectedProfileUserId}
+        onClose={() => setSelectedProfileUserId(null)}
+        onMessage={() => setSelectedProfileUserId(null)}
+      />
+    )}
+    </>
   );
 }

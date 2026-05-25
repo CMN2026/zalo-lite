@@ -14,8 +14,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 
@@ -611,7 +611,6 @@ function PostCard({
 // ─── Main Feed Screen ────────────────────────────────────────────────────────
 
 export default function PostsScreen() {
-  const router = useRouter();
   const { user: authUser } = useAuth();
 
   const [posts, setPosts] = useState<Post[]>([]);
@@ -627,6 +626,16 @@ export default function PostsScreen() {
   const [newPostContent, setNewPostContent] = useState("");
   const [pickedImages, setPickedImages] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
+  const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<{
+    id: string;
+    fullName?: string;
+    avatarUrl?: string | null;
+    coverUrl?: string | null;
+    bio?: string | null;
+    phone?: string | null;
+  } | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   const currentUserId = authUser?.id ?? "";
 
@@ -706,10 +715,38 @@ export default function PostsScreen() {
 
   const handleOpenProfile = useCallback(
     (userId: string) => {
-      router.push(`/user/${encodeURIComponent(userId)}`);
+      setSelectedProfileUserId(userId);
     },
-    [router]
+    []
   );
+
+  useEffect(() => {
+    const loadSelectedProfile = async () => {
+      if (!selectedProfileUserId || !token) return;
+      setLoadingProfile(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/users/${selectedProfileUserId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error("fetch_profile_failed");
+        const payload = (await response.json()) as { data?: typeof selectedProfile };
+        setSelectedProfile(payload.data ?? null);
+      } catch {
+        setSelectedProfile({
+          id: selectedProfileUserId,
+          fullName: usersMap[selectedProfileUserId]?.fullName ?? "Người dùng",
+          avatarUrl: usersMap[selectedProfileUserId]?.avatarUrl ?? null,
+          coverUrl: null,
+          bio: null,
+          phone: null,
+        });
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    void loadSelectedProfile();
+  }, [selectedProfileUserId, token, usersMap]);
 
   const bootstrap = async (tokenString: string, showSpinner = true) => {
     if (showSpinner) setLoading(true);
@@ -977,6 +1014,85 @@ export default function PostsScreen() {
             </View>
           </KeyboardAvoidingView>
         </SafeAreaView>
+      </Modal>
+
+      <Modal
+        visible={Boolean(selectedProfileUserId)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setSelectedProfileUserId(null);
+          setSelectedProfile(null);
+        }}
+      >
+        <Pressable
+          className="flex-1 bg-black/60 items-center justify-center px-6"
+          onPress={() => {
+            setSelectedProfileUserId(null);
+            setSelectedProfile(null);
+          }}
+        >
+          <Pressable className="w-full max-w-[380px] rounded-2xl overflow-hidden bg-[#111317] border border-slate-700">
+            <View className="h-40 bg-slate-700">
+              {selectedProfile?.coverUrl ? (
+                <Image source={{ uri: selectedProfile.coverUrl }} className="w-full h-full" />
+              ) : null}
+            </View>
+
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedProfileUserId(null);
+                setSelectedProfile(null);
+              }}
+              className="absolute top-3 right-3 bg-black/50 rounded-full w-8 h-8 items-center justify-center"
+            >
+              <MaterialIcons name="close" size={18} color="#fff" />
+            </TouchableOpacity>
+
+            <View className="px-5 pb-5">
+              <View className="-mt-10 mb-3">
+                {selectedProfile?.avatarUrl ? (
+                  <Image source={{ uri: selectedProfile.avatarUrl }} className="w-20 h-20 rounded-full border-4 border-[#111317]" />
+                ) : (
+                  <View className="w-20 h-20 rounded-full border-4 border-[#111317] bg-blue-500 items-center justify-center">
+                    <Text className="text-white font-bold text-xl">
+                      {(selectedProfile?.fullName ?? "U").slice(0, 1).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <Text className="text-white text-3xl font-bold mb-4">
+                {loadingProfile ? "Đang tải..." : selectedProfile?.fullName ?? "Người dùng"}
+              </Text>
+
+              <View className="flex-row gap-3 mb-6">
+                <TouchableOpacity className="flex-1 bg-[#1D2A44] rounded-xl py-3 items-center justify-center flex-row gap-2">
+                  <MaterialIcons name="call" size={18} color="#fff" />
+                  <Text className="text-white font-semibold">Gọi điện</Text>
+                </TouchableOpacity>
+                <TouchableOpacity className="flex-1 bg-[#2563EB] rounded-xl py-3 items-center justify-center flex-row gap-2">
+                  <MaterialIcons name="chat-bubble-outline" size={18} color="#fff" />
+                  <Text className="text-white font-semibold">Nhắn tin</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text className="text-white text-xl font-semibold mb-3">Thông tin cá nhân</Text>
+              <View className="border-t border-slate-700 pt-3 gap-2">
+                <View className="flex-row">
+                  <Text className="text-slate-400 w-20">Bio</Text>
+                  <Text className="text-slate-100 flex-1">{selectedProfile?.bio || "Chưa cập nhật"}</Text>
+                </View>
+                <View className="flex-row">
+                  <Text className="text-slate-400 w-20">Điện thoại</Text>
+                  <Text className="text-slate-100 flex-1">
+                    {selectedProfile?.phone ? `******${selectedProfile.phone.slice(-3)}` : "Chưa cập nhật"}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );
