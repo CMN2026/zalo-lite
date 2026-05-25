@@ -8,7 +8,6 @@ import {
   LogOut,
   MessageSquare,
   Newspaper,
-  Settings,
   Users,
 } from "lucide-react";
 import { clearAuthSession, getSavedAuthUser, type AuthUser } from "../lib/auth";
@@ -114,7 +113,6 @@ export default function Sidebar({
       </button>
 
       <div className="grow"></div>
-      <Settings className="w-6 h-6 hover:text-white cursor-pointer transition-colors" />
       {user ? (
         <button
           onClick={handleLogout}

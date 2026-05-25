@@ -617,6 +617,7 @@ export default function PostsScreen() {
   const [usersMap, setUsersMap] = useState<
     Record<string, { fullName: string; avatarUrl: string | null }>
   >({});
+  const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -668,15 +669,19 @@ export default function PostsScreen() {
     try {
       const friendsRes = await listFriends();
       if (friendsRes && friendsRes.data) {
+        const nextFriendIds = new Set<string>();
         friendsRes.data.forEach((friend) => {
+          nextFriendIds.add(friend.id);
           map[friend.id] = {
             fullName: friend.fullName,
             avatarUrl: friend.avatarUrl,
           };
         });
+        setFriendIds(nextFriendIds);
       }
     } catch (err) {
       console.log("Error loading friends in feed profiles:", err);
+      setFriendIds(new Set());
     }
 
     // Resolve remaining post authors directly from user API
@@ -1067,11 +1072,29 @@ export default function PostsScreen() {
               </Text>
 
               <View className="flex-row gap-3 mb-6">
-                <TouchableOpacity className="flex-1 bg-[#1D2A44] rounded-xl py-3 items-center justify-center flex-row gap-2">
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!selectedProfileUserId || !friendIds.has(selectedProfileUserId)) {
+                      Alert.alert("Thông báo", "Bạn cần kết bạn trước khi gọi điện hoặc nhắn tin.");
+                      return;
+                    }
+                    Alert.alert("Thông báo", "Hiện tại chưa hỗ trợ gọi điện trực tiếp từ modal này.");
+                  }}
+                  className="flex-1 bg-[#1D2A44] rounded-xl py-3 items-center justify-center flex-row gap-2"
+                >
                   <MaterialIcons name="call" size={18} color="#fff" />
                   <Text className="text-white font-semibold">Gọi điện</Text>
                 </TouchableOpacity>
-                <TouchableOpacity className="flex-1 bg-[#2563EB] rounded-xl py-3 items-center justify-center flex-row gap-2">
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!selectedProfileUserId || !friendIds.has(selectedProfileUserId)) {
+                      Alert.alert("Thông báo", "Bạn cần kết bạn trước khi gọi điện hoặc nhắn tin.");
+                      return;
+                    }
+                    Alert.alert("Thông báo", "Hiện tại chưa hỗ trợ nhắn tin trực tiếp từ modal này.");
+                  }}
+                  className="flex-1 bg-[#2563EB] rounded-xl py-3 items-center justify-center flex-row gap-2"
+                >
                   <MaterialIcons name="chat-bubble-outline" size={18} color="#fff" />
                   <Text className="text-white font-semibold">Nhắn tin</Text>
                 </TouchableOpacity>
