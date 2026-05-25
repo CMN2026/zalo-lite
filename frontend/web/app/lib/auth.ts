@@ -96,6 +96,26 @@ export async function resendRegisterCode(verificationSessionId: string) {
   });
 }
 
+export async function requestPasswordReset(email: string) {
+  return post<
+    AuthResponse<{
+      email: string;
+      expiresInMinutes: number;
+    }>
+  >("/api/auth/forgot-password", {
+    body: { email },
+  });
+}
+
+export async function resetPassword(input: {
+  token: string;
+  newPassword: string;
+}) {
+  return post<AuthResponse<{ success: boolean }>>("/api/auth/reset-password", {
+    body: input,
+  });
+}
+
 export const AUTH_TOKEN_KEY = "token";
 export const AUTH_USER_KEY = "user";
 

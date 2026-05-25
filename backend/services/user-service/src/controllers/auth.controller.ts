@@ -63,6 +63,32 @@ export class AuthController {
     }
   }
 
+  static async requestPasswordReset(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const result = await authService.requestPasswordReset(req.body);
+      res.status(200).json({ message: "password_reset_requested", data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async resetPassword(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const result = await authService.resetPassword(req.body);
+      res.status(200).json({ message: "password_reset_success", data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /**
    * Verify JWT token and return user info
    * Used by other microservices to verify tokens (saga pattern)

@@ -96,6 +96,25 @@ authRoutes.post(
   AuthController.loginWithGoogle,
 );
 
+authRoutes.post(
+  "/forgot-password",
+  [
+    body("email").trim().isEmail(),
+    validateRequest,
+  ],
+  AuthController.requestPasswordReset,
+);
+
+authRoutes.post(
+  "/reset-password",
+  [
+    body("token").trim().notEmpty(),
+    body("newPassword").isLength({ min: 8, max: 72 }),
+    validateRequest,
+  ],
+  AuthController.resetPassword,
+);
+
 /**
  * POST /auth/verify
  * Verify JWT token and return user info
