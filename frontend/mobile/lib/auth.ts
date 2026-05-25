@@ -31,8 +31,39 @@ export async function register(input: {
   phone?: string;
   avatarUrl?: string | null;
 }) {
-  return post<AuthResponse<{ token: string; user: AuthUser }>>("/api/auth/register", {
+  return post<
+    AuthResponse<{
+      verificationSessionId: string;
+      email: string;
+      expiresAt: string;
+      resendAfterSeconds: number;
+      maxAttempts: number;
+    }>
+  >("/api/auth/register", {
     body: input,
+  });
+}
+
+export async function verifyRegisterCode(input: {
+  verificationSessionId: string;
+  code: string;
+}) {
+  return post<AuthResponse<{ token: string; user: AuthUser }>>(
+    "/api/auth/register/verify",
+    { body: input },
+  );
+}
+
+export async function resendRegisterCode(verificationSessionId: string) {
+  return post<
+    AuthResponse<{
+      verificationSessionId: string;
+      email: string;
+      expiresAt: string;
+      resendAfterSeconds: number;
+    }>
+  >("/api/auth/register/resend", {
+    body: { verificationSessionId },
   });
 }
 

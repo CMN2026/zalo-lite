@@ -1,10 +1,12 @@
-import { AuthProvider, UserRole } from "@prisma/client";
+import { AuthProvider, UserRole, VerificationStatus } from "@prisma/client";
+import { createHash, randomInt } from "node:crypto";
 import { prisma } from "../config/db.js";
 import { env } from "../config/env.js";
 import { signAccessToken } from "../utils/jwt.js";
 import { verifyGoogleIdToken } from "../utils/google-auth.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { HttpError } from "../utils/http-error.js";
+import { EmailService } from "./email.service.js";
 
 type GoogleAuthInput = {
   idToken: string;
@@ -26,7 +28,252 @@ type LoginInput = {
   password: string;
 };
 
+type RegisterVerifyInput = {
+  verificationSessionId: string;
+  code: string;
+};
+
+type RegisterResendInput = {
+  verificationSessionId: string;
+};
+
+const OTP_TTL_MINUTES = 15;
+const OTP_RESEND_SECONDS = 60;
+const OTP_MAX_ATTEMPTS = 3;
+
 export class AuthService {
+  private readonly emailService = new EmailService();
+
+  private generateOtpCode() {
+    return randomInt(100000, 1000000).toString();
+  }
+
+  private hashOtpCode(code: string) {
+    return createHash("sha256").update(code).digest("hex");
+  }
+
+  private getOtpExpiryDate() {
+    return new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
+  }
+
+  private getResendAvailableDate() {
+    return new Date(Date.now() + OTP_RESEND_SECONDS * 1000);
+  }
+
+  private async assertRegistrationIdentityAvailable(email: string, phone: string | null) {
+    if (phone) {
+      const occupiedPhone = await prisma.user.findUnique({ where: { phone } });
+      if (occupiedPhone) {
+        throw new HttpError(409, "phone_already_used");
+      }
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+      include: { localCredential: true },
+    });
+
+    if (existingUser?.localCredential) {
+      throw new HttpError(409, "email_already_registered");
+    }
+  }
+
+  async initiateCredentialRegistration(input: RegisterInput) {
+    const email = input.email.toLowerCase().trim();
+    const phone = input.phone?.trim() || null;
+    await this.assertRegistrationIdentityAvailable(email, phone);
+
+    const passwordHash = await hashPassword(input.password);
+    const otpCode = this.generateOtpCode();
+    const otpHash = this.hashOtpCode(otpCode);
+
+    const session = await prisma.emailVerificationSession.create({
+      data: {
+        email,
+        fullName: input.fullName.trim(),
+        phone,
+        avatarUrl: input.avatarUrl ?? null,
+        passwordHash,
+        otpHash,
+        otpExpiresAt: this.getOtpExpiryDate(),
+        resendAvailableAt: this.getResendAvailableDate(),
+        status: VerificationStatus.PENDING,
+      },
+    });
+
+    await this.emailService.sendVerificationCode(email, otpCode, OTP_TTL_MINUTES);
+
+    return {
+      verificationSessionId: session.id,
+      email: session.email,
+      expiresAt: session.otpExpiresAt.toISOString(),
+      resendAfterSeconds: OTP_RESEND_SECONDS,
+      maxAttempts: OTP_MAX_ATTEMPTS,
+    };
+  }
+
+  async verifyCredentialRegistration(input: RegisterVerifyInput) {
+    const code = input.code.trim();
+    if (!/^\d{6}$/.test(code)) {
+      throw new HttpError(400, "verification_code_invalid");
+    }
+
+    const session = await prisma.emailVerificationSession.findUnique({
+      where: { id: input.verificationSessionId },
+    });
+
+    if (!session) {
+      throw new HttpError(404, "verification_session_not_found");
+    }
+
+    if (session.status !== VerificationStatus.PENDING) {
+      throw new HttpError(400, "verification_session_inactive");
+    }
+
+    if (session.attemptCount >= OTP_MAX_ATTEMPTS) {
+      await prisma.emailVerificationSession.update({
+        where: { id: session.id },
+        data: { status: VerificationStatus.CANCELLED },
+      });
+      throw new HttpError(400, "verification_failed_max_attempts");
+    }
+
+    if (session.otpExpiresAt.getTime() <= Date.now()) {
+      await prisma.emailVerificationSession.update({
+        where: { id: session.id },
+        data: { status: VerificationStatus.EXPIRED },
+      });
+      throw new HttpError(400, "verification_code_expired");
+    }
+
+    const isValid = this.hashOtpCode(code) === session.otpHash;
+    if (!isValid) {
+      const nextAttemptCount = session.attemptCount + 1;
+      const shouldCancel = nextAttemptCount >= OTP_MAX_ATTEMPTS;
+      await prisma.emailVerificationSession.update({
+        where: { id: session.id },
+        data: {
+          attemptCount: nextAttemptCount,
+          status: shouldCancel ? VerificationStatus.CANCELLED : VerificationStatus.PENDING,
+        },
+      });
+
+      if (shouldCancel) {
+        throw new HttpError(400, "verification_failed_max_attempts");
+      }
+
+      throw new HttpError(400, "verification_code_invalid");
+    }
+
+    await this.assertRegistrationIdentityAvailable(session.email, session.phone);
+
+    const defaultRole = env.ADMIN_EMAILS.includes(session.email)
+      ? UserRole.ADMIN
+      : UserRole.USER;
+
+    const user = await prisma.$transaction(async (tx) => {
+      const existingUser = await tx.user.findUnique({
+        where: { email: session.email },
+      });
+
+      const targetUser = existingUser
+        ? await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              fullName: session.fullName,
+              phone: session.phone,
+              avatarUrl: session.avatarUrl ?? existingUser.avatarUrl,
+            },
+          })
+        : await tx.user.create({
+            data: {
+              email: session.email,
+              fullName: session.fullName,
+              phone: session.phone,
+              avatarUrl: session.avatarUrl,
+              role: defaultRole,
+            },
+          });
+
+      await tx.localCredential.create({
+        data: {
+          userId: targetUser.id,
+          passwordHash: session.passwordHash,
+        },
+      });
+
+      await tx.emailVerificationSession.update({
+        where: { id: session.id },
+        data: {
+          status: VerificationStatus.VERIFIED,
+          userId: targetUser.id,
+        },
+      });
+
+      return targetUser;
+    });
+
+    return this.buildAuthResponse(user);
+  }
+
+  async resendCredentialVerificationCode(input: RegisterResendInput) {
+    const session = await prisma.emailVerificationSession.findUnique({
+      where: { id: input.verificationSessionId },
+    });
+
+    if (!session) {
+      throw new HttpError(404, "verification_session_not_found");
+    }
+
+    if (session.status !== VerificationStatus.PENDING) {
+      throw new HttpError(400, "verification_session_inactive");
+    }
+
+    if (session.attemptCount >= OTP_MAX_ATTEMPTS) {
+      await prisma.emailVerificationSession.update({
+        where: { id: session.id },
+        data: { status: VerificationStatus.CANCELLED },
+      });
+      throw new HttpError(400, "verification_failed_max_attempts");
+    }
+
+    if (session.otpExpiresAt.getTime() <= Date.now()) {
+      await prisma.emailVerificationSession.update({
+        where: { id: session.id },
+        data: { status: VerificationStatus.EXPIRED },
+      });
+      throw new HttpError(400, "verification_code_expired");
+    }
+
+    if (session.resendAvailableAt.getTime() > Date.now()) {
+      throw new HttpError(429, "resend_too_soon");
+    }
+
+    await this.assertRegistrationIdentityAvailable(session.email, session.phone);
+
+    const otpCode = this.generateOtpCode();
+    const nextSession = await prisma.emailVerificationSession.update({
+      where: { id: session.id },
+      data: {
+        otpHash: this.hashOtpCode(otpCode),
+        resendAvailableAt: this.getResendAvailableDate(),
+      },
+    });
+
+    await this.emailService.sendVerificationCode(
+      nextSession.email,
+      otpCode,
+      OTP_TTL_MINUTES,
+    );
+
+    return {
+      verificationSessionId: nextSession.id,
+      email: nextSession.email,
+      expiresAt: nextSession.otpExpiresAt.toISOString(),
+      resendAfterSeconds: OTP_RESEND_SECONDS,
+    };
+  }
+
   async registerWithCredentials(input: RegisterInput) {
     const email = input.email.toLowerCase().trim();
     const phone = input.phone?.trim() || null;
