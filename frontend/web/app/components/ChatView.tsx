@@ -924,6 +924,26 @@ export default function ChatView({
     }, {});
   }, [allUsers]);
 
+  const callParticipantDirectory = useMemo(() => {
+    const map: Record<string, { name?: string; avatarUrl?: string | null }> = {};
+
+    for (const entry of allUsers) {
+      map[entry.id] = {
+        name: entry.fullName || entry.email || entry.id,
+        avatarUrl: entry.avatarUrl ?? null,
+      };
+    }
+
+    if (currentUserId) {
+      map[currentUserId] = {
+        name: user?.fullName || user?.email || "Bạn",
+        avatarUrl: user?.avatarUrl ?? null,
+      };
+    }
+
+    return map;
+  }, [allUsers, currentUserId, user?.avatarUrl, user?.email, user?.fullName]);
+
   const clearTypingUsers = useCallback(() => {
     Object.values(typingUserTimeoutsRef.current).forEach((timer) => {
       clearTimeout(timer);
@@ -4022,6 +4042,8 @@ export default function ChatView({
           status={activeCall.status}
           tokenPayload={liveKitTokenPayload}
           tokenError={liveKitTokenError}
+          currentUserId={currentUserId}
+          participantDirectory={callParticipantDirectory}
           onRetryToken={handleRetryLiveKitToken}
           onHangUp={handleEndCall}
         />
