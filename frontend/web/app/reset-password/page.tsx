@@ -55,11 +55,16 @@ function ResetPasswordForm() {
       window.setTimeout(() => router.push("/login"), 1200);
     } catch (err) {
       const message = err instanceof Error ? err.message : "request_failed";
-      if (message === "reset_token_invalid_or_expired") {
-        setError("Link đặt lại mật khẩu không hợp lệ hoặc đã hết hạn (5 phút).");
-      } else {
-        setError("Không thể đặt lại mật khẩu. Vui lòng thử lại.");
-      }
+      const errorMap: Record<string, string> = {
+        reset_token_invalid_or_expired:
+          "Link đặt lại mật khẩu không hợp lệ hoặc đã hết hạn (5 phút).",
+        reset_token_missing: "Thiếu token đặt lại mật khẩu.",
+        user_not_found: "Không tìm thấy người dùng.",
+        validation_error: "Mật khẩu mới không hợp lệ.",
+        api_response_is_not_json_check_api_base_url:
+          "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
+      };
+      setError(errorMap[message] ?? "Không thể đặt lại mật khẩu. Vui lòng thử lại.");
     } finally {
       setLoading(false);
     }

@@ -38,10 +38,15 @@ export default function LoginPage() {
         err instanceof Error && err.message
           ? err.message
           : "Đăng nhập thất bại. Vui lòng thử lại.";
-      const message =
-        rawMessage === "invalid_credentials"
-          ? "Sai thông tin tài khoản hoặc mật khẩu."
-          : rawMessage;
+      const errorMap: Record<string, string> = {
+        invalid_credentials: "Sai thông tin tài khoản hoặc mật khẩu.",
+        account_inactive: "Tài khoản đã bị vô hiệu hóa.",
+        validation_error: "Dữ liệu đăng nhập không hợp lệ.",
+        missing_local_session: "Phiên đăng nhập không hợp lệ.",
+        api_response_is_not_json_check_api_base_url:
+          "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
+      };
+      const message = errorMap[rawMessage] ?? "Đăng nhập thất bại. Vui lòng thử lại.";
       console.error("Login error:", err);
       setError(message);
     } finally {

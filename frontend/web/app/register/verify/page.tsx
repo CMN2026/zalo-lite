@@ -117,7 +117,12 @@ function VerifyRegisterPageContent() {
         setIsLocked(true);
         setError("Không tìm thấy phiên xác nhận. Vui lòng đăng ký lại.");
       } else {
-        setError("Không thể xác nhận mã. Vui lòng thử lại.");
+        const errorMap: Record<string, string> = {
+          validation_error: "Mã OTP không hợp lệ.",
+          api_response_is_not_json_check_api_base_url:
+            "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
+        };
+        setError(errorMap[authError.message] ?? "Không thể xác nhận mã. Vui lòng thử lại.");
       }
     } finally {
       setLoading(false);
@@ -150,7 +155,12 @@ function VerifyRegisterPageContent() {
         setIsLocked(true);
         setError("Phiên xác nhận không còn hiệu lực. Vui lòng đăng ký lại.");
       } else {
-        setError("Không thể gửi lại mã. Vui lòng thử lại.");
+        const errorMap: Record<string, string> = {
+          validation_error: "Yêu cầu gửi lại mã không hợp lệ.",
+          api_response_is_not_json_check_api_base_url:
+            "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
+        };
+        setError(errorMap[authError.message] ?? "Không thể gửi lại mã. Vui lòng thử lại.");
       }
     } finally {
       setResendLoading(false);

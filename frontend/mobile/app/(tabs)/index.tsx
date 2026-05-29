@@ -78,6 +78,7 @@ interface Message {
   recalled_at?: string | null;
   recalled_by?: string | null;
   reactions?: MessageReaction[];
+  reply_to_message_id?: string;
 }
 
 type ComposerAttachment = {
@@ -214,6 +215,17 @@ function getMessagePreview(
   }
 
   return text || SYSTEM_GREETING;
+}
+
+function getReplyPreviewText(message: Message | null): string {
+  if (!message) return "";
+  const { text, file } = parseMessageContent(message.content);
+  if (file) {
+    return file.mimetype?.startsWith("image/")
+      ? "🖼 Hình ảnh"
+      : `📎 ${file.originalName ?? file.filename}`;
+  }
+  return text || "Tin nhắn";
 }
 
 // ── Image Viewer Modal ────────────────────────────────────────────────────────
@@ -417,6 +429,7 @@ export default function ChatsScreen() {
   const [activeActionMessageId, setActiveActionMessageId] = useState<
     string | null
   >(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [showChatDetails, setShowChatDetails] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockedByCurrentUser, setBlockedByCurrentUser] = useState(false);
@@ -497,6 +510,10 @@ export default function ChatsScreen() {
   const fileItems = useMemo(() => sharedMedia.filter((item) => !item.isImage), [sharedMedia]);
 
   const directPeerId = activeConv?.type === "direct" && activeConv.peerId ? activeConv.peerId : null;
+  const messageById = useMemo(
+    () => new Map(messages.map((message) => [message.id, message])),
+    [messages],
+  );
 
   const handleBlockToggle = useCallback(async () => {
     if (!directPeerId) return;
@@ -1202,6 +1219,7 @@ export default function ChatsScreen() {
       type: "text",
       content: text,
       created_at: new Date().toISOString(),
+      reply_to_message_id: replyingTo?.id,
     };
     setMessages((prev) => [...prev, optimistic]);
     setConversations((prev) =>
@@ -1225,15 +1243,17 @@ export default function ChatsScreen() {
           conversation_id: activeChatId,
           content: text,
           type: "text",
+          reply_to_message_id: replyingTo?.id,
         }),
       });
+      setReplyingTo(null);
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       Alert.alert("Lỗi", "Không thể gửi tin nhắn. Vui lòng thử lại.");
     } finally {
       setSending(false);
     }
-  }, [activeChatId, currentUserId, emit, inputText, sending]);
+  }, [activeChatId, currentUserId, emit, inputText, replyingTo, sending]);
 
   const sendAttachment = useCallback(async () => {
     if (!activeChatId || !composerAttachment || sending) return;
@@ -1271,6 +1291,9 @@ export default function ChatsScreen() {
       if (caption) {
         formData.append("content", caption);
       }
+      if (replyingTo?.id) {
+        formData.append("reply_to_message_id", replyingTo.id);
+      }
 
       await authFetch(
         `/api/messages/${encodeURIComponent(activeChatId)}/upload`,
@@ -1280,6 +1303,7 @@ export default function ChatsScreen() {
         },
       );
       setComposerAttachment(null);
+      setReplyingTo(null);
       if (activeConv) {
         await openChat(activeConv);
       }
@@ -1288,7 +1312,7 @@ export default function ChatsScreen() {
     } finally {
       setSending(false);
     }
-  }, [activeChatId, activeConv, emit, inputText, openChat, composerAttachment, sending]);
+  }, [activeChatId, activeConv, emit, inputText, openChat, composerAttachment, replyingTo, sending]);
 
   const pickImageAttachment = useCallback(async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -2007,7 +2031,9 @@ export default function ChatsScreen() {
               {messages.map((msg) => {
                 const isMe = msg.sender_id === currentUserId;
                 const isSystem = msg.type === "system";
-                const { text: previewText } = parseMessageContent(msg.content);
+                const repliedMessage = msg.reply_to_message_id
+                  ? messageById.get(msg.reply_to_message_id) ?? null
+                  : null;
 
                 if (isSystem) {
                   return (
@@ -2078,6 +2104,46 @@ export default function ChatsScreen() {
                             borderColor: "#e2e8f0",
                           }}
                         >
+                          {repliedMessage && (
+                            <Pressable
+                              onPress={() => {
+                                const index = messages.findIndex((m) => m.id === repliedMessage.id);
+                                if (index >= 0) {
+                                  const approxY = Math.max(0, index * 82 - 140);
+                                  scrollRef.current?.scrollTo({ y: approxY, animated: true });
+                                }
+                              }}
+                              style={{
+                                borderLeftWidth: 2,
+                                borderLeftColor: isMe ? "rgba(255,255,255,0.85)" : "#3b82f6",
+                                backgroundColor: isMe ? "rgba(255,255,255,0.15)" : "#eff6ff",
+                                borderRadius: 8,
+                                paddingHorizontal: 8,
+                                paddingVertical: 6,
+                                marginBottom: 8,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: "700",
+                                  color: isMe ? "#dbeafe" : "#1d4ed8",
+                                  marginBottom: 2,
+                                }}
+                              >
+                                {repliedMessage.sender_id === currentUserId ? "Bạn" : (repliedMessage.sender_name || "Người dùng")}
+                              </Text>
+                              <Text
+                                numberOfLines={1}
+                                style={{
+                                  fontSize: 11,
+                                  color: isMe ? "#e2e8f0" : "#334155",
+                                }}
+                              >
+                                {getReplyPreviewText(repliedMessage)}
+                              </Text>
+                            </Pressable>
+                          )}
                           {renderMessageContent(msg, isMe)}
                         </View>
                       </Pressable>
@@ -2133,6 +2199,17 @@ export default function ChatsScreen() {
                               </Text>
                             </TouchableOpacity>
                           )}
+
+                          <TouchableOpacity
+                            onPress={() => {
+                              setReplyingTo(msg);
+                              setActiveActionMessageId(null);
+                            }}
+                          >
+                            <Text className="text-[11px] text-blue-600 font-medium">
+                              Trả lời
+                            </Text>
+                          </TouchableOpacity>
 
                           <TouchableOpacity
                             onPress={() => void handleDeleteMessage(msg)}
@@ -2219,6 +2296,22 @@ export default function ChatsScreen() {
                   ) : null}
                 </View>
                 <TouchableOpacity onPress={() => setComposerAttachment(null)}>
+                  <Text className="text-slate-500 text-base">✕</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {replyingTo && (
+            <View className="px-4 pb-2">
+              <View className="flex-row items-center bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
+                <View className="flex-1">
+                  <Text className="text-[11px] font-semibold text-blue-700">Đang trả lời</Text>
+                  <Text className="text-xs text-blue-600" numberOfLines={1}>
+                    {getReplyPreviewText(replyingTo)}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setReplyingTo(null)}>
                   <Text className="text-slate-500 text-base">✕</Text>
                 </TouchableOpacity>
               </View>

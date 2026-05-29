@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { API_BASE_URL } from "../lib/api";
+import type { AppLanguage } from "./SettingsView";
 
 // ============================================================================
 // TYPES
@@ -39,35 +40,6 @@ interface Conversation {
 // QUICK SUGGESTIONS
 // ============================================================================
 
-const QUICK_SUGGESTIONS = [
-  {
-    id: "password",
-    label: "Quên mật khẩu",
-    text: "Tôi quên mật khẩu, cần đặt lại",
-  },
-  {
-    id: "add_friend",
-    label: "Thêm bạn bè",
-    text: "Tôi muốn biết cách thêm bạn bè",
-  },
-  {
-    id: "create_group",
-    label: "Tạo nhóm chat",
-    text: "Tôi cần hỗ trợ tạo nhóm chat",
-  },
-  {
-    id: "account",
-    label: "Vấn đề tài khoản",
-    text: "Tài khoản của tôi đang gặp vấn đề",
-  },
-  { id: "payment", label: "Thanh toán", text: "Tôi có câu hỏi về phí sử dụng" },
-  {
-    id: "staff",
-    label: "Gặp nhân viên",
-    text: "Tôi muốn nói chuyện với nhân viên",
-  },
-] as const;
-
 // ============================================================================
 // HELPERS
 // ============================================================================
@@ -84,17 +56,23 @@ function authHeaders() {
   };
 }
 
-function formatTime(date: DateValue | undefined): string {
+function formatTime(date: DateValue | undefined, language: AppLanguage): string {
   if (!date) return "";
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString(language === "en" ? "en-US" : "vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-function statusLabel(s?: Conversation["status"]): string {
-  if (s === "needs_staff") return "Cần nhân viên";
-  if (s === "resolved" || s === "closed") return "Đã xử lý";
-  return "Đang hỗ trợ";
+function statusLabel(
+  s: Conversation["status"] | undefined,
+  labels: { needsStaff: string; resolved: string; active: string },
+): string {
+  if (s === "needs_staff") return labels.needsStaff;
+  if (s === "resolved" || s === "closed") return labels.resolved;
+  return labels.active;
 }
 
 function statusBadgeClass(s?: Conversation["status"]): string {
@@ -104,19 +82,22 @@ function statusBadgeClass(s?: Conversation["status"]): string {
   return "bg-sky-100 text-sky-700";
 }
 
-function getConversationTitle(conv: Conversation): string {
+function getConversationTitle(conv: Conversation, defaultTitle: string): string {
   if (conv.title?.trim()) return conv.title;
   const firstUser = conv.messages?.find((m) => m.senderId !== "chatbot");
-  if (!firstUser?.content) return "Hỗ trợ khách hàng";
+  if (!firstUser?.content) return defaultTitle;
   const t = firstUser.content;
   return t.length > 32 ? `${t.slice(0, 32)}…` : t;
 }
 
-function getLastPreview(conv: Conversation): string {
-  if (!conv.messages?.length) return "Chưa có tin nhắn";
+function getLastPreview(
+  conv: Conversation,
+  labels: { noMessages: string; botPrefix: string; youPrefix: string },
+): string {
+  if (!conv.messages?.length) return labels.noMessages;
   const last = conv.messages.at(-1);
-  if (!last) return "Chưa có tin nhắn";
-  const prefix = last.senderId === "chatbot" ? "Bot: " : "Bạn: ";
+  if (!last) return labels.noMessages;
+  const prefix = last.senderId === "chatbot" ? labels.botPrefix : labels.youPrefix;
   const text =
     last.content.length > 38 ? `${last.content.slice(0, 38)}…` : last.content;
   return `${prefix}${text}`;
@@ -126,7 +107,117 @@ function getLastPreview(conv: Conversation): string {
 // COMPONENT
 // ============================================================================
 
-export default function ChatbotView() {
+export default function ChatbotView({
+  language = "vi",
+}: Readonly<{ language?: AppLanguage }>) {
+  const t =
+    language === "en"
+      ? {
+          loading: "Loading...",
+          noConversations: "No conversations yet",
+          noMessages: "No messages yet",
+          customerSupport: "Customer Support",
+          reply247: "Reply 24/7",
+          newConversation: "New conversation",
+          deleteTitle: "Delete",
+          deleteConfirm: "Delete this conversation?",
+          deleteFail: "Cannot delete. Please try again.",
+          closeConfirm: "Mark this conversation as resolved?",
+          hello: "Hello!",
+          intro: "I am Zalo-Lite customer support assistant.",
+          intro2: "What can I help you with? Choose a suggestion or type below.",
+          typeToStart: "Or type your question below to start",
+          loadingMessages: "Loading messages...",
+          aiAssistant: "AI Assistant",
+          staff: "Staff",
+          me: "ME",
+          messageCount: "messages",
+          closeConversation: "Close conversation",
+          escalating: "Escalating to support staff",
+          escalatingHint: "A staff member will reply as soon as possible.",
+          resolvedTitle: "Conversation has been resolved",
+          thanks: "Thank you for contacting us.",
+          conversationEnded: "Conversation ended.",
+          startNew: "Start new",
+          inputPlaceholder: "Type a message...",
+          questionPlaceholder: "Type your question to start...",
+          send: "Send",
+          sendFail: "Unable to send message.",
+          statusNeedsStaff: "Needs staff",
+          statusResolved: "Resolved",
+          statusActive: "In support",
+          suggestionPassword: "Forgot password",
+          suggestionAddFriend: "Add friends",
+          suggestionGroup: "Create group",
+          suggestionAccount: "Account issue",
+          suggestionPayment: "Payment",
+          suggestionStaff: "Talk to staff",
+          suggestionTextPassword: "I forgot my password and need to reset it",
+          suggestionTextAddFriend: "How can I add friends?",
+          suggestionTextGroup: "I need help creating a group chat",
+          suggestionTextAccount: "I have an issue with my account",
+          suggestionTextPayment: "I have a question about usage fees",
+          suggestionTextStaff: "I want to talk to support staff",
+          botPrefix: "Bot: ",
+          youPrefix: "You: ",
+        }
+      : {
+          loading: "Đang tải...",
+          noConversations: "Chưa có cuộc trò chuyện nào",
+          noMessages: "Chưa có tin nhắn",
+          customerSupport: "Hỗ trợ khách hàng",
+          reply247: "Trả lời 24/7",
+          newConversation: "Cuộc trò chuyện mới",
+          deleteTitle: "Xóa",
+          deleteConfirm: "Xóa cuộc trò chuyện này?",
+          deleteFail: "Không thể xóa. Vui lòng thử lại.",
+          closeConfirm: "Đánh dấu cuộc trò chuyện là đã xử lý?",
+          hello: "Xin chào!",
+          intro: "Tôi là trợ lý hỗ trợ khách hàng của Zalo-Lite.",
+          intro2: "Bạn đang gặp vấn đề gì? Hãy chọn hoặc nhập câu hỏi bên dưới.",
+          typeToStart: "Hoặc gõ câu hỏi bên dưới để bắt đầu",
+          loadingMessages: "Đang tải tin nhắn...",
+          aiAssistant: "Trợ lý AI",
+          staff: "Nhân viên",
+          me: "TÔI",
+          messageCount: "tin nhắn",
+          closeConversation: "Đóng hội thoại",
+          escalating: "Đang chuyển đến nhân viên hỗ trợ",
+          escalatingHint: "Nhân viên sẽ phản hồi sớm nhất có thể.",
+          resolvedTitle: "Cuộc trò chuyện đã được xử lý",
+          thanks: "Cảm ơn bạn đã liên hệ.",
+          conversationEnded: "Cuộc trò chuyện đã kết thúc.",
+          startNew: "Bắt đầu mới",
+          inputPlaceholder: "Nhập tin nhắn...",
+          questionPlaceholder: "Nhập câu hỏi để bắt đầu...",
+          send: "Gửi",
+          sendFail: "Không thể gửi tin nhắn.",
+          statusNeedsStaff: "Cần nhân viên",
+          statusResolved: "Đã xử lý",
+          statusActive: "Đang hỗ trợ",
+          suggestionPassword: "Quên mật khẩu",
+          suggestionAddFriend: "Thêm bạn bè",
+          suggestionGroup: "Tạo nhóm chat",
+          suggestionAccount: "Vấn đề tài khoản",
+          suggestionPayment: "Thanh toán",
+          suggestionStaff: "Gặp nhân viên",
+          suggestionTextPassword: "Tôi quên mật khẩu, cần đặt lại",
+          suggestionTextAddFriend: "Tôi muốn biết cách thêm bạn bè",
+          suggestionTextGroup: "Tôi cần hỗ trợ tạo nhóm chat",
+          suggestionTextAccount: "Tài khoản của tôi đang gặp vấn đề",
+          suggestionTextPayment: "Tôi có câu hỏi về phí sử dụng",
+          suggestionTextStaff: "Tôi muốn nói chuyện với nhân viên",
+          botPrefix: "Bot: ",
+          youPrefix: "Bạn: ",
+        };
+  const quickSuggestions = [
+    { id: "password", label: t.suggestionPassword, text: t.suggestionTextPassword },
+    { id: "add_friend", label: t.suggestionAddFriend, text: t.suggestionTextAddFriend },
+    { id: "create_group", label: t.suggestionGroup, text: t.suggestionTextGroup },
+    { id: "account", label: t.suggestionAccount, text: t.suggestionTextAccount },
+    { id: "payment", label: t.suggestionPayment, text: t.suggestionTextPayment },
+    { id: "staff", label: t.suggestionStaff, text: t.suggestionTextStaff },
+  ] as const;
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -189,7 +280,7 @@ export default function ChatbotView() {
         const payload = (await res.json().catch(() => ({}))) as {
           message?: string;
         };
-        throw new Error(payload.message ?? `Lỗi ${res.status}`);
+        throw new Error(payload.message ?? `Error ${res.status}`);
       }
 
       const data = await res.json();
@@ -233,7 +324,7 @@ export default function ChatbotView() {
         if (resolvedConvId) await fetchMessages(resolvedConvId);
       } catch (err) {
         setSendError(
-          err instanceof Error ? err.message : "Không thể gửi tin nhắn.",
+          err instanceof Error ? err.message : t.sendFail,
         );
         setMessages((prev) => prev.filter((m) => m.id !== optMsg.id));
       } finally {
@@ -265,7 +356,7 @@ export default function ChatbotView() {
   const handleDeleteConv = useCallback(
     async (convId: string, e: React.MouseEvent) => {
       e.stopPropagation();
-      if (!confirm("Xóa cuộc trò chuyện này?")) return;
+      if (!confirm(t.deleteConfirm)) return;
       try {
         const res = await fetch(
           `${API_BASE_URL}/api/chatbot/conversations/${convId}`,
@@ -280,14 +371,14 @@ export default function ChatbotView() {
           setMessages([]);
         }
       } catch {
-        alert("Không thể xóa. Vui lòng thử lại.");
+        alert(t.deleteFail);
       }
     },
     [activeId],
   );
 
   const handleCloseConv = useCallback(async () => {
-    if (!activeId || !confirm("Đánh dấu cuộc trò chuyện là đã xử lý?")) return;
+    if (!activeId || !confirm(t.closeConfirm)) return;
     try {
       await fetch(
         `${API_BASE_URL}/api/chatbot/conversations/${activeId}/close`,
@@ -338,12 +429,12 @@ export default function ChatbotView() {
   let conversationListContent: React.ReactNode;
   if (loadingConvs) {
     conversationListContent = (
-      <div className="p-6 text-center text-sm text-slate-400">Đang tải...</div>
+      <div className="p-6 text-center text-sm text-slate-400">{t.loading}</div>
     );
   } else if (conversations.length === 0) {
     conversationListContent = (
       <div className="p-6 text-center text-sm text-slate-400">
-        Chưa có cuộc trò chuyện nào
+        {t.noConversations}
       </div>
     );
   } else {
@@ -369,14 +460,14 @@ export default function ChatbotView() {
                       isActive ? "text-white" : "text-slate-900"
                     }`}
                   >
-                    {getConversationTitle(conv)}
+                    {getConversationTitle(conv, t.customerSupport)}
                   </p>
                   <span
                     className={`text-[10px] shrink-0 ${
                       isActive ? "text-blue-200" : "text-slate-400"
                     }`}
                   >
-                    {formatTime(conv.lastMessageAt)}
+                  {formatTime(conv.lastMessageAt, language)}
                   </span>
                 </div>
                 <p
@@ -384,7 +475,7 @@ export default function ChatbotView() {
                     isActive ? "text-blue-200" : "text-slate-400"
                   }`}
                 >
-                  {getLastPreview(conv)}
+                  {getLastPreview(conv, { noMessages: t.noMessages, botPrefix: t.botPrefix, youPrefix: t.youPrefix })}
                 </p>
                 <span
                   className={`inline-flex mt-1.5 items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
@@ -393,7 +484,11 @@ export default function ChatbotView() {
                       : statusBadgeClass(conv.status)
                   }`}
                 >
-                  {statusLabel(conv.status)}
+                  {statusLabel(conv.status, {
+                    needsStaff: t.statusNeedsStaff,
+                    resolved: t.statusResolved,
+                    active: t.statusActive,
+                  })}
                 </span>
               </button>
               <button
@@ -404,7 +499,7 @@ export default function ChatbotView() {
                     ? "text-blue-200 hover:text-white"
                     : "text-slate-400 hover:text-slate-600"
                 }`}
-                title="Xóa"
+                title={t.deleteTitle}
               >
                 ✕
               </button>
@@ -422,14 +517,14 @@ export default function ChatbotView() {
         <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white text-2xl mb-4 shadow-md">
           💬
         </div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">Xin chào!</h1>
+        <h1 className="text-2xl font-bold text-slate-900 mb-1">{t.hello}</h1>
         <p className="text-slate-500 text-sm mb-7">
-          Tôi là trợ lý hỗ trợ khách hàng của Zalo-Lite.
+          {t.intro}
           <br />
-          Bạn đang gặp vấn đề gì? Hãy chọn hoặc nhập câu hỏi bên dưới.
+          {t.intro2}
         </p>
         <div className="grid grid-cols-2 gap-3 w-full mb-6">
-          {QUICK_SUGGESTIONS.map((s) => (
+          {quickSuggestions.map((s) => (
             <button
               key={s.id}
               onClick={() => handleSend(s.text, null)}
@@ -441,20 +536,20 @@ export default function ChatbotView() {
           ))}
         </div>
         <p className="text-xs text-slate-400">
-          Hoặc gõ câu hỏi bên dưới để bắt đầu
+          {t.typeToStart}
         </p>
       </div>
     );
   } else if (loadingMsgs) {
     chatContent = (
       <div className="flex items-center justify-center h-full text-slate-400 text-sm">
-        Đang tải tin nhắn...
+        {t.loadingMessages}
       </div>
     );
   } else if (messages.length === 0) {
     chatContent = (
       <div className="flex items-center justify-center h-full text-slate-400 text-sm">
-        Chưa có tin nhắn
+        {t.noMessages}
       </div>
     );
   } else {
@@ -480,7 +575,7 @@ export default function ChatbotView() {
               >
                 {!isUser && (
                   <span className="text-[10px] text-slate-400 mb-0.5 ml-1">
-                    {isBot ? "Trợ lý AI" : (msg.senderName ?? "Nhân viên")}
+                    {isBot ? t.aiAssistant : (msg.senderName ?? t.staff)}
                   </span>
                 )}
                 <div
@@ -494,13 +589,13 @@ export default function ChatbotView() {
                   {msg.content}
                 </div>
                 <span className="text-[10px] text-slate-400 mt-0.5">
-                  {formatTime(msg.createdAt)}
+                  {formatTime(msg.createdAt, language)}
                 </span>
               </div>
 
               {isUser && (
                 <div className="w-7 h-7 rounded-full shrink-0 bg-slate-200 flex items-center justify-center text-slate-500 text-xs font-bold">
-                  TÔI
+                  {t.me}
                 </div>
               )}
             </div>
@@ -535,16 +630,16 @@ export default function ChatbotView() {
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <div>
             <p className="text-sm font-bold text-slate-900">
-              Hỗ trợ khách hàng
+              {t.customerSupport}
             </p>
-            <p className="text-[11px] text-slate-400">Trả lời 24/7</p>
+            <p className="text-[11px] text-slate-400">{t.reply247}</p>
           </div>
           <button
             onClick={handleNewConv}
             className="text-xs font-medium text-blue-600 hover:text-blue-700 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
-            title="Cuộc trò chuyện mới"
+            title={t.newConversation}
           >
-            + Mới
+            + {language === "en" ? "New" : "Mới"}
           </button>
         </div>
 
@@ -559,16 +654,20 @@ export default function ChatbotView() {
           <div className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white">
             <div>
               <p className="text-sm font-semibold text-slate-900">
-                {getConversationTitle(activeConv)}
+                {getConversationTitle(activeConv, t.customerSupport)}
               </p>
               <div className="flex items-center gap-2 mt-0.5">
                 <span
                   className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${statusBadgeClass(activeConv.status)}`}
                 >
-                  {statusLabel(activeConv.status)}
+                  {statusLabel(activeConv.status, {
+                    needsStaff: t.statusNeedsStaff,
+                    resolved: t.statusResolved,
+                    active: t.statusActive,
+                  })}
                 </span>
                 <span className="text-[11px] text-slate-400">
-                  {messages.length} tin nhắn
+                  {messages.length} {t.messageCount}
                 </span>
               </div>
             </div>
@@ -577,7 +676,7 @@ export default function ChatbotView() {
                 onClick={handleCloseConv}
                 className="text-xs text-slate-500 hover:text-slate-800 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
               >
-                Đóng hội thoại
+                {t.closeConversation}
               </button>
             )}
           </div>
@@ -587,11 +686,10 @@ export default function ChatbotView() {
         {needsStaff && (
           <div className="shrink-0 mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
             <p className="text-xs font-semibold text-amber-800">
-              Đang chuyển đến nhân viên hỗ trợ
+              {t.escalating}
             </p>
             <p className="text-[11px] text-amber-600 mt-0.5">
-              Nhân viên sẽ phản hồi sớm nhất có thể. Bạn vẫn có thể tiếp tục
-              nhắn tin.
+              {t.escalatingHint}
             </p>
           </div>
         )}
@@ -601,17 +699,17 @@ export default function ChatbotView() {
           <div className="shrink-0 mx-4 mt-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-emerald-800">
-                Cuộc trò chuyện đã được xử lý
+                {t.resolvedTitle}
               </p>
               <p className="text-[11px] text-emerald-600">
-                Cảm ơn bạn đã liên hệ.
+                {t.thanks}
               </p>
             </div>
             <button
               onClick={handleNewConv}
               className="text-xs font-medium text-emerald-700 hover:text-emerald-900 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors"
             >
-              Cuộc trò chuyện mới
+              {t.newConversation}
             </button>
           </div>
         )}
@@ -629,12 +727,12 @@ export default function ChatbotView() {
 
           {isResolved ? (
             <div className="flex items-center justify-center gap-2 py-2 text-sm text-slate-400">
-              <span>Cuộc trò chuyện đã kết thúc.</span>
+              <span>{t.conversationEnded}</span>
               <button
                 onClick={handleNewConv}
                 className="text-blue-600 hover:text-blue-700 font-medium"
               >
-                Bắt đầu mới
+                {t.startNew}
               </button>
             </div>
           ) : (
@@ -652,7 +750,7 @@ export default function ChatbotView() {
                 }}
                 disabled={sending}
                 placeholder={
-                  activeId ? "Nhập tin nhắn..." : "Nhập câu hỏi để bắt đầu..."
+                  activeId ? t.inputPlaceholder : t.questionPlaceholder
                 }
                 className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 transition-all"
               />
@@ -661,7 +759,7 @@ export default function ChatbotView() {
                 disabled={!inputValue.trim() || sending}
                 className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 text-white text-sm font-medium rounded-xl transition-colors shrink-0"
               >
-                {sending ? "..." : "Gửi"}
+                {sending ? "..." : t.send}
               </button>
             </div>
           )}
