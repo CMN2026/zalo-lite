@@ -29,33 +29,30 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
+import type { AppLanguage } from "./SettingsView";
 
 // ─── Reaction emoji map ──────────────────────────────────────────────────────
 
-const REACTION_CONFIG: {
-  key: ReactionType;
-  emoji: string;
-  label: string;
-  color: string;
-}[] = [
-  { key: "like", emoji: "👍", label: "Thích", color: "#2563eb" },
-  { key: "love", emoji: "❤️", label: "Yêu thích", color: "#ef4444" },
-  { key: "haha", emoji: "😂", label: "Haha", color: "#f59e0b" },
-  { key: "sad", emoji: "😢", label: "Buồn", color: "#f59e0b" },
-  { key: "angry", emoji: "😡", label: "Phẫn nộ", color: "#ef4444" },
-];
-
-function timeAgo(isoDate: string): string {
+function timeAgo(
+  isoDate: string,
+  language: AppLanguage,
+  labels: {
+    justNow: string;
+    minsAgo: string;
+    hoursAgo: string;
+    daysAgo: string;
+  },
+): string {
   const diff = Date.now() - new Date(isoDate).getTime();
   const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return "Vừa xong";
+  if (seconds < 60) return labels.justNow;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} phút trước`;
+  if (minutes < 60) return `${minutes} ${labels.minsAgo}`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} giờ trước`;
+  if (hours < 24) return `${hours} ${labels.hoursAgo}`;
   const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} ngày trước`;
-  return new Date(isoDate).toLocaleDateString("vi-VN");
+  if (days < 30) return `${days} ${labels.daysAgo}`;
+  return new Date(isoDate).toLocaleDateString(language === "en" ? "en-US" : "vi-VN");
 }
 
 function totalReactions(summary: ReactionSummary): number {
@@ -64,7 +61,13 @@ function totalReactions(summary: ReactionSummary): number {
 
 // ─── Create Post Card ────────────────────────────────────────────────────────
 
-function CreatePostCard({ onPostCreated }: { onPostCreated: () => void }) {
+function CreatePostCard({
+  onPostCreated,
+  t,
+}: {
+  onPostCreated: () => void;
+  t: { thinking: string; post: string };
+}) {
   const { user } = useAuth();
   const [content, setContent] = useState("");
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
@@ -138,7 +141,7 @@ function CreatePostCard({ onPostCreated }: { onPostCreated: () => void }) {
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="Bạn đang nghĩ gì?"
+            placeholder={t.thinking}
             className="w-full resize-none border-0 bg-slate-100/90 rounded-2xl px-5 py-4 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-white transition-all min-h-[48px]"
             rows={2}
           />
@@ -189,7 +192,7 @@ function CreatePostCard({ onPostCreated }: { onPostCreated: () => void }) {
               ) : (
                 <Send className="w-4 h-4" />
               )}
-              Đăng bài
+              {t.post}
             </button>
           </div>
         </div>
@@ -203,9 +206,20 @@ function CreatePostCard({ onPostCreated }: { onPostCreated: () => void }) {
 function CommentSection({
   postId,
   onCommentCountChange,
+  language,
+  writeCommentPlaceholder,
+  timeLabels,
 }: {
   postId: string;
   onCommentCountChange: (delta: number) => void;
+  language: AppLanguage;
+  writeCommentPlaceholder: string;
+  timeLabels: {
+    justNow: string;
+    minsAgo: string;
+    hoursAgo: string;
+    daysAgo: string;
+  };
 }) {
   const { user } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
@@ -288,7 +302,7 @@ function CommentSection({
               </p>
             </div>
             <p className="text-[11px] text-slate-400 mt-1 ml-1">
-              {timeAgo(comment.created_at)}
+              {timeAgo(comment.created_at, language, timeLabels)}
             </p>
           </div>
           {comment.user_id === user?.id && (
@@ -322,7 +336,7 @@ function CommentSection({
                 handleSubmit();
               }
             }}
-            placeholder="Viết bình luận..."
+            placeholder={writeCommentPlaceholder}
             className="flex-1 bg-transparent border-0 text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
           />
           <button
@@ -348,11 +362,25 @@ function ReactionBar({
   postId,
   reactionSummary,
   onReactionSummaryChange,
+  labels,
 }: {
   postId: string;
   reactionSummary: ReactionSummary;
   onReactionSummaryChange: (summary: ReactionSummary) => void;
+  labels: {
+    like: string;
+    love: string;
+    sad: string;
+    angry: string;
+  };
 }) {
+  const reactionConfig = [
+    { key: "like" as const, emoji: "👍", label: labels.like, color: "#2563eb" },
+    { key: "love" as const, emoji: "❤️", label: labels.love, color: "#ef4444" },
+    { key: "haha" as const, emoji: "😂", label: "Haha", color: "#f59e0b" },
+    { key: "sad" as const, emoji: "😢", label: labels.sad, color: "#f59e0b" },
+    { key: "angry" as const, emoji: "😡", label: labels.angry, color: "#ef4444" },
+  ];
   const [myReaction, setMyReaction] = useState<ReactionType | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -409,7 +437,7 @@ function ReactionBar({
   };
 
   const total = totalReactions(reactionSummary);
-  const topReactions = REACTION_CONFIG.filter(
+  const topReactions = reactionConfig.filter(
     (r) => (reactionSummary[r.key] ?? 0) > 0,
   ).sort(
     (a, b) => (reactionSummary[b.key] ?? 0) - (reactionSummary[a.key] ?? 0),
@@ -448,22 +476,22 @@ function ReactionBar({
         >
           {myReaction ? (
             <span className="text-base">
-              {REACTION_CONFIG.find((r) => r.key === myReaction)?.emoji ?? "👍"}
+              {reactionConfig.find((r) => r.key === myReaction)?.emoji ?? "👍"}
             </span>
           ) : (
             <ThumbsUp className="w-4 h-4" />
           )}
           <span>
-            {myReaction
-              ? REACTION_CONFIG.find((r) => r.key === myReaction)?.label ?? "Thích"
-              : "Thích"}
+              {myReaction
+              ? reactionConfig.find((r) => r.key === myReaction)?.label ?? labels.like
+              : labels.like}
           </span>
         </button>
 
         {/* Reaction Picker Popup */}
         {showPicker && (
           <div className="absolute bottom-full left-0 mb-2 flex items-center gap-1 bg-white rounded-full shadow-lg border border-slate-200 px-2 py-1.5 z-50 animate-[fadeInUp_0.15s_ease-out]">
-            {REACTION_CONFIG.map((r) => (
+            {reactionConfig.map((r) => (
               <button
                 key={r.key}
                 onClick={() => handleReaction(r.key)}
@@ -490,12 +518,29 @@ function PostCard({
   authorAvatarUrl,
   onOpenProfile,
   onDelete,
+  language,
+  t,
 }: {
   post: Post;
   authorName?: string;
   authorAvatarUrl?: string | null;
   onOpenProfile: (userId: string) => void;
   onDelete: (postId: string) => void;
+  language: AppLanguage;
+  t: {
+    comment: string;
+    writeComment: string;
+    justNow: string;
+    minsAgo: string;
+    hoursAgo: string;
+    daysAgo: string;
+    like: string;
+    love: string;
+    sad: string;
+    angry: string;
+    deletePost: string;
+    deleteConfirm: string;
+  };
 }) {
   const { user } = useAuth();
   const [showComments, setShowComments] = useState(false);
@@ -509,7 +554,7 @@ function PostCard({
 
   const handleDelete = async () => {
     if (!token) return;
-    if (!window.confirm("Bạn có chắc muốn xóa bài đăng này?")) return;
+    if (!window.confirm(t.deleteConfirm)) return;
 
     try {
       await apiDeletePost(token, post.id);
@@ -543,14 +588,14 @@ function PostCard({
             >
               {authorName ?? `${post.user_id.slice(0, 8)}...`}
             </button>
-            <p className="text-xs text-slate-400">{timeAgo(post.created_at)}</p>
+            <p className="text-xs text-slate-400">{timeAgo(post.created_at, language, t)}</p>
           </div>
         </div>
         {isOwner && (
           <button
             onClick={handleDelete}
             className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-            title="Xóa bài đăng"
+            title={t.deletePost}
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -604,17 +649,18 @@ function PostCard({
       {/* Reaction summary + action bar */}
       <div className="px-5 py-2">
         <div className="flex items-center justify-between py-2">
-          <ReactionBar
-            postId={post.id}
-            reactionSummary={reactionSummary}
-            onReactionSummaryChange={setReactionSummary}
-          />
+            <ReactionBar
+              postId={post.id}
+              reactionSummary={reactionSummary}
+              onReactionSummaryChange={setReactionSummary}
+              labels={t}
+            />
           <button
             onClick={() => setShowComments(!showComments)}
             className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 transition-colors"
           >
             <MessageCircle className="w-5 h-5" />
-            <span>Bình luận</span>
+            <span>{t.comment}</span>
             {commentCount > 0 && (
               <span className="ml-0.5 text-sm text-slate-400">
                 ({commentCount})
@@ -627,6 +673,9 @@ function PostCard({
         {showComments && (
           <CommentSection
             postId={post.id}
+            language={language}
+            writeCommentPlaceholder={t.writeComment}
+            timeLabels={t}
             onCommentCountChange={(delta) =>
               setCommentCount((prev) => Math.max(0, prev + delta))
             }
@@ -639,7 +688,53 @@ function PostCard({
 
 // ─── Main PostView ───────────────────────────────────────────────────────────
 
-export default function PostView() {
+export default function PostView({
+  language = "vi",
+}: Readonly<{ language?: AppLanguage }>) {
+  const t =
+    language === "en"
+      ? {
+          title: "News Feed",
+          refresh: "Refresh",
+          loading: "Loading feed...",
+          empty: "No posts yet",
+          emptyHint: "Create your first post or add friends to see posts!",
+          post: "Post",
+          thinking: "What's on your mind?",
+          comment: "Comment",
+          writeComment: "Write a comment...",
+          like: "Like",
+          love: "Love",
+          sad: "Sad",
+          angry: "Angry",
+          justNow: "Just now",
+          minsAgo: "minutes ago",
+          hoursAgo: "hours ago",
+          daysAgo: "days ago",
+          deletePost: "Delete post",
+          deleteConfirm: "Are you sure you want to delete this post?",
+        }
+      : {
+          title: "Bảng tin",
+          refresh: "Làm mới",
+          loading: "Đang tải bảng tin...",
+          empty: "Chưa có bài đăng nào",
+          emptyHint: "Hãy đăng bài đầu tiên hoặc kết bạn để xem bài viết!",
+          post: "Đăng bài",
+          thinking: "Bạn đang nghĩ gì?",
+          comment: "Bình luận",
+          writeComment: "Viết bình luận...",
+          like: "Thích",
+          love: "Yêu thích",
+          sad: "Buồn",
+          angry: "Phẫn nộ",
+          justNow: "Vừa xong",
+          minsAgo: "phút trước",
+          hoursAgo: "giờ trước",
+          daysAgo: "ngày trước",
+          deletePost: "Xóa bài đăng",
+          deleteConfirm: "Bạn có chắc muốn xóa bài đăng này?",
+        };
   const [posts, setPosts] = useState<Post[]>([]);
   const [authorProfiles, setAuthorProfiles] = useState<
     Record<string, { fullName: string; avatarUrl: string | null }>
@@ -723,12 +818,12 @@ export default function PostView() {
         {/* Header */}
         <div className="sticky top-0 z-40 bg-white border-b border-slate-200">
           <div className="max-w-[760px] mx-auto px-4 py-3 flex items-center justify-between">
-            <h1 className="text-lg font-bold text-slate-800">Bảng tin</h1>
+            <h1 className="text-lg font-bold text-slate-800">{t.title}</h1>
             <button
               onClick={() => loadFeed(false)}
               disabled={isRefreshing}
               className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-              title="Làm mới"
+              title={t.refresh}
             >
               <RefreshCw
                 className={`w-5 h-5 ${isRefreshing ? "animate-spin" : ""}`}
@@ -740,13 +835,13 @@ export default function PostView() {
         {/* Content */}
         <div className="max-w-[760px] mx-auto px-4 py-4">
           {/* Create Post */}
-          <CreatePostCard onPostCreated={handlePostCreated} />
+          <CreatePostCard onPostCreated={handlePostCreated} t={t} />
 
           {/* Feed */}
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-20">
               <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
-              <p className="text-sm text-slate-400">Đang tải bảng tin...</p>
+              <p className="text-sm text-slate-400">{t.loading}</p>
             </div>
           ) : posts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20">
@@ -754,10 +849,10 @@ export default function PostView() {
                 <MessageCircle className="w-8 h-8 text-slate-300" />
               </div>
               <p className="text-base font-medium text-slate-500 mb-1">
-                Chưa có bài đăng nào
+                {t.empty}
               </p>
               <p className="text-sm text-slate-400">
-                Hãy đăng bài đầu tiên hoặc kết bạn để xem bài viết!
+                {t.emptyHint}
               </p>
             </div>
           ) : (
@@ -769,6 +864,8 @@ export default function PostView() {
                 authorAvatarUrl={authorProfiles[post.user_id]?.avatarUrl}
                 onOpenProfile={handleOpenProfile}
                 onDelete={handlePostDeleted}
+                language={language}
+                t={t}
               />
             ))
           )}

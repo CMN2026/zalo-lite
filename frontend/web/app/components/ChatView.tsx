@@ -32,6 +32,7 @@ import { useAuth } from "../contexts/auth";
 import { getAuthToken } from "../lib/auth";
 import type { LiveKitTokenPayload } from "../lib/calls";
 import { WEB_GATEWAY_BASE_URL, WEB_CHAT_SERVICE_BASE_URL, WEB_USER_SERVICE_BASE_URL } from "../lib/runtime-base-url";
+import type { AppLanguage } from "./SettingsView";
 
 interface Conversation {
   id: string;
@@ -153,6 +154,7 @@ type CallNotificationState = {
 };
 
 interface ChatViewProps {
+  language?: AppLanguage;
   onFocusedConversationChange?: (conversationId: string | null) => void;
   unreadByConversation?: Record<string, number>;
   onUnreadByConversationChange?: React.Dispatch<
@@ -416,6 +418,7 @@ async function authJsonRequest<T>(
 }
 
 export default function ChatView({
+  language = "vi",
   onFocusedConversationChange,
   unreadByConversation: externalUnreadByConversation,
   onUnreadByConversationChange,
@@ -425,6 +428,56 @@ export default function ChatView({
   onPendingJumpHandled,
   suppressModals,
 }: Readonly<ChatViewProps>) {
+  const t =
+    language === "en"
+      ? {
+          loading: "Loading...",
+          noConversations: "No conversations yet",
+          searchConversation: "Search conversations",
+          createGroup: "Create group",
+          openNewConversation: "Open new conversation",
+          group: "GROUP",
+          personal: "PERSONAL",
+          deleteConversation: "Delete conversation",
+          online: "Online",
+          offline: "Offline",
+          endCall: "End call",
+          startCall: "Call",
+          calling: "Calling...",
+          ongoingCall: "Call in progress",
+          chooseConversation: "Select a conversation to start chatting",
+          detailsHint: "Select a conversation to view details here.",
+          incomingCall: "Incoming call",
+          decline: "Decline",
+          accept: "Accept",
+          friendAuto: "Accepted friends will automatically appear in your chat list.",
+          joinGroupCall: "Group call in progress - Join",
+          close: "Close",
+        }
+      : {
+          loading: "Đang tải...",
+          noConversations: "Chưa có cuộc trò chuyện nào",
+          searchConversation: "Tìm cuộc trò chuyện",
+          createGroup: "Tạo nhóm",
+          openNewConversation: "Mở cuộc trò chuyện mới",
+          group: "NHÓM",
+          personal: "CÁ NHÂN",
+          deleteConversation: "Xóa cuộc trò chuyện",
+          online: "Trực tuyến",
+          offline: "Ngoại tuyến",
+          endCall: "Kết thúc",
+          startCall: "Gọi",
+          calling: "Đang đổ chuông...",
+          ongoingCall: "Cuộc gọi đang diễn ra",
+          chooseConversation: "Chọn một cuộc trò chuyện để bắt đầu nhắn tin",
+          detailsHint: "Chọn hội thoại để xem thông tin chi tiết ở đây.",
+          incomingCall: "Cuộc gọi đến",
+          decline: "Từ chối",
+          accept: "Chấp nhận",
+          friendAuto: "Bạn bè đã kết bạn sẽ tự động hiện trong danh sách chat.",
+          joinGroupCall: "Cuộc gọi nhóm đang diễn ra - Tham gia",
+          close: "Đóng",
+        };
   const { user } = useAuth();
   const { isConnected, on, off, emit, join, leave } = useSocket();
   const currentUserId = user?.id ?? "";
@@ -3616,8 +3669,8 @@ export default function ChatView({
               type="button"
               onClick={() => setShowStartConversation(true)}
               className="p-1.5 rounded-full text-slate-500 hover:bg-slate-200/70 hover:text-slate-700 transition-colors"
-              title="Mở cuộc trò chuyện mới"
-              aria-label="Mở cuộc trò chuyện mới"
+              title={t.openNewConversation}
+              aria-label={t.openNewConversation}
             >
               <Plus className="w-5 h-5" />
             </button>
@@ -3630,7 +3683,7 @@ export default function ChatView({
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Tìm cuộc trò chuyện"
+              placeholder={t.searchConversation}
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               className="w-full bg-[#eef1f6] text-sm rounded-full py-2.5 pl-9 pr-4 outline-none"
@@ -3639,7 +3692,7 @@ export default function ChatView({
           <button
             onClick={() => setShowCreateGroup(true)}
             className="p-2 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-            title="Tạo nhóm"
+            title={t.createGroup}
           >
             <Users className="w-4 h-4" />
           </button>
@@ -3647,10 +3700,10 @@ export default function ChatView({
 
         <div className="h-[calc(100%-180px)] overflow-y-auto px-3 pb-4">
           {loading ? (
-            <div className="p-4 text-center text-slate-500">Đang tải...</div>
+            <div className="p-4 text-center text-slate-500">{t.loading}</div>
           ) : filteredConversations.length === 0 ? (
             <div className="p-4 text-center text-slate-500">
-              Chưa có cuộc trò chuyện nào
+              {t.noConversations}
             </div>
           ) : (
             filteredConversations.map((chat) => {
@@ -3692,7 +3745,7 @@ export default function ChatView({
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-1">
                       <p className="text-[11px] font-bold text-blue-600 tracking-wide truncate">
-                        {chat.type === "group" ? "NHÓM" : "CÁ NHÂN"}
+                        {chat.type === "group" ? t.group : t.personal}
                       </p>
                       <div className="flex items-center gap-1">
                         {mutedByConversation[chat.id] && (
@@ -3754,7 +3807,7 @@ export default function ChatView({
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-rose-600 hover:bg-rose-50"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                        Xóa cuộc trò chuyện
+                        {t.deleteConversation}
                       </button>
                     </div>
                   )}
@@ -3766,7 +3819,7 @@ export default function ChatView({
         </div>
 
         <div className="px-4 pb-4 pt-2 border-t border-slate-200/70 text-xs text-slate-500">
-          Bạn bè đã kết bạn sẽ tự động hiện trong danh sách chat.
+          {t.friendAuto}
         </div>
       </div>
 
@@ -3801,7 +3854,7 @@ export default function ChatView({
                         activeChat.online ? "bg-emerald-500" : "bg-slate-400"
                       }`}
                     />
-                    <span>{activeChat.online ? "Trực tuyến" : "Ngoại tuyến"}</span>
+                    <span>{activeChat.online ? t.online : t.offline}</span>
                   </div>
                 </div>
               </div>
@@ -3829,12 +3882,12 @@ export default function ChatView({
                   {activeCall?.conversationId === activeChat.id ? (
                     <>
                       <PhoneOff className="h-3.5 w-3.5" />
-                      Kết thúc
+                      {t.endCall}
                     </>
                   ) : (
                     <>
                       <Phone className="h-3.5 w-3.5" />
-                      Gọi
+                      {t.startCall}
                     </>
                   )}
                 </button>
@@ -3851,8 +3904,8 @@ export default function ChatView({
             {activeCall?.conversationId === activeChat.id && (
               <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700">
                 {activeCall.status === "ringing"
-                  ? "Đang đổ chuông..."
-                  : "Cuộc gọi đang diễn ra"}
+                  ? t.calling
+                  : t.ongoingCall}
               </div>
             )}
 
@@ -3893,7 +3946,7 @@ export default function ChatView({
                   className="flex w-full items-center justify-center gap-2 border-b border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
                 >
                   <Phone className="h-4 w-4" />
-                  Cuộc gọi nhóm đang diễn ra — Tham gia
+                  {t.joinGroupCall}
                 </button>
               )}
 
@@ -3984,7 +4037,7 @@ export default function ChatView({
                       onClick={() => setConnectionLossModal(null)}
                       className="rounded-md px-3 py-2 text-sm bg-slate-100 hover:bg-slate-200"
                     >
-                      Đóng
+                      {t.close}
                     </button>
                   </div>
                 </div>
@@ -4014,7 +4067,7 @@ export default function ChatView({
                 </div>
               ) : (
                 <div className="flex h-full items-center justify-center">
-                  Chọn một cuộc trò chuyện để bắt đầu nhắn tin
+                  {t.chooseConversation}
                 </div>
               )}
             </div>
@@ -4077,7 +4130,7 @@ export default function ChatView({
           </div>
 
           <div className="p-4 text-xs text-slate-500">
-            Chọn hội thoại để xem thông tin chi tiết ở đây.
+            {t.detailsHint}
           </div>
         </div>
       )}
@@ -4086,7 +4139,7 @@ export default function ChatView({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
             <h3 className="text-base font-semibold text-slate-800">
-              {callNotification?.title ?? "Cuộc gọi đến"}
+              {callNotification?.title ?? t.incomingCall}
             </h3>
             <p className="mt-2 text-sm text-slate-600">
               {callNotification?.description ??
@@ -4098,14 +4151,14 @@ export default function ChatView({
                 onClick={handleDeclineIncomingCall}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
               >
-                Từ chối
+                {t.decline}
               </button>
               <button
                 type="button"
                 onClick={handleAcceptIncomingCall}
                 className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
               >
-                Chấp nhận
+                {t.accept}
               </button>
             </div>
           </div>
