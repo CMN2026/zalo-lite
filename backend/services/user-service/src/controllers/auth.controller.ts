@@ -89,6 +89,29 @@ export class AuthController {
     }
   }
 
+  static async changePassword(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = req.auth?.userId ?? "";
+      const { currentPassword, newPassword } = req.body as {
+        currentPassword?: string;
+        newPassword?: string;
+      };
+
+      const result = await authService.changePassword({
+        userId,
+        currentPassword: currentPassword ?? "",
+        newPassword: newPassword ?? "",
+      });
+      res.status(200).json({ message: "password_changed", data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /**
    * Verify JWT token and return user info
    * Used by other microservices to verify tokens (saga pattern)

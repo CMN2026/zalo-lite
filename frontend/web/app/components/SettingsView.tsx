@@ -23,6 +23,66 @@ export default function SettingsView({
   onLanguageChange,
   onThemeChange,
 }: Readonly<SettingsViewProps>) {
+  const t =
+    language === "en"
+      ? {
+          title: "Settings",
+          category: "CATEGORY",
+          security: "Security",
+          appearance: "Appearance",
+          securityTitle: "Security",
+          currentPassword: "Current password",
+          newPassword: "New password",
+          confirmPassword: "Confirm new password",
+          currentPlaceholder: "Enter current password",
+          newPlaceholder: "Enter new password",
+          confirmPlaceholder: "Re-enter new password",
+          changePassword: "Change password",
+          changing: "Changing...",
+          languageTitle: "Language",
+          vietnamese: "Vietnamese",
+          english: "English",
+          themeTitle: "Theme",
+          light: "Light",
+          dark: "Dark",
+          fillAll: "Please fill all fields.",
+          minLength: "New password must be at least 8 characters.",
+          mismatch: "Password confirmation does not match.",
+          expired: "Session expired. Please log in again.",
+          noEndpoint: "Change-password endpoint is not enabled on server yet.",
+          changeFail: "Unable to change password. Please try again.",
+          changed: "Password changed successfully.",
+          connectFail: "Cannot connect to server. Please try again.",
+        }
+      : {
+          title: "Cài đặt",
+          category: "DANH MỤC",
+          security: "Bảo mật",
+          appearance: "Giao diện",
+          securityTitle: "Bảo mật",
+          currentPassword: "Mật khẩu hiện tại",
+          newPassword: "Mật khẩu mới",
+          confirmPassword: "Xác nhận mật khẩu mới",
+          currentPlaceholder: "Nhập mật khẩu hiện tại",
+          newPlaceholder: "Nhập mật khẩu mới",
+          confirmPlaceholder: "Nhập lại mật khẩu mới",
+          changePassword: "Đổi mật khẩu",
+          changing: "Đang đổi...",
+          languageTitle: "Ngôn ngữ",
+          vietnamese: "Tiếng Việt",
+          english: "English",
+          themeTitle: "Chủ đề",
+          light: "Sáng",
+          dark: "Tối",
+          fillAll: "Vui lòng nhập đầy đủ thông tin.",
+          minLength: "Mật khẩu mới cần tối thiểu 8 ký tự.",
+          mismatch: "Mật khẩu xác nhận không khớp.",
+          expired: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+          noEndpoint: "Chức năng đổi mật khẩu chưa được bật trên máy chủ.",
+          changeFail: "Không thể đổi mật khẩu. Vui lòng thử lại.",
+          changed: "Đổi mật khẩu thành công.",
+          connectFail: "Không thể kết nối máy chủ. Vui lòng thử lại.",
+        };
   const [category, setCategory] = useState<SettingsCategory>("security");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -34,23 +94,23 @@ export default function SettingsView({
     setPasswordNotice("");
 
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordNotice("Vui lòng nhập đầy đủ thông tin.");
+      setPasswordNotice(t.fillAll);
       return;
     }
 
     if (newPassword.length < 8) {
-      setPasswordNotice("Mật khẩu mới cần tối thiểu 8 ký tự.");
+      setPasswordNotice(t.minLength);
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setPasswordNotice("Mật khẩu xác nhận không khớp.");
+      setPasswordNotice(t.mismatch);
       return;
     }
 
     const token = getAuthToken();
     if (!token) {
-      setPasswordNotice("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+      setPasswordNotice(t.expired);
       return;
     }
 
@@ -73,19 +133,19 @@ export default function SettingsView({
           message?: string;
         };
         if (response.status === 404) {
-          setPasswordNotice("Chức năng đổi mật khẩu chưa được bật trên máy chủ.");
+          setPasswordNotice(t.noEndpoint);
           return;
         }
-        setPasswordNotice(payload.message || "Không thể đổi mật khẩu. Vui lòng thử lại.");
+        setPasswordNotice(payload.message || t.changeFail);
         return;
       }
 
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setPasswordNotice("Đổi mật khẩu thành công.");
+      setPasswordNotice(t.changed);
     } catch {
-      setPasswordNotice("Không thể kết nối máy chủ. Vui lòng thử lại.");
+      setPasswordNotice(t.connectFail);
     } finally {
       setChangingPassword(false);
     }
@@ -93,10 +153,10 @@ export default function SettingsView({
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#eef2f7] p-6">
-      <h1 className="mb-6 text-center text-4xl font-bold text-slate-900">Cài đặt</h1>
+      <h1 className="mb-6 text-center text-4xl font-bold text-slate-900">{t.title}</h1>
       <div className="mx-auto grid w-full max-w-4xl gap-6 md:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="mb-4 text-lg font-bold text-slate-500">DANH MỤC</p>
+          <p className="mb-4 text-lg font-bold text-slate-500">{t.category}</p>
           <div className="space-y-2">
             <button
               type="button"
@@ -108,7 +168,7 @@ export default function SettingsView({
               }`}
             >
               <Shield className="h-5 w-5" />
-              <span className="text-lg font-medium">Bảo mật</span>
+              <span className="text-lg font-medium">{t.security}</span>
             </button>
             <button
               type="button"
@@ -120,7 +180,7 @@ export default function SettingsView({
               }`}
             >
               <Monitor className="h-5 w-5" />
-              <span className="text-lg font-medium">Giao diện</span>
+              <span className="text-lg font-medium">{t.appearance}</span>
             </button>
           </div>
         </aside>
@@ -128,42 +188,42 @@ export default function SettingsView({
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           {category === "security" ? (
             <>
-              <h2 className="mb-5 text-4xl font-bold text-slate-900">Bảo mật</h2>
+              <h2 className="mb-5 text-4xl font-bold text-slate-900">{t.securityTitle}</h2>
               <div className="space-y-4">
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-slate-600">
-                    Mật khẩu hiện tại
+                    {t.currentPassword}
                   </label>
                   <input
                     type="password"
                     value={currentPassword}
                     onChange={(event) => setCurrentPassword(event.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Nhập mật khẩu hiện tại"
+                    placeholder={t.currentPlaceholder}
                   />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-slate-600">
-                    Mật khẩu mới
+                    {t.newPassword}
                   </label>
                   <input
                     type="password"
                     value={newPassword}
                     onChange={(event) => setNewPassword(event.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Nhập mật khẩu mới"
+                    placeholder={t.newPlaceholder}
                   />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-slate-600">
-                    Xác nhận mật khẩu mới
+                    {t.confirmPassword}
                   </label>
                   <input
                     type="password"
                     value={confirmPassword}
                     onChange={(event) => setConfirmPassword(event.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Nhập lại mật khẩu mới"
+                    placeholder={t.confirmPlaceholder}
                   />
                 </div>
               </div>
@@ -179,15 +239,15 @@ export default function SettingsView({
                 className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 <Lock className="h-4 w-4" />
-                {changingPassword ? "Đang đổi..." : "Đổi mật khẩu"}
+                {changingPassword ? t.changing : t.changePassword}
               </button>
             </>
           ) : (
             <>
-              <h2 className="mb-5 text-4xl font-bold text-slate-900">Giao diện</h2>
+              <h2 className="mb-5 text-4xl font-bold text-slate-900">{t.appearance}</h2>
               <div className="space-y-6">
                 <div>
-                  <p className="mb-3 text-base font-semibold text-slate-700">Ngôn ngữ</p>
+                  <p className="mb-3 text-base font-semibold text-slate-700">{t.languageTitle}</p>
                   <div className="flex gap-3">
                     <button
                       type="button"
@@ -200,7 +260,7 @@ export default function SettingsView({
                     >
                       <span className="inline-flex items-center gap-2">
                         <Globe className="h-4 w-4" />
-                        Tiếng Việt
+                        {t.vietnamese}
                       </span>
                     </button>
                     <button
@@ -214,14 +274,14 @@ export default function SettingsView({
                     >
                       <span className="inline-flex items-center gap-2">
                         <Globe className="h-4 w-4" />
-                        English
+                        {t.english}
                       </span>
                     </button>
                   </div>
                 </div>
 
                 <div>
-                  <p className="mb-3 text-base font-semibold text-slate-700">Chủ đề</p>
+                  <p className="mb-3 text-base font-semibold text-slate-700">{t.themeTitle}</p>
                   <div className="flex gap-3">
                     <button
                       type="button"
@@ -234,7 +294,7 @@ export default function SettingsView({
                     >
                       <span className="inline-flex items-center gap-2">
                         <Sun className="h-4 w-4" />
-                        Sáng
+                        {t.light}
                       </span>
                     </button>
                     <button
@@ -248,7 +308,7 @@ export default function SettingsView({
                     >
                       <span className="inline-flex items-center gap-2">
                         <Moon className="h-4 w-4" />
-                        Tối
+                        {t.dark}
                       </span>
                     </button>
                   </div>
@@ -261,4 +321,3 @@ export default function SettingsView({
     </div>
   );
 }
-

@@ -197,13 +197,6 @@ export default function DashboardLayout() {
         kind: "call",
         callId,
       });
-
-      // push topup notification only; ChatView handles incoming-call UI
-      pushTopup(conversationId, body, undefined, {
-        title,
-        kind: "call",
-        callId,
-      });
     };
 
     on("call:initiate", handleIncomingCallNotification);
@@ -329,6 +322,15 @@ export default function DashboardLayout() {
       document.documentElement.lang = language;
     }
   }, [language]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   useEffect(() => {
     if (!user?.id) {

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bot,
-  FileText,
   LogIn,
   LogOut,
   MessageSquare,
@@ -125,15 +124,6 @@ export default function Sidebar({
         className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "chatbot" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
       >
         <Bot className="w-6 h-6" />
-      </button>
-
-      <button
-        onClick={() => setCurrentView("history")}
-        className="hidden"
-        aria-hidden="true"
-        tabIndex={-1}
-      >
-        <FileText className="w-6 h-6" />
       </button>
 
       <div className="grow"></div>

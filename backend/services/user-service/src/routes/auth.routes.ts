@@ -115,6 +115,17 @@ authRoutes.post(
   AuthController.resetPassword,
 );
 
+authRoutes.post(
+  "/change-password",
+  [
+    authMiddleware,
+    body("currentPassword").isLength({ min: 8, max: 72 }),
+    body("newPassword").isLength({ min: 8, max: 72 }),
+    validateRequest,
+  ],
+  AuthController.changePassword,
+);
+
 /**
  * POST /auth/verify
  * Verify JWT token and return user info

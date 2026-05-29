@@ -46,6 +46,12 @@ type ResetPasswordInput = {
   newPassword: string;
 };
 
+type ChangePasswordInput = {
+  userId: string;
+  currentPassword: string;
+  newPassword: string;
+};
+
 const OTP_TTL_MINUTES = 15;
 const OTP_RESEND_SECONDS = 60;
 const OTP_MAX_ATTEMPTS = 3;
@@ -524,6 +530,41 @@ export class AuthService {
     await prisma.localCredential.update({
       where: { userId: user.id },
       data: { passwordHash },
+    });
+
+    return { success: true };
+  }
+
+  async changePassword(input: ChangePasswordInput) {
+    if (!input.userId) {
+      throw new HttpError(401, "invalid_or_expired_token");
+    }
+
+    if (input.currentPassword === input.newPassword) {
+      throw new HttpError(400, "new_password_must_differ");
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: input.userId },
+      include: { localCredential: true },
+    });
+
+    if (!user || !user.localCredential) {
+      throw new HttpError(404, "user_not_found");
+    }
+
+    const isCurrentPasswordValid = await verifyPassword(
+      input.currentPassword,
+      user.localCredential.passwordHash,
+    );
+    if (!isCurrentPasswordValid) {
+      throw new HttpError(401, "current_password_invalid");
+    }
+
+    const nextHash = await hashPassword(input.newPassword);
+    await prisma.localCredential.update({
+      where: { userId: input.userId },
+      data: { passwordHash: nextHash },
     });
 
     return { success: true };
