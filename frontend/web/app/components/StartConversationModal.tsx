@@ -37,7 +37,7 @@ export default function StartConversationModal({
         setFriends(response.data ?? []);
       } catch {
         setFriends([]);
-        setError("Khong the tai danh sach ban be.");
+        setError("Không thể tải danh sách bạn bè.");
       } finally {
         setLoading(false);
       }
@@ -70,12 +70,12 @@ export default function StartConversationModal({
         errorObject instanceof Error ? errorObject.message : "request_failed";
       const labels: Record<string, string> = {
         direct_conversation_requires_friendship:
-          "Chi co the tao chat 1:1 voi ban be da ket ban.",
-        missing_local_session: "Vui long dang nhap lai.",
-        invalid_or_expired_token: "Phien dang nhap da het han.",
+          "Chỉ có thể tạo chat 1:1 với bạn bè đã kết bạn.",
+        missing_local_session: "Vui lòng đăng nhập lại.",
+        invalid_or_expired_token: "Phiên đăng nhập đã hết hạn.",
       };
 
-      setError(labels[message] ?? "Khong the mo cuoc tro chuyen moi.");
+      setError(labels[message] ?? "Không thể mở cuộc trò chuyện mới.");
     } finally {
       setSelectingId(null);
     }
@@ -101,16 +101,16 @@ export default function StartConversationModal({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-800">
-                Mo cuoc tro chuyen moi
+                Mở cuộc trò chuyện mới
               </h2>
-              <p className="text-xs text-slate-500">Chon mot nguoi ban</p>
+              <p className="text-xs text-slate-500">Chọn một người bạn</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="p-2 rounded-full hover:bg-slate-100 transition-colors"
-            aria-label="Dong"
+            aria-label="Đóng"
           >
             <X className="w-5 h-5 text-slate-500" />
           </button>
@@ -123,7 +123,7 @@ export default function StartConversationModal({
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Tim ten, so dien thoai, email"
+              placeholder="Tìm tên, số điện thoại, email"
               className="w-full bg-slate-50 border border-slate-200 text-sm rounded-lg py-2.5 pl-9 pr-4 outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -138,13 +138,13 @@ export default function StartConversationModal({
         <div className="mt-3 border-t border-slate-100 flex-1 overflow-y-auto min-h-0">
           {loading ? (
             <div className="p-6 text-center text-sm text-slate-500">
-              Dang tai danh sach ban be...
+              Đang tải danh sách bạn bè...
             </div>
           ) : filteredFriends.length === 0 ? (
             <div className="p-6 text-center text-sm text-slate-500">
               {friends.length === 0
-                ? "Ban chua co ban be nao."
-                : "Khong tim thay nguoi phu hop."}
+                ? "Bạn chưa có bạn bè nào."
+                : "Không tìm thấy người phù hợp."}
             </div>
           ) : (
             <div className="divide-y divide-slate-50">
@@ -181,11 +181,11 @@ export default function StartConversationModal({
                         {friend.fullName}
                       </p>
                       <p className="text-xs text-slate-500 truncate mt-0.5">
-                        {friend.phone ?? friend.email ?? "Khong co thong tin"}
+                        {friend.phone ?? friend.email ?? "Không có thông tin"}
                       </p>
                     </div>
                     <span className="text-xs text-blue-600 font-semibold">
-                      {selecting ? "Dang mo..." : "Mo"}
+                      {selecting ? "Đang mở..." : "Mở"}
                     </span>
                   </button>
                 );
