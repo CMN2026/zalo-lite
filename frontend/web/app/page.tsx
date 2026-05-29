@@ -17,10 +17,12 @@ import Sidebar from "../app/components/Sidebar";
 import ChatView from "../app/components/ChatView";
 import ChatbotView from "../app/components/ChatbotView";
 import FriendsView from "../app/components/FriendsView";
-import HistoryView from "../app/components/HistoryView";
 import PostView from "../app/components/PostView";
 import ProfileView from "../app/components/ProfileView";
-import StatsView from "../app/components/StatsView";
+import SettingsView, {
+  type AppLanguage,
+  type AppTheme,
+} from "../app/components/SettingsView";
 import type { ProfileUser } from "./lib/users";
 import { WEB_GATEWAY_BASE_URL, WEB_USER_SERVICE_BASE_URL } from "./lib/runtime-base-url";
 
@@ -47,6 +49,8 @@ function normalizeRealtimeId(value: unknown): string | null {
 const API_BASE_URL = WEB_GATEWAY_BASE_URL;
 const USER_SERVICE_BASE_URL = WEB_USER_SERVICE_BASE_URL;
 const mutedStorageKeyPrefix = "zalo-lite:web:muted:";
+const languageStorageKeyPrefix = "zalo-lite:web:language:";
+const themeStorageKeyPrefix = "zalo-lite:web:theme:";
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 5000) {
   const controller = new AbortController();
@@ -70,6 +74,8 @@ export default function DashboardLayout() {
   const currentUserId = user?.id ?? "";
   const { on, off } = useSocket();
   const [currentView, setCurrentView] = useState("chat");
+  const [language, setLanguage] = useState<AppLanguage>("vi");
+  const [theme, setTheme] = useState<AppTheme>("light");
   const [focusedConversationId, setFocusedConversationId] = useState<
     string | null
   >(null);
@@ -260,6 +266,69 @@ export default function DashboardLayout() {
       router.replace("/login");
     }
   }, [user, isLoading, router]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setLanguage("vi");
+      setTheme("light");
+      return;
+    }
+
+    try {
+      const savedLanguage = window.localStorage.getItem(
+        `${languageStorageKeyPrefix}${user.id}`,
+      );
+      if (savedLanguage === "vi" || savedLanguage === "en") {
+        setLanguage(savedLanguage);
+      }
+    } catch {
+      setLanguage("vi");
+    }
+
+    try {
+      const savedTheme = window.localStorage.getItem(
+        `${themeStorageKeyPrefix}${user.id}`,
+      );
+      if (savedTheme === "light" || savedTheme === "dark") {
+        setTheme(savedTheme);
+      }
+    } catch {
+      setTheme("light");
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        `${languageStorageKeyPrefix}${user.id}`,
+        language,
+      );
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [language, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(`${themeStorageKeyPrefix}${user.id}`, theme);
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [theme, user?.id]);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = language;
+    }
+  }, [language]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -489,10 +558,9 @@ export default function DashboardLayout() {
         return;
       }
 
-      setUnreadByConversation((prev) => ({
-        ...prev,
-        [conversationId]: (prev[conversationId] ?? 0) + 1,
-      }));
+      // Unread is synchronized from /api/conversations unread_count.
+      // Keep top-up notification, but avoid optimistic local increments
+      // that can drift from server state.
 
       const senderName =
         (typeof data.sender_name === "string" && data.sender_name.trim()) ||
@@ -542,7 +610,11 @@ export default function DashboardLayout() {
   }
 
   return (
-    <div className="flex h-screen w-full font-sans overflow-hidden bg-slate-50">
+    <div
+      className={`flex h-screen w-full overflow-hidden font-sans ${
+        theme === "dark" ? "bg-slate-900 text-slate-100" : "bg-slate-50 text-slate-900"
+      }`}
+    >
       {topups.length > 0 && (
         <div className="pointer-events-none fixed bottom-4 right-4 z-200 flex w-[320px] flex-col gap-2">
           {topups.map((topup) => (
@@ -573,6 +645,7 @@ export default function DashboardLayout() {
         currentView={currentView}
         setCurrentView={setCurrentView}
         unreadCount={unreadCount}
+        language={language}
       />
 
       {/* Global incoming call modal */}
@@ -594,8 +667,6 @@ export default function DashboardLayout() {
         )}
         {currentView === "chatbot" && <ChatbotView />}
         {currentView === "posts" && <PostView />}
-        {currentView === "history" && <HistoryView />}
-        {currentView === "stats" && <StatsView />}
         {currentView === "friends" && (
           <FriendsView
             onStartChat={handleStartChatFromFriends}
@@ -604,6 +675,14 @@ export default function DashboardLayout() {
           />
         )}
         {currentView === "profile" && <ProfileView />}
+        {currentView === "settings" && (
+          <SettingsView
+            language={language}
+            theme={theme}
+            onLanguageChange={setLanguage}
+            onThemeChange={setTheme}
+          />
+        )}
       </div>
     </div>
   );

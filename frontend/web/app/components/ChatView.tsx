@@ -4128,6 +4128,16 @@ export default function ChatView({
         />
       )}
 
+      <CreateGroupModal
+        open={showCreateGroup}
+        onClose={() => setShowCreateGroup(false)}
+        onCreated={(conversationId: string) => {
+          setShowCreateGroup(false);
+          setActiveChatId(conversationId);
+          void loadConversations();
+        }}
+      />
+
       <StartConversationModal
         open={showStartConversation}
         onClose={() => setShowStartConversation(false)}
