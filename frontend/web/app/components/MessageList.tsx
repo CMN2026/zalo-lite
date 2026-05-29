@@ -271,6 +271,106 @@ export default function MessageList({
     }));
   };
 
+  const jumpToMessage = (messageId: string) => {
+    const target = messageRefs.current[messageId];
+    if (!target) {
+      return;
+    }
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedMessageId(messageId);
+
+    if (highlightTimeoutRef.current) {
+      window.clearTimeout(highlightTimeoutRef.current);
+    }
+    highlightTimeoutRef.current = window.setTimeout(() => {
+      setHighlightedMessageId((current) =>
+        current === messageId ? null : current,
+      );
+      highlightTimeoutRef.current = null;
+    }, 2200);
+  };
+
+  const renderReplyPreview = (
+    repliedMessage: Message,
+    isOwnMessage: boolean,
+  ) => {
+    const senderLabel =
+      normalizeId(repliedMessage.sender_id) === normalizeId(currentUserId)
+        ? "Bạn"
+        : getSenderDisplayName(repliedMessage);
+
+    const baseClass = `mb-2 w-full rounded-lg border-l-3 px-2 py-1 text-xs text-left transition ${
+      isOwnMessage
+        ? "border-blue-200 bg-blue-500/70 text-blue-50 hover:bg-blue-500/85"
+        : "border-slate-300 bg-slate-100 text-slate-600 hover:bg-slate-200"
+    }`;
+
+    if (repliedMessage.recalled_at) {
+      return (
+        <button
+          type="button"
+          className={baseClass}
+          onClick={() => jumpToMessage(repliedMessage.id)}
+        >
+          <p className="font-semibold">{senderLabel}</p>
+          <p className="truncate italic">Tin nhắn đã thu hồi</p>
+        </button>
+      );
+    }
+
+    if (repliedMessage.type === "file") {
+      const payload = parseFilePayload(repliedMessage.content);
+      const embeddedFile = payload.file;
+      const fileName =
+        embeddedFile?.originalName ||
+        payload.file_name ||
+        embeddedFile?.filename ||
+        repliedMessage.file_name ||
+        "Tệp đính kèm";
+      const fileType = embeddedFile?.mimetype || payload.file_type || "";
+      const filePath = embeddedFile?.path;
+      const thumbUrl =
+        fileType.startsWith("image/") && filePath && authToken
+          ? `${buildUploadBasePath(filePath)}?token=${encodeURIComponent(authToken)}`
+          : null;
+
+      return (
+        <button
+          type="button"
+          className={baseClass}
+          onClick={() => jumpToMessage(repliedMessage.id)}
+        >
+          <p className="font-semibold">{senderLabel}</p>
+          <div className="mt-1 flex items-center gap-2">
+            {thumbUrl ? (
+              <img
+                src={thumbUrl}
+                alt={fileName}
+                className="h-9 w-9 rounded object-cover border border-white/40"
+              />
+            ) : (
+              <div className="flex h-9 w-9 items-center justify-center rounded bg-black/10 text-sm">
+                📎
+              </div>
+            )}
+            <p className="truncate">{thumbUrl ? "[Hình ảnh]" : fileName}</p>
+          </div>
+        </button>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        className={baseClass}
+        onClick={() => jumpToMessage(repliedMessage.id)}
+      >
+        <p className="font-semibold">{senderLabel}</p>
+        <p className="truncate">{repliedMessage.content}</p>
+      </button>
+    );
+  };
+
   return (
     <div
       className={`flex-1 overflow-y-auto p-6 flex flex-col gap-4 ${
@@ -409,27 +509,8 @@ export default function MessageList({
                               : otherTextBubbleClass
                           }`}
                         >
-                          {repliedMessage && (
-                            <div
-                              className={`mb-2 rounded-lg px-2 py-1 text-xs ${
-                                isOwn
-                                  ? "bg-blue-500/70 text-blue-50"
-                                  : "bg-slate-100 text-slate-600"
-                              }`}
-                            >
-                              <p className="font-semibold">
-                                {normalizeId(repliedMessage.sender_id) ===
-                                normalizeId(currentUserId)
-                                  ? "Bạn"
-                                  : getSenderDisplayName(repliedMessage)}
-                              </p>
-                              <p className="truncate">
-                                {repliedMessage.recalled_at
-                                  ? "Tin nhắn đã thu hồi"
-                                  : repliedMessage.content}
-                              </p>
-                            </div>
-                          )}
+                          {repliedMessage &&
+                            renderReplyPreview(repliedMessage, isOwn)}
                           <p
                             className={`text-sm ${
                               isRecalled ? "italic opacity-90" : ""
@@ -631,7 +712,11 @@ export default function MessageList({
                       <div
                         className={`flex items-start gap-1 ${isOwn ? "flex-row-reverse" : "flex-row"}`}
                       >
-                        {isImage && previewUrl && (
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          {repliedMessage &&
+                            renderReplyPreview(repliedMessage, isOwn)}
+
+                          {isImage && previewUrl && (
                           <button
                             type="button"
                             onClick={() => {
@@ -649,9 +734,9 @@ export default function MessageList({
                               className="max-w-xs rounded-xl border border-slate-200"
                             />
                           </button>
-                        )}
+                          )}
 
-                        {isVideo && previewUrl && (
+                          {isVideo && previewUrl && (
                           <button
                             type="button"
                             onClick={() => {
@@ -670,52 +755,53 @@ export default function MessageList({
                               preload="metadata"
                             />
                           </button>
-                        )}
+                          )}
 
-                        {(!isImage && !isVideo) || !previewUrl ? (
-                          <div
-                            className={`px-4 py-3 rounded-2xl shadow-sm border transition-all ${
-                              isOwn
-                                ? "bg-blue-600 border-blue-600 rounded-br-md"
-                                : otherFileBubbleClass
-                            } cursor-pointer group`}
-                          >
-                            <a
-                              href={downloadUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="flex items-center gap-3"
+                          {((!isImage && !isVideo) || !previewUrl) && (
+                            <div
+                              className={`px-4 py-3 rounded-2xl shadow-sm border transition-all ${
+                                isOwn
+                                  ? "bg-blue-600 border-blue-600 rounded-br-md"
+                                  : otherFileBubbleClass
+                              } cursor-pointer group`}
                             >
-                              <div
-                                className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                                  isOwn ? "bg-blue-500" : "bg-slate-100"
-                                }`}
+                              <a
+                                href={downloadUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center gap-3"
                               >
-                                <Download
-                                  className={`w-5 h-5 ${
-                                    isOwn ? "text-white" : "text-slate-600"
-                                  }`}
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1 min-w-0">
-                                <p
-                                  className={`text-xs font-semibold truncate ${
-                                    isOwn ? "text-white" : "text-slate-800"
+                                <div
+                                  className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                    isOwn ? "bg-blue-500" : "bg-slate-100"
                                   }`}
                                 >
-                                  {fileName}
-                                </p>
-                                <p
-                                  className={`text-xs ${
-                                    isOwn ? "text-blue-100" : "text-slate-500"
-                                  }`}
-                                >
-                                  {(fileSize / 1024).toFixed(2)} KB
-                                </p>
-                              </div>
-                            </a>
-                          </div>
-                        ) : null}
+                                  <Download
+                                    className={`w-5 h-5 ${
+                                      isOwn ? "text-white" : "text-slate-600"
+                                    }`}
+                                  />
+                                </div>
+                                <div className="flex flex-col gap-1 min-w-0">
+                                  <p
+                                    className={`text-xs font-semibold truncate ${
+                                      isOwn ? "text-white" : "text-slate-800"
+                                    }`}
+                                  >
+                                    {fileName}
+                                  </p>
+                                  <p
+                                    className={`text-xs ${
+                                      isOwn ? "text-blue-100" : "text-slate-500"
+                                    }`}
+                                  >
+                                    {(fileSize / 1024).toFixed(2)} KB
+                                  </p>
+                                </div>
+                              </a>
+                            </div>
+                          )}
+                        </div>
 
                         {!isRecalled && (
                           <button
