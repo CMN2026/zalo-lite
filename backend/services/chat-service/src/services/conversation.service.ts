@@ -8,6 +8,7 @@ import { UserClientService } from "./user-client.service.js";
 
 export type ConversationWithMembers = Conversation & {
   memberIds: string[];
+  unread_count: number;
 };
 
 type GroupRole = "owner" | "admin" | "member";
@@ -123,6 +124,9 @@ export class ConversationService {
         return {
           ...conversation,
           memberIds: members.map((member) => member.userId),
+          unread_count:
+            members.find((member) => member.userId === userId)?.unreadCount ??
+            0,
         };
       }),
     );
