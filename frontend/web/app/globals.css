@@ -9,6 +9,15 @@
   --blue: #1663e8;
 }
 
+html.dark {
+  --background: #0f172a;
+  --foreground: #e2e8f0;
+  --panel: #111827;
+  --muted: #1f2937;
+  --line: #334155;
+  --blue: #3b82f6;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
