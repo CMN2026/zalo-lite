@@ -10,13 +10,24 @@ export const messageRoutes = Router();
 messageRoutes.post(
   "/",
   [
-    body("conversationId").isString().withMessage("Invalid conversation ID"),
+    body("conversationId")
+      .optional()
+      .isString()
+      .withMessage("Invalid conversation ID"),
+    body("conversation_id")
+      .optional()
+      .isString()
+      .withMessage("Invalid conversation ID"),
     body("content")
       .isString()
       .trim()
       .notEmpty()
       .withMessage("Content is required"),
     body("type").optional().isIn(["text", "image", "file"]),
+    body("reply_to_message_id")
+      .optional({ nullable: true })
+      .isString()
+      .withMessage("Invalid reply message ID"),
     validateRequest,
   ],
   MessageController.sendMessage,
@@ -38,7 +49,7 @@ messageRoutes.get(
   "/:conversationId",
   [
     param("conversationId").isString().withMessage("Invalid conversation ID"),
-    query("limit").optional().isInt({ min: 1, max: 100 }),
+    query("limit").optional().isInt({ min: 1, max: 1000 }),
     validateRequest,
   ],
   MessageController.getMessages,
@@ -62,6 +73,27 @@ messageRoutes.delete(
     validateRequest,
   ],
   MessageController.deleteMessage,
+);
+
+messageRoutes.patch(
+  "/:messageId/recall",
+  [
+    param("messageId").isString().withMessage("Invalid message ID"),
+    validateRequest,
+  ],
+  MessageController.recallMessage,
+);
+
+messageRoutes.put(
+  "/:messageId/reaction",
+  [
+    param("messageId").isString().withMessage("Invalid message ID"),
+    body("reaction")
+      .optional({ nullable: true })
+      .isIn(["vui", "buon", "phan_no", "wow"]),
+    validateRequest,
+  ],
+  MessageController.reactToMessage,
 );
 
 // Search messages

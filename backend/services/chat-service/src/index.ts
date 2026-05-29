@@ -1,5 +1,6 @@
 import "dotenv/config";
 import http from "node:http";
+import { randomUUID } from "node:crypto";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -7,29 +8,160 @@ import rateLimit from "express-rate-limit";
 import { Server } from "socket.io";
 import { env } from "./config/env.js";
 import { ensureTables } from "./config/dynamodb.js";
-import { connectRedis, redisSubscriber } from "./config/redis.js";
+import { connectRedis, redisPublisher, redisSubscriber } from "./config/redis.js";
 import { authMiddleware } from "./middlewares/auth.middleware.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { setupFileServer } from "./middlewares/upload.middleware.js";
 import { friendRoutes } from "./routes/friend.routes.js";
 import { conversationRoutes } from "./routes/conversation.routes.js";
 import { messageRoutes } from "./routes/message.routes.js";
+import { callRoutes } from "./routes/call.routes.js";
 import { verifyToken } from "./utils/jwt.js";
 import { MessageService } from "./services/message.service.js";
+import { CallService } from "./services/call.service.js";
 import { ConversationRepository } from "./repositories/conversation.repository.js";
-import { initUserClientService } from "./services/user-client.service.js";
+import {
+  initUserClientService,
+  UserClientService,
+} from "./services/user-client.service.js";
+import { setRealtimeServer } from "./realtime/socket-emitter.js";
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:3000", "http://localhost:3003", "*"],
+    origin: env.CORS_ORIGINS.length > 0 ? env.CORS_ORIGINS : "*",
     credentials: true,
   },
 });
+setRealtimeServer(io);
 
 const messageService = new MessageService();
+const callService = new CallService();
 const conversationRepository = new ConversationRepository();
+const callUserClient = new UserClientService(env.USER_SERVICE_BASE_URL);
+const callSignalingInstanceId = randomUUID();
+const disconnectedCallTimers = new Map<string, NodeJS.Timeout>();
+const DISCONNECT_GRACE_MS = 15_000;
+
+type CallSignalEventName =
+  | "call:initiate"
+  | "call:accept"
+  | "call:decline"
+  | "call:offer"
+  | "call:answer"
+  | "call:ice_candidate"
+  | "call:participant_update"
+  | "call:end"
+  | "call:leave"
+  | "call:participant_left"
+  | "call:missed";
+
+type CallSignalTarget = {
+  conversation_id?: string;
+  user_ids?: string[];
+};
+
+type CallSignalEnvelope = {
+  source_instance_id: string;
+  event_name: CallSignalEventName;
+  target: CallSignalTarget;
+  payload: Record<string, unknown>;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function getConversationId(payload: unknown): string | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+  return asString(payload.conversation_id);
+}
+
+function getCallId(payload: unknown): string | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+  return asString(payload.call_id);
+}
+
+async function ensureConversationMember(
+  conversationId: string,
+  userId: string,
+): Promise<boolean> {
+  const members = await conversationRepository.getConversationMembers(
+    conversationId,
+  );
+  return members.some((member) => member.userId === userId);
+}
+
+function emitCallSignal(
+  eventName: CallSignalEventName,
+  target: CallSignalTarget,
+  payload: Record<string, unknown>,
+): void {
+  if (target.conversation_id) {
+    io.to(`conversation_${target.conversation_id}`).emit(eventName, payload);
+  }
+
+  target.user_ids?.forEach((userId) => {
+    io.to(`user_${userId}`).emit(eventName, payload);
+  });
+}
+
+function buildDisconnectTimerKey(callId: string, userId: string): string {
+  return `${callId}:${userId}`;
+}
+
+function clearDisconnectTimersForUser(userId: string): void {
+  const keys = Array.from(disconnectedCallTimers.keys());
+  keys.forEach((key) => {
+    if (!key.endsWith(`:${userId}`)) {
+      return;
+    }
+    const timer = disconnectedCallTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+    }
+    disconnectedCallTimers.delete(key);
+  });
+}
+
+function clearDisconnectTimer(callId: string, userId: string): void {
+  const key = buildDisconnectTimerKey(callId, userId);
+  const timer = disconnectedCallTimers.get(key);
+  if (!timer) {
+    return;
+  }
+  clearTimeout(timer);
+  disconnectedCallTimers.delete(key);
+}
+
+async function publishCallSignal(
+  eventName: CallSignalEventName,
+  target: CallSignalTarget,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const envelope: CallSignalEnvelope = {
+    source_instance_id: callSignalingInstanceId,
+    event_name: eventName,
+    target,
+    payload,
+  };
+
+  await redisPublisher.publish(
+    env.REDIS_CALL_SIGNAL_CHANNEL,
+    JSON.stringify(envelope),
+  );
+}
 
 app.disable("x-powered-by");
 app.use(
@@ -67,6 +199,7 @@ app.use(authMiddleware);
 app.use("/friends", friendRoutes);
 app.use("/conversations", conversationRoutes);
 app.use("/messages", messageRoutes);
+app.use("/calls", callRoutes);
 app.use(errorHandler);
 
 // Initialize user client service
@@ -105,10 +238,42 @@ io.on("connection", async (socket) => {
   }
 
   try {
+    clearDisconnectTimersForUser(userId);
     socket.join(`user_${userId}`);
 
-    // Emit online event
-    socket.broadcast.emit("user:online", { user_id: userId, online: true });
+    // Force disconnect other sockets of the same user (Single Device Login)
+    const userSockets = await io.in(`user_${userId}`).fetchSockets();
+    for (const userSocket of userSockets) {
+      if (userSocket.id !== socket.id) {
+        userSocket.emit("force_logout", {
+          reason: "logged_in_elsewhere",
+          message: "Tài khoản của bạn đã được đăng nhập ở nơi khác.",
+        });
+        // Optionally delay disconnect to allow the event to be sent
+        setTimeout(() => {
+          userSocket.disconnect(true);
+        }, 500);
+      }
+    }
+
+    // Send current online snapshot to the newly connected socket.
+    try {
+      const allSockets = await io.fetchSockets();
+      const uniqueUserIds = new Set<string>();
+      allSockets.forEach((s) => {
+        const auth = s.data.auth as { user_id?: string; userId?: string } | undefined;
+        const id = auth?.user_id ?? auth?.userId;
+        if (id) uniqueUserIds.add(id);
+      });
+      uniqueUserIds.forEach((id) => {
+        socket.emit("user:online", { user_id: id, online: true });
+      });
+    } catch {
+      // no-op
+    }
+
+    // Emit online event (including current socket for consistent state).
+    io.emit("user:online", { user_id: userId, online: true });
 
     try {
       const conversations = await conversationRepository.listByUserId(userId);
@@ -132,6 +297,10 @@ io.on("connection", async (socket) => {
         sender_id: userId,
         type: payload.type ?? "text",
         content: payload.content,
+        reply_to_message_id:
+          typeof payload.reply_to_message_id === "string"
+            ? payload.reply_to_message_id
+            : undefined,
       });
 
       const members = await conversationRepository.getConversationMembers(
@@ -169,20 +338,132 @@ io.on("connection", async (socket) => {
           type: message.type,
         });
       });
+
+      if (message.reply_to_message_id) {
+        const repliedMessage = await messageService.getMessageById(
+          message.reply_to_message_id,
+        );
+
+        if (
+          repliedMessage &&
+          repliedMessage.sender_id &&
+          repliedMessage.sender_id !== userId
+        ) {
+          io.to(`user_${repliedMessage.sender_id}`).emit("notification:reply", {
+            conversation_id: payload.conversation_id,
+            message_id: message.id,
+            reply_to_message_id: message.reply_to_message_id,
+            sender_id: userId,
+          });
+        }
+      }
     } catch (error) {
-      socket.emit("message:send_ack", { ok: false, error: String(error) });
+      const errorMessage =
+        error instanceof Error ? error.message : "message_send_failed";
+
+      socket.emit("message:send_ack", {
+        ok: false,
+        error: errorMessage,
+        conversation_id:
+          typeof payload?.conversation_id === "string"
+            ? payload.conversation_id
+            : undefined,
+      });
     }
   });
 
-  // TYPING EVENT
-  socket.on("message:typing", (payload) => {
-    socket
-      .to(`conversation_${payload.conversation_id}`)
-      .emit("message:typing", {
-        conversation_id: payload.conversation_id,
-        user_id: userId,
-        timestamp: Date.now(),
+  socket.on("join_conversation", async (payload) => {
+    const conversationId =
+      payload && typeof payload.conversation_id === "string"
+        ? payload.conversation_id.trim()
+        : "";
+
+    if (!conversationId) {
+      socket.emit("join_conversation_error", {
+        message: "invalid_conversation_id",
       });
+      return;
+    }
+
+    try {
+      const members =
+        await conversationRepository.getConversationMembers(conversationId);
+      const canJoin = members.some((member) => member.userId === userId);
+
+      if (!canJoin) {
+        socket.emit("join_conversation_error", {
+          conversation_id: conversationId,
+          message: "not_a_member",
+        });
+        return;
+      }
+
+      socket.join(`conversation_${conversationId}`);
+      socket.emit("join_conversation_ack", {
+        conversation_id: conversationId,
+        ok: true,
+      });
+    } catch (error) {
+      socket.emit("join_conversation_error", {
+        conversation_id: conversationId,
+        message: error instanceof Error ? error.message : "join_failed",
+      });
+    }
+  });
+
+  socket.on("leave_conversation", (payload) => {
+    const conversationId =
+      payload && typeof payload.conversation_id === "string"
+        ? payload.conversation_id.trim()
+        : "";
+
+    if (!conversationId) {
+      socket.emit("leave_conversation_error", {
+        message: "invalid_conversation_id",
+      });
+      return;
+    }
+
+    socket.leave(`conversation_${conversationId}`);
+    socket.emit("leave_conversation_ack", {
+      conversation_id: conversationId,
+      ok: true,
+    });
+  });
+
+  // TYPING EVENT
+  socket.on("message:typing", async (payload) => {
+    const conversationId =
+      payload && typeof payload.conversation_id === "string"
+        ? payload.conversation_id.trim()
+        : "";
+    if (!conversationId) {
+      return;
+    }
+
+    const isTyping = payload?.is_typing !== false;
+    const typingPayload = {
+      conversation_id: conversationId,
+      user_id: userId,
+      is_typing: isTyping,
+      timestamp: Date.now(),
+    };
+
+    socket.to(`conversation_${conversationId}`).emit("message:typing", typingPayload);
+
+    // Fallback route: emit directly to each member user room.
+    // This prevents missed typing signals when a client reconnects but has not yet re-joined the conversation room.
+    try {
+      const members =
+        await conversationRepository.getConversationMembers(conversationId);
+      members
+        .filter((member) => member.userId !== userId)
+        .forEach((member) => {
+          io.to(`user_${member.userId}`).emit("message:typing", typingPayload);
+        });
+    } catch {
+      // no-op: room broadcast above remains the primary path.
+    }
   });
 
   // READ RECEIPT EVENT
@@ -205,19 +486,299 @@ io.on("connection", async (socket) => {
   // DELETE MESSAGE EVENT
   socket.on("message:delete", async (payload) => {
     try {
-      await messageService.deleteMessage(payload.message_id, userId);
+      const deleted = await messageService.deleteMessage(
+        payload.message_id,
+        userId,
+      );
 
-      socket
-        .to(`conversation_${payload.conversation_id}`)
-        .emit("message:deleted", {
-          message_id: payload.message_id,
-          conversation_id: payload.conversation_id,
-          timestamp: Date.now(),
-        });
+      socket.emit("message:delete_ack", {
+        ok: true,
+        message_id: deleted.id,
+        conversation_id: deleted.conversation_id,
+      });
     } catch (error) {
       socket.emit("message:delete_error", { error: String(error) });
     }
   });
+
+  socket.on("message:recall", async (payload) => {
+    try {
+      const recalled = await messageService.recallMessage(
+        payload.message_id,
+        userId,
+      );
+      socket.emit("message:recall_ack", {
+        ok: true,
+        message_id: recalled.id,
+        conversation_id: recalled.conversation_id,
+      });
+    } catch (error) {
+      socket.emit("message:recall_error", { error: String(error) });
+    }
+  });
+
+  socket.on("message:react", async (payload) => {
+    try {
+      const updated = await messageService.reactToMessage(
+        payload.message_id,
+        userId,
+        payload.reaction,
+      );
+      socket.emit("message:reaction_ack", {
+        ok: true,
+        message_id: updated.id,
+        conversation_id: updated.conversation_id,
+      });
+    } catch (error) {
+      socket.emit("message:reaction_error", { error: String(error) });
+    }
+  });
+
+  socket.on("call:initiate", async (payload: unknown) => {
+    const conversationId = getConversationId(payload);
+    try {
+      if (!conversationId) {
+        socket.emit("call:error", {
+          event: "call:initiate",
+          message: "invalid_conversation_id",
+        });
+        return;
+      }
+
+      const isMember = await ensureConversationMember(conversationId, userId);
+      if (!isMember) {
+        socket.emit("call:error", {
+          event: "call:initiate",
+          conversation_id: conversationId,
+          message: "not_a_member",
+        });
+        return;
+      }
+
+      const sourcePayload = isRecord(payload) ? payload : {};
+      const callId = getCallId(payload) ?? randomUUID();
+      const callType =
+        asString(sourcePayload.call_type) ??
+        (conversationId.includes("grp") ? "group" : "direct");
+      const relayPayload: Record<string, unknown> = {
+        ...sourcePayload,
+        call_id: callId,
+        conversation_id: conversationId,
+        call_type: callType,
+        initiator_id: userId,
+        created_at: new Date().toISOString(),
+      };
+
+      try {
+        const [initiatorProfile, conversation] = await Promise.all([
+          callUserClient.getUserById(userId),
+          conversationRepository.getConversationById(conversationId),
+        ]);
+
+        relayPayload.caller_name = initiatorProfile.fullName;
+        relayPayload.conversation_name =
+          conversation?.type === "group"
+            ? conversation.name || "Nhóm chat"
+            : initiatorProfile.fullName;
+      } catch {
+        relayPayload.caller_name = "Người gọi";
+      }
+
+      await callService.startCall({
+        call_id: callId,
+        conversation_id: conversationId,
+        initiator_id: userId,
+        call_type: callType === "group" ? "group" : "direct",
+        started_at:
+          typeof relayPayload.created_at === "string"
+            ? relayPayload.created_at
+            : undefined,
+      });
+
+      const members =
+        await conversationRepository.getConversationMembers(conversationId);
+      const receiverUserIds = members
+        .map((member) => member.userId)
+        .filter((memberId) => memberId !== userId);
+
+      receiverUserIds.forEach((receiverUserId) => {
+        io.to(`user_${receiverUserId}`).emit("call:initiate", relayPayload);
+      });
+      socket.emit("call:initiate_ack", {
+        ok: true,
+        call_id: callId,
+        conversation_id: conversationId,
+      });
+
+      await publishCallSignal(
+        "call:initiate",
+        { user_ids: receiverUserIds },
+        relayPayload,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "call_initiate_failed";
+      socket.emit("call:error", {
+        event: "call:initiate",
+        conversation_id: conversationId,
+        message: message === "call_already_active" ? "call_already_active" : message,
+      });
+    }
+  });
+
+  const relayCallEvent = (eventName: CallSignalEventName) => {
+    socket.on(eventName, async (payload: unknown) => {
+      try {
+        const conversationId = getConversationId(payload);
+        if (!conversationId) {
+          socket.emit("call:error", {
+            event: eventName,
+            message: "invalid_conversation_id",
+          });
+          return;
+        }
+
+        const callId = getCallId(payload);
+        if (!callId) {
+          socket.emit("call:error", {
+            event: eventName,
+            conversation_id: conversationId,
+            message: "invalid_call_id",
+          });
+          return;
+        }
+
+        const isMember = await ensureConversationMember(conversationId, userId);
+        if (!isMember) {
+          socket.emit("call:error", {
+            event: eventName,
+            conversation_id: conversationId,
+            message: "not_a_member",
+          });
+          return;
+        }
+
+        const sourcePayload = isRecord(payload) ? payload : {};
+        const relayPayload: Record<string, unknown> = {
+          ...sourcePayload,
+          call_id: callId,
+          conversation_id: conversationId,
+          sender_id: userId,
+          timestamp: Date.now(),
+        };
+
+        if (eventName === "call:accept") {
+          clearDisconnectTimer(callId, userId);
+          await callService.markParticipantState(
+            callId,
+            userId,
+            conversationId,
+            "connected",
+          );
+        }
+
+        if (eventName === "call:decline") {
+          await callService.markParticipantState(
+            callId,
+            userId,
+            conversationId,
+            "declined",
+          );
+
+          await callService.autoEndDeclinedDirectCall(
+            callId,
+            conversationId,
+          );
+        }
+
+        if (eventName === "call:end") {
+          clearDisconnectTimer(callId, userId);
+          const endReason =
+            typeof sourcePayload.reason === "string" && sourcePayload.reason
+              ? sourcePayload.reason
+              : "ended_by_user";
+          await callService.endCall(callId, userId, conversationId, endReason);
+        }
+
+        if (eventName === "call:leave") {
+          clearDisconnectTimer(callId, userId);
+          const result = await callService.leaveCall(
+            callId,
+            userId,
+            conversationId,
+          );
+
+          if (result.action === "ended") {
+            // Call truly ended — broadcast call:end to everyone
+            const endPayload = {
+              ...relayPayload,
+              reason: "last_participant_left",
+            };
+            socket.emit("call:end", endPayload);
+            socket.to(`conversation_${conversationId}`).emit("call:end", endPayload);
+            socket.emit("call:signal_ack", {
+              ok: true,
+              event: "call:end",
+              call_id: callId,
+              conversation_id: conversationId,
+            });
+            await publishCallSignal(
+              "call:end",
+              { conversation_id: conversationId },
+              endPayload,
+            );
+          } else {
+            // Participant left — broadcast call:participant_left
+            const leftPayload = {
+              ...relayPayload,
+              left_user_id: userId,
+            };
+            socket.to(`conversation_${conversationId}`).emit("call:participant_left", leftPayload);
+            socket.emit("call:signal_ack", {
+              ok: true,
+              event: "call:leave",
+              call_id: callId,
+              conversation_id: conversationId,
+            });
+            await publishCallSignal(
+              "call:participant_left",
+              { conversation_id: conversationId },
+              leftPayload,
+            );
+          }
+          // Skip the default relay below — we already emitted
+          return;
+        }
+
+        socket.to(`conversation_${conversationId}`).emit(eventName, relayPayload);
+        socket.emit("call:signal_ack", {
+          ok: true,
+          event: eventName,
+          call_id: callId,
+          conversation_id: conversationId,
+        });
+
+        await publishCallSignal(
+          eventName,
+          { conversation_id: conversationId },
+          relayPayload,
+        );
+      } catch (error) {
+        socket.emit("call:error", {
+          event: eventName,
+          message: error instanceof Error ? error.message : "call_signal_failed",
+        });
+      }
+    });
+  };
+
+  relayCallEvent("call:accept");
+  relayCallEvent("call:decline");
+  relayCallEvent("call:offer");
+  relayCallEvent("call:answer");
+  relayCallEvent("call:ice_candidate");
+  relayCallEvent("call:participant_update");
+  relayCallEvent("call:end");
+  relayCallEvent("call:leave");
 
   // JOIN CONVERSATION EVENT - Dynamic room joining
   socket.on(
@@ -291,7 +852,92 @@ io.on("connection", async (socket) => {
   });
 
   socket.on("disconnect", () => {
-    socket.broadcast.emit("user:online", { user_id: userId, online: false });
+    void (async () => {
+      try {
+        const sessions = await callService.listActive(userId);
+        sessions.forEach((session) => {
+          const participant = session.participants.find(
+            (item) => item.user_id === userId,
+          );
+          if (
+            !participant ||
+            (participant.state !== "connected" && participant.state !== "initiated")
+          ) {
+            return;
+          }
+
+          const key = buildDisconnectTimerKey(session.id, userId);
+          if (disconnectedCallTimers.has(key)) {
+            return;
+          }
+
+          const timer = setTimeout(() => {
+            disconnectedCallTimers.delete(key);
+            void (async () => {
+              try {
+                const result = await callService.leaveCall(
+                  session.id,
+                  userId,
+                  session.conversation_id,
+                );
+
+                if (result.action === "ended") {
+                  const endPayload = {
+                    call_id: session.id,
+                    conversation_id: session.conversation_id,
+                    sender_id: userId,
+                    reason: "disconnect_timeout",
+                    timestamp: Date.now(),
+                  };
+                  emitCallSignal("call:end", { conversation_id: session.conversation_id }, endPayload);
+                  await publishCallSignal(
+                    "call:end",
+                    { conversation_id: session.conversation_id },
+                    endPayload,
+                  );
+                } else {
+                  const leftPayload = {
+                    call_id: session.id,
+                    conversation_id: session.conversation_id,
+                    left_user_id: userId,
+                    sender_id: userId,
+                    reason: "disconnect_timeout",
+                    timestamp: Date.now(),
+                  };
+                  emitCallSignal(
+                    "call:participant_left",
+                    { conversation_id: session.conversation_id },
+                    leftPayload,
+                  );
+                  await publishCallSignal(
+                    "call:participant_left",
+                    { conversation_id: session.conversation_id },
+                    leftPayload,
+                  );
+                }
+              } catch {
+                // no-op: session may already be ended.
+              }
+            })();
+          }, DISCONNECT_GRACE_MS);
+          timer.unref();
+          disconnectedCallTimers.set(key, timer);
+        });
+      } catch {
+        // no-op
+      }
+    })();
+    void io
+      .in(`user_${userId}`)
+      .fetchSockets()
+      .then((sockets) => {
+        if (sockets.length === 0) {
+          io.emit("user:online", { user_id: userId, online: false });
+        }
+      })
+      .catch(() => {
+        // no-op
+      });
   });
 });
 
@@ -299,28 +945,86 @@ async function bootstrap() {
   await ensureTables();
   await connectRedis();
 
-  // Subscribe to message channel for real-time broadcasting
-  await redisSubscriber.subscribe(
-    env.REDIS_MESSAGE_CHANNEL,
-    async (messageText) => {
-      const message = JSON.parse(messageText) as { conversation_id: string };
-      io.to(`conversation_${message.conversation_id}`).emit(
-        "message:receive",
-        message,
-      );
+  let timeoutSweepRunning = false;
+  const timeoutSweepInterval = setInterval(() => {
+    if (timeoutSweepRunning) {
+      return;
+    }
 
-      try {
-        const members = await conversationRepository.getConversationMembers(
-          message.conversation_id,
-        );
-        members.forEach((member) => {
-          io.to(`user_${member.userId}`).emit("message:receive", message);
-        });
-      } catch (error) {
-        console.error("Failed to fan-out message to user rooms", error);
-      }
-    },
-  );
+    timeoutSweepRunning = true;
+    void callService
+      .expireUnansweredCalls(env.CALL_INVITE_TIMEOUT_SECONDS)
+      .then((expiredSessions) => {
+        if (expiredSessions.length > 0) {
+          expiredSessions.forEach((session) => {
+            const missedPayload = {
+              call_id: session.id,
+              conversation_id: session.conversation_id,
+              reason: "no_answer_timeout",
+              ended_at: session.ended_at,
+            };
+
+            emitCallSignal(
+              "call:missed",
+              { conversation_id: session.conversation_id },
+              missedPayload,
+            );
+            emitCallSignal(
+              "call:end",
+              { conversation_id: session.conversation_id },
+              missedPayload,
+            );
+
+            void publishCallSignal(
+              "call:missed",
+              { conversation_id: session.conversation_id },
+              missedPayload,
+            );
+            void publishCallSignal(
+              "call:end",
+              { conversation_id: session.conversation_id },
+              missedPayload,
+            );
+          });
+
+          console.log(
+            `[Call Timeout] Auto-ended ${expiredSessions.length} unanswered call(s)`,
+          );
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to sweep unanswered calls", error);
+      })
+      .finally(() => {
+        timeoutSweepRunning = false;
+      });
+  }, 10_000);
+  timeoutSweepInterval.unref();
+
+  await redisSubscriber.subscribe(env.REDIS_MESSAGE_CHANNEL, (messageText) => {
+    const message = JSON.parse(messageText) as {
+      conversation_id: string;
+      created_at: string;
+      id: string;
+      sender_id: string;
+      type: string;
+      content: string;
+    };
+
+    void messageService.persistIncomingMessage(message).catch((error) => {
+      console.error("Failed to persist broadcasted message", error);
+    });
+
+    // Keep backward compatibility while standardizing on message:receive.
+    io.to(`conversation_${message.conversation_id}`).emit(
+      "receive_message",
+      message,
+    );
+    io.to(`conversation_${message.conversation_id}`).emit(
+      "message:receive",
+      message,
+    );
+  });
 
   // Subscribe to message read events
   await redisSubscriber.subscribe(
@@ -339,18 +1043,106 @@ async function bootstrap() {
 
   // Subscribe to message delete events
   await redisSubscriber.subscribe(
-    `${env.REDIS_MESSAGE_CHANNEL}:delete`,
+    `${env.REDIS_MESSAGE_CHANNEL}:delete_for_user`,
     (text) => {
       const data = JSON.parse(text) as {
         messageId: string;
         conversationId: string;
+        userId: string;
       };
-      io.to(`conversation_${data.conversationId}`).emit(
-        "message:deleted",
-        data,
-      );
+      io.to(`user_${data.userId}`).emit("message:deleted", {
+        message_id: data.messageId,
+        conversation_id: data.conversationId,
+        user_id: data.userId,
+      });
     },
   );
+
+  await redisSubscriber.subscribe(
+    `${env.REDIS_MESSAGE_CHANNEL}:recall`,
+    async (text) => {
+      const data = JSON.parse(text) as {
+        messageId: string;
+        conversationId: string;
+        recalledAt?: string;
+        recalledBy?: string;
+      };
+      const payload = {
+        message_id: data.messageId,
+        conversation_id: data.conversationId,
+        recalled_at: data.recalledAt,
+        recalled_by: data.recalledBy,
+      };
+
+      io.to(`conversation_${data.conversationId}`).emit(
+        "message:recalled",
+        payload,
+      );
+
+      try {
+        const members = await conversationRepository.getConversationMembers(
+          data.conversationId,
+        );
+        members.forEach((member) => {
+          io.to(`user_${member.userId}`).emit("message:recalled", payload);
+        });
+      } catch (error) {
+        console.error("Failed to fan-out recalled event to user rooms", error);
+      }
+    },
+  );
+
+  await redisSubscriber.subscribe(
+    `${env.REDIS_MESSAGE_CHANNEL}:reaction`,
+    async (text) => {
+      const data = JSON.parse(text) as {
+        messageId: string;
+        conversationId: string;
+        reactions: Array<{
+          user_id: string;
+          reaction: string;
+          created_at: string;
+        }>;
+      };
+
+      const payload = {
+        message_id: data.messageId,
+        conversation_id: data.conversationId,
+        reactions: data.reactions,
+      };
+
+      io.to(`conversation_${data.conversationId}`).emit(
+        "message:reaction_updated",
+        payload,
+      );
+
+      try {
+        const members = await conversationRepository.getConversationMembers(
+          data.conversationId,
+        );
+        members.forEach((member) => {
+          io.to(`user_${member.userId}`).emit(
+            "message:reaction_updated",
+            payload,
+          );
+        });
+      } catch (error) {
+        console.error("Failed to fan-out reaction event to user rooms", error);
+      }
+    },
+  );
+
+  await redisSubscriber.subscribe(env.REDIS_CALL_SIGNAL_CHANNEL, (text) => {
+    try {
+      const envelope = JSON.parse(text) as CallSignalEnvelope;
+      if (envelope.source_instance_id === callSignalingInstanceId) {
+        return;
+      }
+      emitCallSignal(envelope.event_name, envelope.target, envelope.payload);
+    } catch (error) {
+      console.error("Failed to process call signaling message", error);
+    }
+  });
 
   server.listen(env.PORT, () => {
     console.log(`chat-service listening on ${env.PORT}`);

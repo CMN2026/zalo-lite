@@ -1,0 +1,61 @@
+# LiveKit Server Configuration — Production-ready
+# Docs: https://docs.livekit.io/realtime/self-hosting/deployment/
+
+port: 7880
+rtc:
+  # UDP port range for WebRTC media (matches docker-compose port mapping)
+  port_range_start: 20000
+  port_range_end: 20100
+  # Docker Desktop on Windows: use_external_ip doesn't work (detects
+  # container-internal IP). For local dev we set node_ip explicitly.
+  # In production, set this to the server's public IP.
+  use_external_ip: false
+  node_ip: 32.236.47.127
+  # Enable ICE/TCP fallback so clients behind restrictive firewalls can
+  # still establish media connections when UDP is blocked.
+  tcp_port: 7881
+  # Disable loopback candidate in EC2 deployment.
+  enable_loopback_candidate: false
+
+# Redis is required for multi-node deployments and persisting room state
+# across restarts. When a single instance is sufficient, you may remove
+# this block, but keeping it ensures graceful upgrades.
+redis:
+  address: redis:6379
+
+# API key / secret pairs used by services to generate access tokens.
+# MUST be at least 32 characters. In production, rotate these regularly
+# and store them in a secrets manager.
+keys:
+  dev-livekit-api-key-zalo-lite-2026: dev-livekit-api-secret-zalo-lite-2026-production-ready
+
+# Room configuration
+room:
+  # Auto-create rooms when the first participant joins
+  auto_create: true
+  # Empty rooms are destroyed after this timeout (seconds)
+  empty_timeout: 300
+  # Max participants per room (0 = unlimited)
+  max_participants: 50
+
+# Built-in TURN server — relays media when direct UDP/TCP connectivity
+# fails (corporate firewalls, symmetric NATs, etc.).
+# NOTE: For production, you need a valid domain with TLS certs.
+# For local dev, we disable the built-in TURN since loopback candidates
+# are enabled above. If deploying to a public server, enable TURN and
+# set the domain + TLS cert paths.
+turn:
+  enabled: false
+  # Uncomment below for production:
+  # enabled: true
+  # domain: livekit.your-domain.com
+  # tls_port: 5349
+  # udp_port: 3478
+  # cert_file: /etc/livekit/tls/cert.pem
+  # key_file: /etc/livekit/tls/key.pem
+
+# Logging
+logging:
+  level: info
+  json: false
+

@@ -1,4 +1,5 @@
 type Env = {
+  NODE_ENV: string;
   PORT: number;
   DATABASE_URL: string;
   GOOGLE_CLIENT_ID: string;
@@ -10,6 +11,13 @@ type Env = {
   RATE_LIMIT_WINDOW_MS: number;
   RATE_LIMIT_MAX: number;
   CORS_ORIGINS: string[];
+  SMTP_HOST: string;
+  SMTP_PORT: number;
+  SMTP_SECURE: boolean;
+  SMTP_USER: string;
+  SMTP_PASS: string;
+  SMTP_FROM: string;
+  PASSWORD_RESET_URL_BASE: string;
 };
 
 function getEnv(name: string, fallback?: string): string {
@@ -35,6 +43,7 @@ function parseList(value: string): string[] {
 }
 
 export const env: Env = {
+  NODE_ENV: process.env.NODE_ENV?.trim() ?? "development",
   PORT: Number(getEnv("PORT", "3001")),
   DATABASE_URL: getEnv("DATABASE_URL"),
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID?.trim() ?? "",
@@ -48,4 +57,15 @@ export const env: Env = {
   CORS_ORIGINS: parseCorsOrigins(
     getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3003"),
   ),
+  SMTP_HOST: process.env.SMTP_HOST?.trim() ?? "",
+  SMTP_PORT: Number(getEnv("SMTP_PORT", "587")),
+  SMTP_SECURE: (process.env.SMTP_SECURE?.trim() ?? "false") === "true",
+  SMTP_USER: process.env.SMTP_USER?.trim() ?? "",
+  SMTP_PASS: process.env.SMTP_PASS?.trim() ?? "",
+  SMTP_FROM: process.env.SMTP_FROM?.trim() ?? "no-reply@zalolite.local",
+  PASSWORD_RESET_URL_BASE:
+    process.env.PASSWORD_RESET_URL_BASE?.trim() ||
+    `${parseCorsOrigins(
+      getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3003"),
+    )[0]}/reset-password`,
 };

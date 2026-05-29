@@ -25,6 +25,15 @@ export class UserController {
     }
   }
 
+  static async getById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await userService.getByIdOrThrow(req.params.id);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async updateMe(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.auth?.userId;
@@ -39,6 +48,16 @@ export class UserController {
     try {
       const userId = req.auth?.userId;
       const data = await userService.updateAvatar(userId, req.body.avatarUrl);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateCover(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.updateCover(userId, req.body.coverUrl);
       res.status(200).json({ data });
     } catch (error) {
       next(error);
@@ -96,6 +115,20 @@ export class UserController {
     }
   }
 
+  static async listOutgoingRequests(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.listOutgoingRequests(userId);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async respondFriendRequest(
     req: Request,
     res: Response,
@@ -119,6 +152,70 @@ export class UserController {
       const userId = req.auth?.userId;
       const data = await userService.listFriends(userId);
       res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async removeFriend(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.removeFriend(
+        userId,
+        req.params.otherUserId,
+      );
+      res.status(200).json({ message: "friendship_removed", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getFriendshipStatus(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.getFriendshipStatus(
+        userId,
+        req.params.otherUserId,
+      );
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async blockFriendship(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.blockFriendship(
+        userId,
+        req.params.otherUserId,
+      );
+      res.status(200).json({ message: "friendship_blocked", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async unblockFriendship(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = req.auth?.userId;
+      const data = await userService.unblockFriendship(
+        userId,
+        req.params.otherUserId,
+      );
+      res.status(200).json({ message: "friendship_unblocked", data });
     } catch (error) {
       next(error);
     }

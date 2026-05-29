@@ -7,14 +7,29 @@ import {
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { env } from "./env.js";
 
-export const dynamoClient = new DynamoDBClient({
+// Build config dynamically
+const clientConfig: any = {
   region: env.AWS_REGION,
-  endpoint: env.DYNAMODB_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "dummy",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "dummy",
-  },
-});
+};
+
+if (env.DYNAMODB_ENDPOINT && env.DYNAMODB_ENDPOINT.trim() !== "") {
+  clientConfig.endpoint = env.DYNAMODB_ENDPOINT;
+}
+
+const accessKeyId = process.env.AWS_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID;
+const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY;
+
+if (accessKeyId && secretAccessKey && accessKeyId !== "dummy") {
+  clientConfig.credentials = { accessKeyId, secretAccessKey };
+} else if (clientConfig.endpoint) {
+  // If local, provide dummy credentials so DynamoDB local client doesn't complain
+  clientConfig.credentials = {
+    accessKeyId: "dummy",
+    secretAccessKey: "dummy",
+  };
+}
+
+export const dynamoClient = new DynamoDBClient(clientConfig);
 
 export const dynamo = DynamoDBDocumentClient.from(dynamoClient, {
   marshallOptions: { removeUndefinedValues: true },
@@ -86,6 +101,24 @@ export async function ensureTables(): Promise<void> {
       KeySchema: [
         { AttributeName: "user_id", KeyType: "HASH" },
         { AttributeName: "friend_id", KeyType: "RANGE" },
+      ],
+      BillingMode: "PAY_PER_REQUEST",
+    }),
+    new CreateTableCommand({
+      TableName: env.TABLE_CALL_SESSIONS,
+      AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
+      KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+      BillingMode: "PAY_PER_REQUEST",
+    }),
+    new CreateTableCommand({
+      TableName: env.TABLE_CALL_HISTORY,
+      AttributeDefinitions: [
+        { AttributeName: "user_id", AttributeType: "S" },
+        { AttributeName: "created_at_call_id", AttributeType: "S" },
+      ],
+      KeySchema: [
+        { AttributeName: "user_id", KeyType: "HASH" },
+        { AttributeName: "created_at_call_id", KeyType: "RANGE" },
       ],
       BillingMode: "PAY_PER_REQUEST",
     }),

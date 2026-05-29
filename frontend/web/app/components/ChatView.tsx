@@ -2,15 +2,36 @@
 /* eslint-disable @next/next/no-img-element */
 /* eslint-disable sonarjs/no-nested-functions */
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Bell, MoreVertical, Search, Users } from "lucide-react";
-import MessageList, { Message } from "./MessageList";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Bell,
+  BellOff,
+  MoreVertical,
+  Phone,
+  PhoneOff,
+  Plus,
+  Search,
+  Trash2,
+  Users,
+} from "lucide-react";
+import MessageList, { Message, type MessageReaction } from "./MessageList";
 import MessageInput from "./MessageInput";
 import CreateGroupModal from "./CreateGroupModal";
+import StartConversationModal from "./StartConversationModal";
 import GroupDetailPanel from "./GroupDetailPanel";
+import LiveKitCallOverlay from "./LiveKitCallOverlay";
+import UserProfileModal from "./UserProfileModal";
 import { useSocket } from "../hooks/useSocket";
 import { useAuth } from "../contexts/auth";
 import { getAuthToken } from "../lib/auth";
+import type { LiveKitTokenPayload } from "../lib/calls";
+import { WEB_GATEWAY_BASE_URL, WEB_CHAT_SERVICE_BASE_URL, WEB_USER_SERVICE_BASE_URL } from "../lib/runtime-base-url";
 
 interface Conversation {
   id: string;
@@ -19,11 +40,10 @@ interface Conversation {
   preview: string;
   time: string;
   online: boolean;
-  email?: string;
   messages: Message[];
   createdBy?: string;
   type?: "direct" | "group";
-  targetUserId?: string;
+  peerId?: string;
 }
 
 interface UserSummary {
@@ -32,10 +52,7 @@ interface UserSummary {
   email?: string;
   phone?: string;
   avatarUrl?: string | null;
-  role?: "USER" | "ADMIN";
 }
-
-
 
 interface ConversationApi {
   id: string;
@@ -47,16 +64,208 @@ interface ConversationApi {
   lastMessageAt?: string | null;
 }
 
+type ConversationCacheEntry = {
+  id: string;
+  name: string;
+  avatar: string;
+  preview: string;
+  time: string;
+  online: boolean;
+  createdBy?: string;
+  type?: "direct" | "group";
+  peerId?: string;
+};
+
 type SendAckPayload = {
   ok: boolean;
   message_id?: string;
-  conversation_id?: string;
   client_temp_id?: string;
   error?: string;
+  conversation_id?: string;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
+type CallSignalPayload = {
+  call_id?: unknown;
+  conversation_id?: unknown;
+  initiator_id?: unknown;
+  sender_id?: unknown;
+  call_type?: unknown;
+  caller_name?: unknown;
+  conversation_name?: unknown;
+  reason?: unknown;
+  left_user_id?: unknown;
+};
+
+type ActiveCallState = {
+  callId: string;
+  conversationId: string;
+  status: "ringing" | "connected";
+  isInitiator: boolean;
+  connectedAt?: number;
+  callType: "direct" | "group";
+};
+
+type ActiveGroupCallInfo = {
+  callId: string;
+  callType: "group";
+};
+
+function formatCallDuration(seconds: number): string {
+  if (seconds < 0 || !Number.isFinite(seconds)) {
+    return "";
+  }
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  const parts: string[] = [];
+  if (hours > 0) {
+    parts.push(`${hours} giờ`);
+  }
+  if (minutes > 0) {
+    parts.push(`${minutes} phút`);
+  }
+  if (secs > 0 || parts.length === 0) {
+    parts.push(`${secs} giây`);
+  }
+
+  return parts.join(" ");
+}
+
+type IncomingCallState = {
+  callId: string;
+  conversationId: string;
+  initiatorId: string;
+  callType: "direct" | "group";
+};
+
+type CallNotificationState = {
+  title: string;
+  description: string;
+  callId: string;
+  conversationId: string;
+  callType: "direct" | "group";
+  initiatorId: string;
+};
+
+interface ChatViewProps {
+  onFocusedConversationChange?: (conversationId: string | null) => void;
+  unreadByConversation?: Record<string, number>;
+  onUnreadByConversationChange?: React.Dispatch<
+    React.SetStateAction<Record<string, number>>
+  >;
+  mutedByConversation?: Record<string, boolean>;
+  onMutedByConversationChange?: React.Dispatch<
+    React.SetStateAction<Record<string, boolean>>
+  >;
+  pendingJump?: {
+    conversationId: string;
+    messageId?: string;
+  } | null;
+  onPendingJumpHandled?: () => void;
+  suppressModals?: boolean;
+}
+
+const API_BASE_URL = WEB_GATEWAY_BASE_URL;
+const CHAT_SERVICE_BASE_URL = WEB_CHAT_SERVICE_BASE_URL;
+const USER_SERVICE_BASE_URL = WEB_USER_SERVICE_BASE_URL;
+const DEFAULT_SYSTEM_PREVIEW = "Hai bạn đã trở thành bạn bè. Hãy gửi lời chào.";
+const USER_SUMMARY_CACHE_KEY_PREFIX = "zalo-lite:web:user-summaries:";
+const CONVERSATION_CACHE_KEY_PREFIX = "zalo-lite:web:conversations:";
+
+function normalizeConversationId(value: unknown): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string") {
+    return null;
+  }
+
+  const normalized = raw.trim().replace(/,+$/, "");
+  return normalized.length > 0 ? normalized : null;
+}
+
+function toIsoReadTimestamp(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) {
+      return null;
+    }
+
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric)) {
+      const parsedNumeric = new Date(numeric);
+      return Number.isNaN(parsedNumeric.getTime())
+        ? null
+        : parsedNumeric.toISOString();
+    }
+
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  return null;
+}
+
+function createClientCallId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `call_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getConversationPreviewFromMessage(
+  message: Message | undefined,
+  currentUserId: string,
+) {
+  if (!message) {
+    return DEFAULT_SYSTEM_PREVIEW;
+  }
+
+  const basePreview =
+    message.type === "file" ? "Tệp đính kèm" : message.content;
+  return message.sender_id === currentUserId
+    ? `Bạn: ${basePreview}`
+    : basePreview;
+}
+
+function isResolvedFullName(value: string | undefined, userId: string) {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return normalized !== userId;
+}
+
+function mergeUserSummary(
+  current: UserSummary | undefined,
+  incoming: UserSummary,
+): UserSummary {
+  if (!current) {
+    return incoming;
+  }
+
+  const prefersIncomingName =
+    !isResolvedFullName(current.fullName, current.id) &&
+    isResolvedFullName(incoming.fullName, incoming.id);
+
+  return {
+    id: current.id,
+    fullName: prefersIncomingName ? incoming.fullName : current.fullName,
+    email: current.email || incoming.email,
+    phone: current.phone || incoming.phone,
+    avatarUrl: current.avatarUrl || incoming.avatarUrl,
+  };
+}
 
 async function authJsonRequest<T>(
   path: string,
@@ -75,75 +284,338 @@ async function authJsonRequest<T>(
     Object.assign(headers, extraHeaders);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers,
-  });
+  const method = (init.method ?? "GET").toUpperCase();
+  const suffix =
+    method === "GET"
+      ? `${path.includes("?") ? "&" : "?"}_ts=${Date.now()}`
+      : "";
 
-  if (!response.ok) {
-    throw new Error(`http_${response.status}`);
+  const fallbackPath = path.startsWith("/api/") ? path.slice(4) : path;
+
+  const targets = [
+    { baseUrl: API_BASE_URL, requestPath: path, tag: "gateway" as const },
+    {
+      baseUrl: CHAT_SERVICE_BASE_URL,
+      requestPath:
+        path.startsWith("/api/conversations") ||
+        path.startsWith("/api/messages") ||
+        path.startsWith("/api/friends") ||
+        path.startsWith("/api/calls")
+          ? fallbackPath
+          : null,
+      tag: "chat-service" as const,
+    },
+    {
+      baseUrl: USER_SERVICE_BASE_URL,
+      requestPath: path.startsWith("/api/users") ? fallbackPath : null,
+      tag: "user-service" as const,
+    },
+  ] as const;
+
+  let lastError: Error | null = null;
+
+  for (const target of targets) {
+    if (!target.requestPath) {
+      continue;
+    }
+
+    const timeoutMs = method === "GET" ? 6000 : 10000;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+
+    try {
+      const response = await fetch(
+        `${target.baseUrl}${target.requestPath}${suffix}`,
+        {
+          ...init,
+          method,
+          cache: method === "GET" ? "no-store" : "default",
+          headers,
+          signal: controller.signal,
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`http_${response.status}`);
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+      const typedError =
+        error instanceof Error ? error : new Error(String(error));
+
+      if (typedError.name === "AbortError") {
+        lastError = new Error("http_timeout");
+      } else {
+        lastError = typedError;
+      }
+
+      const isConnectivityError =
+        typedError.message === "http_timeout" ||
+        typedError.message === "Failed to fetch" ||
+        typedError.message === "Network request failed";
+      const shouldTryNextTarget =
+        target.tag === "gateway" &&
+        (isConnectivityError || typedError.message.startsWith("http_5"));
+
+      if (!shouldTryNextTarget) {
+        throw typedError;
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
   }
 
-  return (await response.json()) as T;
+  throw lastError ?? new Error("request_failed");
 }
 
-export default function ChatView() {
+export default function ChatView({
+  onFocusedConversationChange,
+  unreadByConversation: externalUnreadByConversation,
+  onUnreadByConversationChange,
+  mutedByConversation: externalMutedByConversation,
+  onMutedByConversationChange,
+  pendingJump,
+  onPendingJumpHandled,
+  suppressModals,
+}: Readonly<ChatViewProps>) {
   const { user } = useAuth();
+  const { isConnected, on, off, emit, join, leave } = useSocket();
+  const currentUserId = user?.id ?? "";
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
-  const [showUserSelection, setShowUserSelection] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showStartConversation, setShowStartConversation] = useState(false);
   const [allUsers, setAllUsers] = useState<UserSummary[]>([]);
-  const [unreadByConversation, setUnreadByConversation] = useState<
+  const [hasHydratedUserCache, setHasHydratedUserCache] = useState(false);
+  const [hasHydratedConversationCache, setHasHydratedConversationCache] =
+    useState(false);
+  const [localUnreadByConversation, setLocalUnreadByConversation] = useState<
     Record<string, number>
   >({});
+  const [missedCallsByConversation, setMissedCallsByConversation] = useState<
+    Record<string, number>
+  >({});
+  const [localMutedByConversation, setLocalMutedByConversation] = useState<
+    Record<string, boolean>
+  >({});
+  const [blockedByConversation, setBlockedByConversation] = useState<
+    Record<
+      string,
+      {
+        isBlocked: boolean;
+        blockedByCurrentUser: boolean;
+      }
+    >
+  >({});
+  const [chatNotice, setChatNotice] = useState<string>("");
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [activeCall, setActiveCall] = useState<ActiveCallState | null>(null);
+  const [incomingCall, setIncomingCall] = useState<IncomingCallState | null>(
+    null,
+  );
+  const waitRoomTimersRef = useRef<Record<string, number | NodeJS.Timeout>>({});
+  const [callNotification, setCallNotification] =
+    useState<CallNotificationState | null>(null);
+  const [liveKitTokenPayload, setLiveKitTokenPayload] =
+    useState<LiveKitTokenPayload | null>(null);
+  const [liveKitTokenError, setLiveKitTokenError] = useState<string | null>(
+    null,
+  );
+  const [connectionLossModal, setConnectionLossModal] = useState<{
+    callId: string;
+    conversationId: string;
+    countdown: number;
+    state: "waiting" | "ended";
+  } | null>(null);
+  const connectionLossTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveKitRequestCallIdRef = useRef<string | null>(null);
+  const [activeGroupCalls, setActiveGroupCalls] = useState<
+    Record<string, ActiveGroupCallInfo>
+  >({});
+  const [activeConversationActionId, setActiveConversationActionId] = useState<
+    string | null
+  >(null);
+  const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(
+    null,
+  );
+  const [lastReadAtByConversation, setLastReadAtByConversation] = useState<
+    Record<string, string>
+  >({});
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
-  const { isConnected, on, off, emit, join, leave } = useSocket();
-  const currentUserId = user?.id ?? "";
-  const activeChat = conversations.find((c) => c.id === activeChatId);
+  const unreadByConversation =
+    externalUnreadByConversation ?? localUnreadByConversation;
+  const setUnreadByConversation =
+    onUnreadByConversationChange ?? setLocalUnreadByConversation;
+  const shouldTrackUnreadLocally = !onUnreadByConversationChange;
+  const mutedByConversation =
+    externalMutedByConversation ?? localMutedByConversation;
+  const setMutedByConversation =
+    onMutedByConversationChange ?? setLocalMutedByConversation;
+
+  const activeChat = conversations.find((item) => item.id === activeChatId);
+  const activeBlockState = activeChatId
+    ? blockedByConversation[activeChatId]
+    : undefined;
+  const isComposerBlocked = Boolean(activeBlockState?.isBlocked);
+  const composerBlockedMessage = activeBlockState?.blockedByCurrentUser
+    ? "Bạn đã chặn người này. Mở chặn để tiếp tục nhắn tin."
+    : "Bạn đã bị chặn. Chỉ có thể nhắn lại khi đối phương mở chặn.";
+  const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
+  const typingUserTimeoutsRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
+  const localTypingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const localTypingHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const localTypingHasTextRef = useRef(false);
+  const localTypingActiveRef = useRef(false);
   const conversationsRef = useRef<Conversation[]>([]);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isLoadingConversationsRef = useRef(false);
+  const conversationsRetryAfterRef = useRef(0);
+  const lastReadSyncByConversationRef = useRef<Record<string, string>>({});
+  const userSummaryCacheKey = useMemo(
+    () =>
+      currentUserId
+        ? `${USER_SUMMARY_CACHE_KEY_PREFIX}${currentUserId}`
+        : USER_SUMMARY_CACHE_KEY_PREFIX,
+    [currentUserId],
+  );
+  const conversationCacheKey = useMemo(
+    () =>
+      currentUserId
+        ? `${CONVERSATION_CACHE_KEY_PREFIX}${currentUserId}`
+        : CONVERSATION_CACHE_KEY_PREFIX,
+    [currentUserId],
+  );
+
+  const markMessageRecalled = useCallback(
+    (
+      conversationId: string,
+      messageId: string,
+      recalledAt?: string,
+      recalledBy?: string,
+    ) => {
+      setConversations((prev) =>
+        prev.map((conv) => {
+          if (conv.id !== conversationId) return conv;
+          const nextMessages = conv.messages.map((item) =>
+            item.id === messageId
+              ? {
+                  ...item,
+                  type: "text" as const,
+                  content: "Tin nhắn đã được thu hồi",
+                  recalled_at: recalledAt,
+                  recalled_by: recalledBy,
+                  reactions: [] as MessageReaction[],
+                  reply_to_message_id: undefined,
+                }
+              : item,
+          );
+          const lastMessage = nextMessages[nextMessages.length - 1];
+
+          return {
+            ...conv,
+            messages: nextMessages,
+            preview: getConversationPreviewFromMessage(
+              lastMessage,
+              currentUserId,
+            ),
+            time: lastMessage
+              ? new Date(lastMessage.created_at).toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : conv.time,
+          };
+        }),
+      );
+    },
+    [currentUserId],
+  );
+
+  const setMessageReactions = useCallback(
+    (
+      conversationId: string,
+      messageId: string,
+      reactions: MessageReaction[],
+    ) => {
+      setConversations((prev) =>
+        prev.map((conv) => {
+          if (conv.id !== conversationId) return conv;
+
+          return {
+            ...conv,
+            messages: conv.messages.map((item) =>
+              item.id === messageId ? { ...item, reactions } : item,
+            ),
+          };
+        }),
+      );
+    },
+    [],
+  );
+
+  const removeMessageForCurrentUser = useCallback(
+    (conversationId: string, messageId: string) => {
+      setConversations((prev) =>
+        prev.map((conv) => {
+          if (conv.id !== conversationId) return conv;
+
+          const nextMessages = conv.messages.filter(
+            (item) => item.id !== messageId,
+          );
+          const nextPreview =
+            nextMessages.length > 0
+              ? getConversationPreviewFromMessage(
+                  nextMessages[nextMessages.length - 1],
+                  currentUserId,
+                )
+              : DEFAULT_SYSTEM_PREVIEW;
+
+          return {
+            ...conv,
+            messages: nextMessages,
+            preview: nextPreview,
+          };
+        }),
+      );
+
+      setReplyingTo((current) => (current?.id === messageId ? null : current));
+    },
+    [currentUserId],
+  );
 
   const resolveSenderName = useCallback(
     (senderId: string) => {
-      if (senderId === currentUserId) {
-        return user?.fullName || "You";
-      }
-      const sender = allUsers.find((u) => u.id === senderId);
-      return sender?.fullName || sender?.email || "Unknown";
+      if (senderId === currentUserId) return user?.fullName || "Bạn";
+      const sender = allUsers.find((entry) => entry.id === senderId);
+      return sender?.fullName || sender?.email || "Không rõ";
     },
     [allUsers, currentUserId, user?.fullName],
   );
 
   const enrichMessage = useCallback(
-    (message: Message): Message => {
-      const senderName = resolveSenderName(message.sender_id);
-      return {
-        ...message,
-        sender_name: senderName,
-      };
-    },
+    (message: Message): Message => ({
+      ...message,
+      sender_name: resolveSenderName(message.sender_id),
+    }),
     [resolveSenderName],
   );
 
-  useEffect(() => {
-    conversationsRef.current = conversations;
-  }, [conversations]);
+  const normalizeFriendUsers = (payload: unknown): UserSummary[] => {
+    if (!Array.isArray(payload)) return [];
 
-  const normalizeUsers = (payload: unknown): UserSummary[] => {
-    let list: unknown[] = [];
-    if (Array.isArray(payload)) {
-      list = payload;
-    } else if (payload && typeof payload === "object") {
-      const items = (payload as { items?: unknown[] }).items;
-      if (Array.isArray(items)) {
-        list = items;
-      }
-    }
-
-    return list.reduce<UserSummary[]>((acc, item) => {
+    return payload.reduce<UserSummary[]>((acc, item) => {
       if (!item || typeof item !== "object") return acc;
 
       const raw = item as {
@@ -152,92 +624,441 @@ export default function ChatView() {
         email?: unknown;
         phone?: unknown;
         avatarUrl?: unknown;
-        role?: unknown;
       };
 
       if (typeof raw.id !== "string") return acc;
-
-      let fullName = raw.id;
-      if (typeof raw.fullName === "string") {
-        fullName = raw.fullName;
-      }
-
-      let avatarUrl: string | null = null;
-      if (typeof raw.avatarUrl === "string") {
-        avatarUrl = raw.avatarUrl;
-      }
-
-      const normalized: UserSummary = {
+      acc.push({
         id: raw.id,
-        fullName,
+        fullName: typeof raw.fullName === "string" ? raw.fullName : raw.id,
         email: typeof raw.email === "string" ? raw.email : undefined,
         phone: typeof raw.phone === "string" ? raw.phone : undefined,
-        avatarUrl,
-        role:
-          raw.role === "USER" || raw.role === "ADMIN" ? raw.role : undefined,
-      };
-
-      acc.push(normalized);
+        avatarUrl: typeof raw.avatarUrl === "string" ? raw.avatarUrl : null,
+      });
       return acc;
     }, []);
   };
 
-
-
   const fetchUsers = useCallback(async () => {
-    if (!currentUserId) {
+    if (!currentUserId || !getAuthToken()) {
       setAllUsers([]);
       return;
     }
-    if (!getAuthToken()) return;
 
-    const candidates = ["/api/users/chat-peers", "/api/users/friends"];
+    const merged = new Map<string, UserSummary>();
+    const applyUsers = (payload: unknown) => {
+      const users = normalizeFriendUsers(payload);
+      users.forEach((entry) => {
+        merged.set(entry.id, mergeUserSummary(merged.get(entry.id), entry));
+      });
 
-    const mergedById = new Map<string, UserSummary>();
-
-    for (const path of candidates) {
-      try {
-        const response = await authJsonRequest<{ data?: unknown }>(path);
-        const users = normalizeUsers(response.data);
-        users.forEach((candidate) => {
-          const current = mergedById.get(candidate.id);
-          // Keep the richest user snapshot across sources.
-          mergedById.set(candidate.id, {
-            ...current,
-            ...candidate,
-          });
-        });
-      } catch {
-        // Try next source.
+      if (merged.size === 0) {
+        return;
       }
-    }
 
-    setAllUsers(Array.from(mergedById.values()));
+      setAllUsers((prev) => {
+        const next = new Map<string, UserSummary>(
+          prev.map((entry) => [entry.id, entry]),
+        );
+
+        merged.forEach((entry) => {
+          next.set(entry.id, mergeUserSummary(next.get(entry.id), entry));
+        });
+
+        return Array.from(next.values());
+      });
+    };
+
+    try {
+      const peerTask = authJsonRequest<{ data?: unknown }>(
+        "/api/users/chat-peers",
+      )
+        .then((response) => {
+          applyUsers(response.data);
+        })
+        .catch(() => {
+          // ignore
+        });
+
+      const friendTask = authJsonRequest<{ data?: unknown }>(
+        "/api/users/friends",
+      )
+        .then((response) => {
+          applyUsers(response.data);
+        })
+        .catch(() => {
+          // ignore
+        });
+
+      await Promise.allSettled([peerTask, friendTask]);
+      if (merged.size === 0) {
+        // Keep previous users to avoid UI flicker when API is temporarily throttled.
+        return;
+      }
+    } catch {
+      // Keep previous users to avoid UI flicker when API is temporarily throttled.
+    }
   }, [currentUserId]);
 
-  useEffect(() => {
-    setConversations((prev) =>
-      prev.map((conv) => ({
-        ...conv,
-        messages: conv.messages.map((message) => enrichMessage(message)),
-      })),
-    );
-  }, [enrichMessage]);
-
-  const loadConversations = useCallback(async () => {
-    const token = getAuthToken();
-    if (!token) {
-      setLoading(false);
+  const loadMissedCallCounters = useCallback(async () => {
+    if (!currentUserId || !getAuthToken()) {
+      setMissedCallsByConversation({});
       return;
     }
 
     try {
       const response = await authJsonRequest<{ data?: unknown }>(
-        "/api/conversations",
+        "/api/calls/history?limit=200",
       );
 
+      const nextCounters = (Array.isArray(response.data)
+        ? response.data
+        : []
+      ).reduce<Record<string, number>>((acc, item) => {
+        if (!item || typeof item !== "object") {
+          return acc;
+        }
+
+        const raw = item as { conversation_id?: unknown; status?: unknown };
+        const conversationId = normalizeConversationId(raw.conversation_id);
+        const status = typeof raw.status === "string" ? raw.status : "";
+
+        if (!conversationId || status !== "missed") {
+          return acc;
+        }
+
+        acc[conversationId] = (acc[conversationId] ?? 0) + 1;
+        return acc;
+      }, {});
+
+      setMissedCallsByConversation(nextCounters);
+    } catch {
+      // Keep current counters if call history request fails transiently.
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
+    void loadMissedCallCounters();
+    const intervalId = window.setInterval(() => {
+      void loadMissedCallCounters();
+    }, 60_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [currentUserId, loadMissedCallCounters]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setAllUsers([]);
+      setHasHydratedUserCache(true);
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(userSummaryCacheKey);
+      if (!raw) {
+        setHasHydratedUserCache(true);
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as unknown;
+      const cachedUsers = normalizeFriendUsers(parsed);
+      if (cachedUsers.length > 0) {
+        setAllUsers(cachedUsers);
+      }
+    } catch {
+      // Ignore corrupted cache and continue with network hydration.
+    } finally {
+      setHasHydratedUserCache(true);
+    }
+  }, [currentUserId, userSummaryCacheKey]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setConversations([]);
+      setHasHydratedConversationCache(true);
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(conversationCacheKey);
+      if (!raw) {
+        setHasHydratedConversationCache(true);
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        setHasHydratedConversationCache(true);
+        return;
+      }
+
+      const cachedConversations = parsed.reduce<Conversation[]>((acc, item) => {
+        if (!item || typeof item !== "object") {
+          return acc;
+        }
+
+        const rawItem = item as ConversationCacheEntry;
+        if (
+          typeof rawItem.id !== "string" ||
+          typeof rawItem.name !== "string"
+        ) {
+          return acc;
+        }
+
+        acc.push({
+          id: rawItem.id,
+          name: rawItem.name,
+          avatar:
+            typeof rawItem.avatar === "string"
+              ? rawItem.avatar
+              : "https://api.dicebear.com/7.x/avataaars/svg?seed=user",
+          preview:
+            typeof rawItem.preview === "string"
+              ? rawItem.preview
+              : DEFAULT_SYSTEM_PREVIEW,
+          time: typeof rawItem.time === "string" ? rawItem.time : "",
+          online: Boolean(rawItem.online),
+          messages: [],
+          createdBy: rawItem.createdBy,
+          type: rawItem.type,
+          peerId: rawItem.peerId,
+        });
+
+        return acc;
+      }, []);
+
+      if (cachedConversations.length > 0) {
+        setConversations(cachedConversations);
+        setActiveChatId((prev) => prev ?? cachedConversations[0].id);
+        setLoading(false);
+      }
+    } catch {
+      // Ignore broken cache payload.
+    } finally {
+      setHasHydratedConversationCache(true);
+    }
+  }, [conversationCacheKey, currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
+    const payload: ConversationCacheEntry[] = conversations.map((item) => ({
+      id: item.id,
+      name: item.name,
+      avatar: item.avatar,
+      preview: item.preview,
+      time: item.time,
+      online: item.online,
+      createdBy: item.createdBy,
+      type: item.type,
+      peerId: item.peerId,
+    }));
+
+    try {
+      window.localStorage.setItem(
+        conversationCacheKey,
+        JSON.stringify(payload),
+      );
+    } catch {
+      // Ignore cache write failures (private mode/quota).
+    }
+  }, [conversationCacheKey, conversations, currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        userSummaryCacheKey,
+        JSON.stringify(allUsers),
+      );
+    } catch {
+      // Ignore cache write failures (private mode/quota).
+    }
+  }, [allUsers, currentUserId, userSummaryCacheKey]);
+
+  const userLookup = useMemo(() => {
+    return allUsers.reduce<
+      Record<
+        string,
+        {
+          fullName: string;
+          email?: string;
+          phone?: string;
+          avatarUrl?: string | null;
+        }
+      >
+    >((acc, userEntry) => {
+      acc[userEntry.id] = {
+        fullName: userEntry.fullName,
+        email: userEntry.email,
+        phone: userEntry.phone,
+        avatarUrl: userEntry.avatarUrl,
+      };
+      return acc;
+    }, {});
+  }, [allUsers]);
+
+  const clearTypingUsers = useCallback(() => {
+    Object.values(typingUserTimeoutsRef.current).forEach((timer) => {
+      clearTimeout(timer);
+    });
+    typingUserTimeoutsRef.current = {};
+    setTypingUserIds([]);
+  }, []);
+
+  const emitTypingState = useCallback(
+    (isTyping: boolean) => {
+      if (!activeChatId || !isConnected) {
+        return;
+      }
+
+      emit("message:typing", {
+        conversation_id: activeChatId,
+        is_typing: isTyping,
+      });
+      localTypingActiveRef.current = isTyping;
+    },
+    [activeChatId, emit, isConnected],
+  );
+
+  const handleLocalTypingChange = useCallback(
+    (value: string) => {
+      const hasText = value.trim().length > 0;
+      localTypingHasTextRef.current = hasText;
+
+      if (!activeChatId || !isConnected || isComposerBlocked) {
+        if (localTypingStopTimerRef.current) {
+          clearTimeout(localTypingStopTimerRef.current);
+          localTypingStopTimerRef.current = null;
+        }
+        if (localTypingHeartbeatRef.current) {
+          clearInterval(localTypingHeartbeatRef.current);
+          localTypingHeartbeatRef.current = null;
+        }
+
+        if (localTypingActiveRef.current) {
+          emitTypingState(false);
+        }
+        return;
+      }
+
+      if (localTypingStopTimerRef.current) {
+        clearTimeout(localTypingStopTimerRef.current);
+      }
+
+      if (hasText) {
+        emitTypingState(true);
+        localTypingStopTimerRef.current = setTimeout(() => {
+          if (localTypingActiveRef.current) {
+            emitTypingState(false);
+          }
+        }, 3000);
+
+        if (!localTypingHeartbeatRef.current) {
+          localTypingHeartbeatRef.current = setInterval(() => {
+            if (
+              localTypingHasTextRef.current &&
+              activeChatId &&
+              isConnected &&
+              !isComposerBlocked
+            ) {
+              emitTypingState(true);
+            }
+          }, 2000);
+        }
+        return;
+      }
+
+      if (localTypingHeartbeatRef.current) {
+        clearInterval(localTypingHeartbeatRef.current);
+        localTypingHeartbeatRef.current = null;
+      }
+
+      if (localTypingActiveRef.current) {
+        emitTypingState(false);
+      }
+    },
+    [activeChatId, emitTypingState, isComposerBlocked, isConnected],
+  );
+
+  const typingIndicatorText = useMemo(() => {
+    if (!activeChat || typingUserIds.length === 0) {
+      return null;
+    }
+
+    const typingNames = typingUserIds
+      .map((userId) => {
+        const match = allUsers.find((entry) => entry.id === userId);
+        return match?.fullName || match?.email || "Ai đó";
+      })
+      .filter(Boolean);
+
+    if (typingNames.length === 0) {
+      return "Đang nhập...";
+    }
+
+    if (typingNames.length === 1) {
+      return `${typingNames[0]} đang nhập...`;
+    }
+
+    return `${typingNames.length} người đang nhập...`;
+  }, [activeChat, allUsers, typingUserIds]);
+
+  const fetchLatestMessagesByConversation = useCallback(
+    async (conversationIds: string[]) => {
+      const entries = await Promise.all(
+        conversationIds.map(async (conversationId) => {
+          try {
+            const response = await authJsonRequest<{ data?: Message[] }>(
+              `/api/messages/${conversationId}?limit=1`,
+            );
+            const latest = (response.data ?? [])[0];
+            return [
+              conversationId,
+              latest ? enrichMessage(latest) : undefined,
+            ] as const;
+          } catch {
+            return [conversationId, undefined] as const;
+          }
+        }),
+      );
+
+      return new Map<string, Message | undefined>(entries);
+    },
+    [enrichMessage],
+  );
+
+  const loadConversations = useCallback(async () => {
+    if (!getAuthToken()) {
+      setLoading(false);
+      return;
+    }
+
+    if (isLoadingConversationsRef.current) {
+      return;
+    }
+
+    if (Date.now() < conversationsRetryAfterRef.current) {
+      return;
+    }
+
+    isLoadingConversationsRef.current = true;
+
+    try {
+      const response = await authJsonRequest<{ data?: unknown }>(
+        "/api/conversations",
+      );
       const data = (response.data ?? []) as ConversationApi[];
-      const currentRole = user?.role ?? "USER";
 
       const mapped = data.reduce<Conversation[]>((acc, conv) => {
         if (conv.type === "group") {
@@ -245,14 +1066,14 @@ export default function ChatView() {
             id: conv.id,
             name: conv.name || "Nhóm",
             avatar: "https://api.dicebear.com/7.x/shapes/svg?seed=group",
-            preview: "Nhóm chat",
+            preview: "Trò chuyện nhóm",
             time: conv.lastMessageAt
               ? new Date(conv.lastMessageAt).toLocaleTimeString("vi-VN", {
                   hour: "2-digit",
                   minute: "2-digit",
                 })
               : "",
-            online: true,
+            online: Boolean((conv as { online?: unknown }).online),
             messages: [],
             createdBy: conv.createdBy,
             type: "group",
@@ -263,94 +1084,698 @@ export default function ChatView() {
         const otherUserId = conv.memberIds.find((id) => id !== currentUserId);
         if (!otherUserId) return acc;
 
-        const otherUser = allUsers.find((u) => u.id === otherUserId);
-        const otherRole = otherUser?.role;
-        const isSupportPair =
-          currentRole === "ADMIN"
-            ? otherRole === "USER"
-            : otherRole === "ADMIN";
-        if (!isSupportPair) return acc;
-
+        const other = allUsers.find((entry) => entry.id === otherUserId);
+        const directName =
+          other?.fullName ||
+          other?.email ||
+          (conv.name && conv.name !== "Trò chuyện trực tiếp"
+            ? conv.name
+            : `Người dùng ${otherUserId.slice(0, 6)}`);
         acc.push({
           id: conv.id,
-          name: conv.name || otherUser?.fullName || "Direct message",
+          name: directName,
           avatar:
-            otherUser?.avatarUrl ||
-            "https://api.dicebear.com/7.x/avataaars/svg?seed=1",
-          preview: "Start a conversation...",
-          time: new Date(conv.createdAt).toLocaleTimeString("vi-VN", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          online: true,
-          email: otherUser?.email,
+            other?.avatarUrl ||
+            `https://api.dicebear.com/7.x/avataaars/svg?seed=${otherUserId}`,
+          preview: "Hai bạn đã trở thành bạn bè. Hãy gửi lời chào.",
+          time: conv.lastMessageAt
+            ? new Date(conv.lastMessageAt).toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : new Date(conv.createdAt).toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+          online: Boolean((conv as { online?: unknown }).online),
           messages: [],
           createdBy: conv.createdBy,
-          type: conv.type,
-          targetUserId: otherUserId,
+          type: "direct",
+          peerId: otherUserId,
         });
         return acc;
       }, []);
 
+      const cachedMessagesByConversation = new Map(
+        conversationsRef.current.map((item) => [item.id, item.messages]),
+      );
+
       setConversations((prev) => {
-        const msgMap = new Map(prev.map((c) => [c.id, c.messages]));
-        return mapped.map((c) => ({ ...c, messages: msgMap.get(c.id) ?? [] }));
+        const onlineByPeerId = new Map(
+          prev
+            .filter((item) => item.type === "direct" && item.peerId)
+            .map((item) => [item.peerId as string, item.online]),
+        );
+        const onlineByConversationId = new Map(
+          prev.map((item) => [item.id, item.online]),
+        );
+        const currentMessages = new Map(
+          prev.map((item) => [item.id, item.messages]),
+        );
+        return mapped.map((item) => {
+          const preservedMessages = currentMessages.get(item.id) ?? [];
+          const lastMessage = preservedMessages[preservedMessages.length - 1];
+          const preservedOnline =
+            item.type === "direct" && item.peerId
+              ? onlineByPeerId.get(item.peerId) ?? onlineByConversationId.get(item.id)
+              : onlineByConversationId.get(item.id);
+
+          if (!lastMessage) {
+            return {
+              ...item,
+              online: preservedOnline ?? item.online,
+              messages: preservedMessages,
+              preview:
+                item.type === "direct" ? DEFAULT_SYSTEM_PREVIEW : item.preview,
+            };
+          }
+
+          return {
+            ...item,
+            online: preservedOnline ?? item.online,
+            messages: preservedMessages,
+            preview: getConversationPreviewFromMessage(
+              lastMessage,
+              currentUserId,
+            ),
+            time: new Date(lastMessage.created_at).toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          };
+        });
       });
 
-      if (!activeChatId && mapped.length > 0) {
-        setActiveChatId(mapped[0].id);
+      if (mapped.length > 0) {
+        const availableConversationIds = new Set(mapped.map((item) => item.id));
+        const pendingConversationId = pendingJump?.conversationId;
+
+        setActiveChatId((current) => {
+          if (current && availableConversationIds.has(current)) {
+            return current;
+          }
+
+          if (
+            pendingConversationId &&
+            availableConversationIds.has(pendingConversationId)
+          ) {
+            return pendingConversationId;
+          }
+
+          return mapped[0]?.id ?? null;
+        });
+      }
+
+      setLoading(false);
+
+      const conversationIdsNeedLatest = mapped
+        .filter(
+          (item) =>
+            (cachedMessagesByConversation.get(item.id)?.length ?? 0) === 0,
+        )
+        .map((item) => item.id);
+
+      if (conversationIdsNeedLatest.length > 0) {
+        void (async () => {
+          const latestMessages = await fetchLatestMessagesByConversation(
+            conversationIdsNeedLatest,
+          );
+
+          setConversations((prev) =>
+            prev.map((conv) => {
+              if ((conv.messages?.length ?? 0) > 0) {
+                return conv;
+              }
+
+              const latest = latestMessages.get(conv.id);
+              if (!latest) {
+                return conv;
+              }
+
+              return {
+                ...conv,
+                messages: [latest],
+                preview: getConversationPreviewFromMessage(
+                  latest,
+                  currentUserId,
+                ),
+                time: new Date(latest.created_at).toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+              };
+            }),
+          );
+        })();
       }
     } catch (error) {
-      console.error("Error loading conversations:", error);
+      const message = error instanceof Error ? error.message : "";
+      if (message === "http_429") {
+        conversationsRetryAfterRef.current = Date.now() + 15_000;
+        return;
+      }
+
+      console.error("Failed to load conversations", error);
     } finally {
+      isLoadingConversationsRef.current = false;
       setLoading(false);
     }
-  }, [activeChatId, allUsers, currentUserId, user?.role]);
+  }, [
+    allUsers,
+    currentUserId,
+    fetchLatestMessagesByConversation,
+    pendingJump?.conversationId,
+  ]);
 
   useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  const syncConversationReadState = useCallback(
+    (conversationId: string, readerUserId: string) => {
+      setConversations((prev) =>
+        prev.map((conv) => {
+          if (conv.id !== conversationId) {
+            return conv;
+          }
+
+          return {
+            ...conv,
+            messages: conv.messages.map((message) => {
+              const readBy = Array.isArray(message.read_by)
+                ? message.read_by
+                : [];
+
+              if (readBy.includes(readerUserId)) {
+                return message;
+              }
+
+              return {
+                ...message,
+                read_by: [...readBy, readerUserId],
+              };
+            }),
+          };
+        }),
+      );
+    },
+    [],
+  );
+
+  const markConversationAsRead = useCallback(
+    async (conversationId: string, force = false) => {
+      if (!conversationId || !currentUserId || !getAuthToken()) {
+        return;
+      }
+
+      const currentConversation = conversationsRef.current.find(
+        (conv) => conv.id === conversationId,
+      );
+      const marker =
+        currentConversation?.messages[currentConversation.messages.length - 1]
+          ?.id ?? "__empty__";
+      const dedupeKey = `${conversationId}:${marker}`;
+
+      if (
+        !force &&
+        lastReadSyncByConversationRef.current[conversationId] === dedupeKey
+      ) {
+        return;
+      }
+
+      lastReadSyncByConversationRef.current[conversationId] = dedupeKey;
+
+      setUnreadByConversation((prev) => {
+        if (!(conversationId in prev)) {
+          return prev;
+        }
+
+        const next = { ...prev };
+        delete next[conversationId];
+        return next;
+      });
+
+      syncConversationReadState(conversationId, currentUserId);
+
+      emit("message:read", {
+        conversation_id: conversationId,
+      });
+
+      try {
+        await authJsonRequest<{ message?: string }>(
+          `/api/messages/${conversationId}/read`,
+          {
+            method: "PUT",
+          },
+        );
+      } catch {
+        // Socket event still carries read receipt when HTTP fallback fails.
+      }
+    },
+    [currentUserId, emit, setUnreadByConversation, syncConversationReadState],
+  );
+
+  useEffect(() => {
+    if (!hasHydratedUserCache) {
+      return;
+    }
+
     void fetchUsers();
+  }, [fetchUsers, hasHydratedUserCache]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+
+      void fetchUsers();
+    }, 15000);
+
+    return () => {
+      clearInterval(timer);
+    };
   }, [fetchUsers]);
 
   useEffect(() => {
+    if (!hasHydratedConversationCache) {
+      return;
+    }
+
     void loadConversations();
-  }, [loadConversations]);
+  }, [hasHydratedConversationCache, loadConversations]);
 
   useEffect(() => {
-    if (!activeChatId) return;
-    const token = getAuthToken();
-    if (!token) return;
+    if (!hasHydratedConversationCache) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+      void loadConversations();
+    }, 15000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [hasHydratedConversationCache, loadConversations]);
+
+  useEffect(() => {
+    if (!hasHydratedConversationCache) {
+      return;
+    }
+
+    if (!loading) {
+      return;
+    }
+
+    // Fail-safe: never keep the whole chat shell blocked forever.
+    const timer = window.setTimeout(() => {
+      setLoading(false);
+    }, 2500);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [hasHydratedConversationCache, loading]);
+
+  useEffect(() => {
+    setConversations((prev) =>
+      prev.map((conv) => ({
+        ...conv,
+        messages: conv.messages.map((message) => enrichMessage(message)),
+      })),
+    );
+  }, [enrichMessage]);
+
+  useEffect(() => {
+    if (allUsers.length === 0) {
+      return;
+    }
+
+    setConversations((prev) =>
+      prev.map((conv) => {
+        if (conv.type !== "direct" || !conv.peerId) {
+          return conv;
+        }
+
+        const peer = allUsers.find((item) => item.id === conv.peerId);
+        if (!peer) {
+          return conv;
+        }
+
+        const nextName =
+          peer.fullName ||
+          peer.email ||
+          peer.phone ||
+          `Người dùng ${conv.peerId.slice(0, 6)}`;
+        const nextAvatar =
+          peer.avatarUrl ||
+          `https://api.dicebear.com/7.x/avataaars/svg?seed=${conv.peerId}`;
+
+        if (conv.name === nextName && conv.avatar === nextAvatar) {
+          return conv;
+        }
+
+        return {
+          ...conv,
+          name: nextName,
+          avatar: nextAvatar,
+        };
+      }),
+    );
+  }, [allUsers]);
+
+  useEffect(() => {
+    if (!currentUserId || !getAuthToken()) {
+      return;
+    }
+
+    const needsNameHydration = conversations.some(
+      (conv) =>
+        conv.type === "direct" &&
+        conv.peerId &&
+        conv.name.startsWith("Người dùng "),
+    );
+
+    if (!needsNameHydration) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void fetchUsers();
+    }, 800);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [conversations, currentUserId, fetchUsers]);
+
+  useEffect(() => {
+    if (!activeChatId || !getAuthToken()) return;
 
     const fetchMessages = async () => {
+      const normalizedActiveChatId = normalizeConversationId(activeChatId);
+      if (!normalizedActiveChatId) {
+        return;
+      }
+
+      if (normalizedActiveChatId !== activeChatId) {
+        setActiveChatId(normalizedActiveChatId);
+        return;
+      }
+
       try {
         const response = await authJsonRequest<{ data?: Message[] }>(
           `/api/messages/${activeChatId}?limit=100`,
         );
+
+        const fetchedMessages = (response.data ?? []).map((item) =>
+          enrichMessage(item),
+        );
+        const lastFetchedMessage = fetchedMessages[fetchedMessages.length - 1];
 
         setConversations((prev) =>
           prev.map((conv) =>
             conv.id === activeChatId
               ? {
                   ...conv,
-                  messages: (response.data ?? []).map((message) =>
-                    enrichMessage(message),
+                  messages: fetchedMessages,
+                  preview: getConversationPreviewFromMessage(
+                    lastFetchedMessage,
+                    currentUserId,
                   ),
                 }
               : conv,
           ),
         );
       } catch (error) {
-        console.error("Error fetching messages:", error);
+        console.error("Failed to fetch messages", error);
       }
     };
 
     void fetchMessages();
-  }, [activeChatId, enrichMessage]);
+  }, [activeChatId, currentUserId, enrichMessage]);
+
+  useEffect(() => {
+    const handleUserOnline = (payload: unknown) => {
+      const raw = payload as {
+        user_id?: unknown;
+        userId?: unknown;
+        id?: unknown;
+        online?: unknown;
+        isOnline?: unknown;
+        status?: unknown;
+      };
+
+      const userId =
+        typeof raw.user_id === "string"
+          ? raw.user_id
+          : typeof raw.userId === "string"
+            ? raw.userId
+            : typeof raw.id === "string"
+              ? raw.id
+              : "";
+      if (!userId) return;
+
+      const online =
+        typeof raw.online === "boolean"
+          ? raw.online
+          : typeof raw.isOnline === "boolean"
+            ? raw.isOnline
+            : typeof raw.status === "string"
+              ? raw.status.toLowerCase() === "online"
+              : true;
+
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.type === "direct" && conv.peerId === userId
+            ? { ...conv, online }
+            : conv,
+        ),
+      );
+    };
+
+    on("user:online", handleUserOnline);
+    return () => off("user:online", handleUserOnline);
+  }, [off, on]);
 
   useEffect(() => {
     if (!activeChatId || !isConnected) return;
     join(activeChatId);
     return () => leave(activeChatId);
   }, [activeChatId, isConnected, join, leave]);
+
+  useEffect(() => {
+    clearTypingUsers();
+  }, [activeChatId, clearTypingUsers]);
+
+  // Connection loss handling: show modal + 15s grace for active calls
+  useEffect(() => {
+    if (!activeCall) {
+      // No active call — ensure modal/timer cleared
+      if (connectionLossTimerRef.current) {
+        clearTimeout(connectionLossTimerRef.current);
+        connectionLossTimerRef.current = null;
+      }
+      setConnectionLossModal(null);
+      return;
+    }
+
+    if (isConnected) {
+      // If reconnected, clear timers and hide modal
+      if (connectionLossTimerRef.current) {
+        clearTimeout(connectionLossTimerRef.current);
+        connectionLossTimerRef.current = null;
+      }
+      setConnectionLossModal(null);
+      return;
+    }
+
+    // Socket disconnected while in an active call — start 15s grace timer
+    if (!isConnected && activeCall) {
+      const callId = activeCall.callId;
+      const conversationId = activeCall.conversationId;
+      setConnectionLossModal({ callId, conversationId, countdown: 15, state: "waiting" });
+
+      // Countdown display update every 1s
+      let remaining = 15;
+      const tick = () => {
+        remaining -= 1;
+        setConnectionLossModal((cur) => (cur ? { ...cur, countdown: remaining } : cur));
+        if (remaining <= 0) {
+          // Timeout expired: mark ended locally
+          setConnectionLossModal((cur) => (cur ? { ...cur, state: "ended" } : cur));
+          setActiveCall(null);
+          connectionLossTimerRef.current = null;
+        }
+      };
+
+      connectionLossTimerRef.current = setInterval(() => {
+        tick();
+      }, 1000) as unknown as ReturnType<typeof setTimeout>;
+
+      return () => {
+        if (connectionLossTimerRef.current) {
+          clearInterval(connectionLossTimerRef.current as unknown as number);
+          connectionLossTimerRef.current = null;
+        }
+        setConnectionLossModal(null);
+      };
+    }
+  }, [isConnected, activeCall]);
+
+  useEffect(() => {
+    return () => {
+      clearTypingUsers();
+      if (localTypingStopTimerRef.current) {
+        clearTimeout(localTypingStopTimerRef.current);
+      }
+      if (localTypingHeartbeatRef.current) {
+        clearInterval(localTypingHeartbeatRef.current);
+      }
+      // Clear any wait-room timers on unmount
+      Object.values(waitRoomTimersRef.current).forEach((t) => clearTimeout(t));
+      waitRoomTimersRef.current = {};
+      // Clear connection loss timer
+      if (connectionLossTimerRef.current) {
+        clearTimeout(connectionLossTimerRef.current);
+        connectionLossTimerRef.current = null;
+      }
+    };
+  }, [clearTypingUsers]);
+
+  useEffect(() => {
+    if (!activeChatId) {
+      return;
+    }
+
+    void markConversationAsRead(activeChatId, true);
+  }, [activeChatId, markConversationAsRead]);
+
+  const fetchActiveCallForConversation = useCallback(
+    async (conversationId: string) => {
+      try {
+        const response = await authJsonRequest<{
+          data?: {
+            id: string;
+            status: string;
+            call_type: "group" | "direct";
+          } | null;
+        }>(`/api/calls/active-for-conversation?conversation_id=${conversationId}`);
+
+        if (response.data && response.data.status === "active") {
+          setActiveGroupCalls((prev) => ({
+            ...prev,
+            [conversationId]: {
+              callId: response.data!.id,
+              callType: response.data!.call_type as "group",
+            },
+          }));
+        } else {
+          setActiveGroupCalls((prev) => {
+            const next = { ...prev };
+            delete next[conversationId];
+            return next;
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch active call for conversation:", error);
+        // If we cannot reach the server to verify, remove any optimistic
+        // activeGroupCalls entry to avoid leaving a stale "call in progress" banner.
+        setActiveGroupCalls((prev) => {
+          const next = { ...prev };
+          delete next[conversationId];
+          return next;
+        });
+      }
+    },
+    [authJsonRequest],
+  );
+
+  useEffect(() => {
+    if (!activeChatId) {
+      return;
+    }
+    void fetchActiveCallForConversation(activeChatId);
+  }, [activeChatId, fetchActiveCallForConversation]);
+
+  useEffect(() => {
+    if (!activeChatId || !currentUserId) {
+      return;
+    }
+
+    const activeConversation = conversations.find(
+      (item) => item.id === activeChatId,
+    );
+    if (!activeConversation) {
+      return;
+    }
+
+    const hasUnreadFromOthers = activeConversation.messages.some((message) => {
+      if (message.sender_id === currentUserId) {
+        return false;
+      }
+
+      const readBy = Array.isArray(message.read_by) ? message.read_by : [];
+      return !readBy.includes(currentUserId);
+    });
+
+    if (!hasUnreadFromOthers) {
+      return;
+    }
+
+    void markConversationAsRead(activeChatId);
+  }, [activeChatId, conversations, currentUserId, markConversationAsRead]);
+
+  useEffect(() => {
+    if (!pendingJump) {
+      return;
+    }
+
+    const targetConversationId = normalizeConversationId(
+      pendingJump.conversationId,
+    );
+    if (!targetConversationId) {
+      onPendingJumpHandled?.();
+      return;
+    }
+
+    if (activeChatId !== targetConversationId) {
+      setActiveChatId(targetConversationId);
+      setReplyingTo(null);
+      setActiveConversationActionId(null);
+      setUnreadByConversation((prev) => {
+        const next = { ...prev };
+        delete next[targetConversationId];
+        return next;
+      });
+      return;
+    }
+
+    if (pendingJump.messageId) {
+      setScrollToMessageId(pendingJump.messageId);
+    }
+
+    onPendingJumpHandled?.();
+  }, [
+    activeChatId,
+    onPendingJumpHandled,
+    pendingJump,
+    setUnreadByConversation,
+  ]);
+
+  useEffect(() => {
+    onFocusedConversationChange?.(activeChatId);
+  }, [activeChatId, onFocusedConversationChange]);
 
   useEffect(() => {
     const handleSendAck = (payload: unknown) => {
@@ -360,26 +1785,50 @@ export default function ChatView() {
       setConversations((prev) =>
         prev.map((conv) => {
           const tempIndex = conv.messages.findIndex(
-            (message) => message.id === ack.client_temp_id,
+            (item) => item.id === ack.client_temp_id,
           );
-
           if (tempIndex < 0) return conv;
 
           if (!ack.ok || !ack.message_id) {
+            if (ack.error && ack.conversation_id) {
+              if (ack.error.includes("you_blocked_this_user")) {
+                setBlockedByConversation((prev) => ({
+                  ...prev,
+                  [ack.conversation_id as string]: {
+                    isBlocked: true,
+                    blockedByCurrentUser: true,
+                  },
+                }));
+                setChatNotice(
+                  "Bạn đã chặn người này. Mở chặn để tiếp tục nhắn tin.",
+                );
+              } else if (ack.error.includes("you_are_blocked_by_user")) {
+                setBlockedByConversation((prev) => ({
+                  ...prev,
+                  [ack.conversation_id as string]: {
+                    isBlocked: true,
+                    blockedByCurrentUser: false,
+                  },
+                }));
+                setChatNotice(
+                  "Bạn đã bị chặn. Chỉ có thể nhắn lại khi đối phương mở chặn.",
+                );
+              }
+            }
+
             return {
               ...conv,
               messages: conv.messages.filter(
-                (message) => message.id !== ack.client_temp_id,
+                (item) => item.id !== ack.client_temp_id,
               ),
             };
           }
 
-          // If server message already exists, drop optimistic duplicate.
-          if (conv.messages.some((message) => message.id === ack.message_id)) {
+          if (conv.messages.some((item) => item.id === ack.message_id)) {
             return {
               ...conv,
               messages: conv.messages.filter(
-                (message) => message.id !== ack.client_temp_id,
+                (item) => item.id !== ack.client_temp_id,
               ),
             };
           }
@@ -390,301 +1839,1645 @@ export default function ChatView() {
             id: ack.message_id,
           };
 
-          return {
-            ...conv,
-            messages: nextMessages,
-          };
+          return { ...conv, messages: nextMessages };
         }),
       );
     };
 
     const handleMessageReceive = (payload: unknown) => {
-      const incomingMessage = enrichMessage(payload as Message);
+      const rawIncoming = payload as Message;
+      const normalizedConversationId = normalizeConversationId(
+        rawIncoming.conversation_id,
+      );
+      if (!normalizedConversationId) {
+        return;
+      }
+
+      const incoming = enrichMessage({
+        ...rawIncoming,
+        conversation_id: normalizedConversationId,
+      });
 
       setConversations((prev) =>
         prev.map((conv) => {
-          if (conv.id !== incomingMessage.conversation_id) return conv;
-
-          if (
-            conv.messages.some((message) => message.id === incomingMessage.id)
-          ) {
+          if (conv.id !== incoming.conversation_id) return conv;
+          if (conv.messages.some((item) => item.id === incoming.id)) {
             return conv;
-          }
-
-          // Collapse optimistic message when server message arrives before ACK.
-          const optimisticIndex = conv.messages.findIndex(
-            (message) =>
-              message.id.startsWith("tmp-") &&
-              message.content === incomingMessage.content,
-          );
-
-          if (optimisticIndex >= 0) {
-            const nextMessages = [...conv.messages];
-            nextMessages[optimisticIndex] = {
-              ...incomingMessage,
-            };
-
-            return {
-              ...conv,
-              messages: nextMessages,
-              preview:
-                incomingMessage.type === "file"
-                  ? "📎 Attachment"
-                  : incomingMessage.content,
-              time: new Date(incomingMessage.created_at).toLocaleTimeString(
-                "vi-VN",
-                {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                },
-              ),
-            };
           }
 
           return {
             ...conv,
-            messages: [...conv.messages, incomingMessage],
-            preview:
-              incomingMessage.type === "file"
-                ? "📎 Attachment"
-                : incomingMessage.content,
-            time: new Date(incomingMessage.created_at).toLocaleTimeString(
-              "vi-VN",
-              {
-                hour: "2-digit",
-                minute: "2-digit",
-              },
-            ),
+            messages: [...conv.messages, incoming],
+            preview: getConversationPreviewFromMessage(incoming, currentUserId),
+            time: new Date(incoming.created_at).toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
           };
         }),
       );
 
       if (
-        incomingMessage.sender_id !== currentUserId &&
-        incomingMessage.conversation_id !== activeChatId
+        incoming.sender_id !== currentUserId &&
+        incoming.conversation_id !== activeChatId &&
+        shouldTrackUnreadLocally
       ) {
         setUnreadByConversation((prev) => ({
           ...prev,
-          [incomingMessage.conversation_id]:
-            (prev[incomingMessage.conversation_id] ?? 0) + 1,
+          [incoming.conversation_id]: (prev[incoming.conversation_id] ?? 0) + 1,
+        }));
+      }
+
+      if (
+        incoming.sender_id !== currentUserId &&
+        incoming.conversation_id === activeChatId
+      ) {
+        void markConversationAsRead(incoming.conversation_id);
+      }
+    };
+
+    const handleReadReceipt = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+        conversationId?: unknown;
+        user_id?: unknown;
+        userId?: unknown;
+        timestamp?: unknown;
+        read_at?: unknown;
+        readAt?: unknown;
+      };
+
+      const conversationId = normalizeConversationId(
+        data.conversation_id ?? data.conversationId,
+      );
+      if (!conversationId) {
+        return;
+      }
+
+      const readerIdRaw = data.user_id ?? data.userId;
+      const readerId =
+        typeof readerIdRaw === "string" ? readerIdRaw.trim() : "";
+      if (!readerId) {
+        return;
+      }
+
+      syncConversationReadState(conversationId, readerId);
+
+      const readAt = toIsoReadTimestamp(
+        data.timestamp ?? data.read_at ?? data.readAt,
+      );
+      if (readerId !== currentUserId && readAt) {
+        setLastReadAtByConversation((prev) => {
+          if (prev[conversationId] === readAt) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            [conversationId]: readAt,
+          };
+        });
+      }
+
+      if (readerId === currentUserId) {
+        setUnreadByConversation((prev) => {
+          if (!(conversationId in prev)) {
+            return prev;
+          }
+
+          const next = { ...prev };
+          delete next[conversationId];
+          return next;
+        });
+      }
+    };
+
+    const handleRecalled = (payload: unknown) => {
+      const data = payload as {
+        message_id: string;
+        conversation_id: string;
+        recalled_at?: string;
+        recalled_by?: string;
+      };
+      markMessageRecalled(
+        data.conversation_id,
+        data.message_id,
+        data.recalled_at,
+        data.recalled_by,
+      );
+    };
+
+    const handleRecallAck = (payload: unknown) => {
+      const data = payload as {
+        ok?: boolean;
+        message_id?: string;
+        conversation_id?: string;
+      };
+
+      if (!data.ok || !data.message_id || !data.conversation_id) {
+        return;
+      }
+
+      markMessageRecalled(data.conversation_id, data.message_id);
+    };
+
+    const handleReactionUpdated = (payload: unknown) => {
+      const data = payload as {
+        message_id: string;
+        conversation_id: string;
+        reactions: MessageReaction[];
+      };
+
+      setMessageReactions(
+        data.conversation_id,
+        data.message_id,
+        data.reactions,
+      );
+    };
+
+    const handleReactionAck = (payload: unknown) => {
+      const data = payload as {
+        ok?: boolean;
+        message_id?: string;
+        conversation_id?: string;
+      };
+
+      if (!data.ok || !data.message_id || !data.conversation_id) {
+        return;
+      }
+
+      void loadConversations();
+    };
+
+    const handleDeleteAck = (payload: unknown) => {
+      const data = payload as {
+        ok?: boolean;
+        message_id?: string;
+        conversation_id?: string;
+      };
+
+      if (!data.ok || !data.message_id || !data.conversation_id) {
+        return;
+      }
+
+      removeMessageForCurrentUser(data.conversation_id, data.message_id);
+    };
+
+    const handleActionError = (payload: unknown) => {
+      console.error("Message action error", payload);
+      void loadConversations();
+    };
+
+    const handleTyping = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+        conversationId?: unknown;
+        user_id?: unknown;
+        userId?: unknown;
+        is_typing?: unknown;
+      };
+
+      const conversationId = normalizeConversationId(
+        data.conversation_id ?? data.conversationId,
+      );
+      const senderIdRaw = data.user_id ?? data.userId;
+      const senderId =
+        typeof senderIdRaw === "string" ? senderIdRaw.trim() : "";
+      const isTyping = data.is_typing !== false;
+
+      if (!conversationId || conversationId !== activeChatId || !senderId) {
+        return;
+      }
+
+      if (senderId === currentUserId) {
+        return;
+      }
+
+      const existingTimer = typingUserTimeoutsRef.current[senderId];
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        delete typingUserTimeoutsRef.current[senderId];
+      }
+
+      if (!isTyping) {
+        setTypingUserIds((prev) => prev.filter((id) => id !== senderId));
+        return;
+      }
+
+      setTypingUserIds((prev) =>
+        prev.includes(senderId) ? prev : [...prev, senderId],
+      );
+
+      typingUserTimeoutsRef.current[senderId] = setTimeout(() => {
+        delete typingUserTimeoutsRef.current[senderId];
+        setTypingUserIds((prev) => prev.filter((id) => id !== senderId));
+      }, 6000);
+    };
+
+    const handleMessageDeleted = (payload: unknown) => {
+      const data = payload as {
+        message_id?: string;
+        conversation_id?: string;
+      };
+
+      if (!data.message_id || !data.conversation_id) {
+        return;
+      }
+
+      removeMessageForCurrentUser(data.conversation_id, data.message_id);
+    };
+
+    const handleReplyNotification = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: string;
+      };
+
+      const conversationId = data.conversation_id;
+      if (!conversationId) {
+        return;
+      }
+
+      void loadConversations();
+    };
+
+    const handleConversationDeleted = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      if (!conversationId) {
+        return;
+      }
+
+      if (activeChatId === conversationId) {
+        setActiveChatId(null);
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
+    const handleConversationCreated = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      if (!conversationId) {
+        return;
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
+    const handleConversationMemberLeft = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+        user_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      const userId = typeof data.user_id === "string" ? data.user_id : "";
+
+      if (!conversationId) {
+        return;
+      }
+
+      if (activeChatId === conversationId && userId === currentUserId) {
+        setActiveChatId(null);
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
+    const handleConversationMemberRemoved = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+        user_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      const removedUserId =
+        typeof data.user_id === "string" ? data.user_id.trim() : "";
+
+      if (!conversationId) {
+        return;
+      }
+
+      if (activeChatId === conversationId && removedUserId === currentUserId) {
+        setActiveChatId(null);
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
+    const handleConversationMemberRoleUpdated = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      if (!conversationId) {
+        return;
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
+    const handleConversationMembersAdded = (payload: unknown) => {
+      const data = payload as {
+        conversation_id?: unknown;
+      };
+      const conversationId = normalizeConversationId(data.conversation_id);
+      if (!conversationId) {
+        return;
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("conversation:changed", {
+          detail: { conversationId },
+        }),
+      );
+      void loadConversations();
+    };
+
+    const handleCallInitiateAck = (payload: unknown) => {
+      const data = payload as {
+        ok?: unknown;
+        call_id?: unknown;
+        conversation_id?: unknown;
+      };
+      const ok = data.ok === true;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+
+      if (!ok || !callId || !conversationId) {
+        return;
+      }
+
+      const callType = conversationId.startsWith("grp_")
+        ? ("group" as const)
+        : ("direct" as const);
+
+      // Initiator: enter waiting room (ringing) instead of immediately "connected".
+      setActiveCall({
+        callId,
+        conversationId,
+        status: "ringing",
+        isInitiator: true,
+        connectedAt: undefined,
+        callType,
+      });
+
+      // Start a 15s wait-room timer that will auto-end the call if nobody joins.
+      try {
+        const timeoutMs = 15_000;
+        const timer = window.setTimeout(() => {
+          // If still in waiting state, request call end locally and via socket
+          setActiveCall((current) => {
+            if (!current || current.callId !== callId || current.status === "connected") {
+              return current;
+            }
+            // Emit end signal to backend
+            emit("call:end", {
+              call_id: callId,
+              conversation_id: conversationId,
+              reason: "no_answer_timeout",
+            });
+            return null;
+          });
+          // cleanup
+          delete waitRoomTimersRef.current[callId];
+        }, timeoutMs);
+        waitRoomTimersRef.current[callId] = timer;
+      } catch {
+        // no-op
+      }
+
+      if (callType === "group") {
+        setActiveGroupCalls((prev) => ({
+          ...prev,
+          [conversationId]: { callId, callType: "group" },
         }));
       }
     };
 
-    const handleTyping = (payload: unknown) => {
-      const data = payload as { conversation_id: string; user_id: string };
-      if (data.conversation_id !== activeChatId) return;
+    const handleCallInitiate = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+      const initiatorId =
+        typeof data.initiator_id === "string" ? data.initiator_id.trim() : "";
+      const callType = data.call_type === "group" ? "group" : "direct";
+      const callerName =
+        typeof data.caller_name === "string" && data.caller_name.trim()
+          ? data.caller_name.trim()
+          : allUsers.find((entry) => entry.id === initiatorId)?.fullName ??
+            "Người gọi";
+      const conversationName =
+        typeof data.conversation_name === "string" &&
+        data.conversation_name.trim()
+          ? data.conversation_name.trim()
+          : conversations.find((entry) => entry.id === conversationId)?.name ??
+            (callType === "group" ? "Nhóm chat" : callerName);
 
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
+      if (!callId || !conversationId || !initiatorId) {
+        return;
       }
-      typingTimeoutRef.current = setTimeout(() => {}, 3000);
+
+      if (initiatorId === currentUserId) {
+        return;
+      }
+
+      setIncomingCall({
+        callId,
+        conversationId,
+        initiatorId,
+        callType,
+      });
+      setCallNotification({
+        title:
+          callType === "group"
+            ? conversationName
+            : `Cuộc gọi đến từ ${callerName}`,
+        description:
+          callType === "group"
+            ? `${callerName} đang gọi trong nhóm ${conversationName}`
+            : `${callerName} đang gọi cho bạn`,
+        callId,
+        conversationId,
+        callType,
+        initiatorId,
+      });
+
+      if (callType === "group") {
+        setActiveGroupCalls((prev) => ({
+          ...prev,
+          [conversationId]: { callId, callType: "group" },
+        }));
+      }
+    };
+
+    const handleCallAccept = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+
+      if (!callId || !conversationId) {
+        return;
+      }
+      setCallNotification((current) => (current && current.callId === callId ? null : current));
+      setIncomingCall((current) => (current && current.callId === callId ? null : current));
+
+      // Clear wait-room timer for this call (someone joined)
+      if (callId && waitRoomTimersRef.current[callId]) {
+        clearTimeout(waitRoomTimersRef.current[callId]);
+        delete waitRoomTimersRef.current[callId];
+      }
+
+      setActiveCall((current) => {
+        if (!current || current.callId !== callId) {
+          // If we don't have a local activeCall, still set connected state so UI can join
+          return {
+            callId,
+            conversationId: conversationId ?? "",
+            status: "connected",
+            isInitiator: false,
+            connectedAt: Date.now(),
+            callType: current?.callType ?? (conversationId?.startsWith("grp_") ? "group" : "direct"),
+          } as ActiveCallState;
+        }
+
+        return {
+          ...current,
+          status: "connected",
+          connectedAt: current.connectedAt ?? Date.now(),
+        };
+      });
+    };
+
+    const handleCallDecline = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+
+      setActiveCall((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
+      setCallNotification((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
+
+      setLiveKitTokenPayload(null);
+      setLiveKitTokenError(null);
+      liveKitRequestCallIdRef.current = null;
+
+      // Clear any wait-room timer for this call
+      if (callId && waitRoomTimersRef.current[callId]) {
+        clearTimeout(waitRoomTimersRef.current[callId]);
+        delete waitRoomTimersRef.current[callId];
+      }
+
+      if (callId && conversationId) {
+        // Backend persists the call-info message; no local append needed.
+        setChatNotice("Cuộc gọi nhỡ");
+      }
+    };
+
+    const handleCallEnd = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+      const reason = typeof data.reason === "string" ? data.reason : "ended";
+
+      let endedCallConnectedAt: number | undefined;
+      setActiveCall((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        endedCallConnectedAt = current.connectedAt;
+        return null;
+      });
+
+      setIncomingCall((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
+      setCallNotification((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
+
+      setLiveKitTokenPayload(null);
+      setLiveKitTokenError(null);
+      liveKitRequestCallIdRef.current = null;
+
+      if (callId && conversationId) {
+        const notice =
+          reason === "no_answer_timeout"
+            ? "Không có người nghe máy"
+            : endedCallConnectedAt
+              ? "Cuộc gọi đã kết thúc"
+              : "Cuộc gọi nhỡ";
+        setChatNotice(notice);
+      }
+
+      // Remove from active group calls
+      if (conversationId) {
+        setActiveGroupCalls((prev) => {
+          const next = { ...prev };
+          delete next[conversationId];
+          return next;
+        });
+        // Refresh authoritative active call state from server
+        void fetchActiveCallForConversation(conversationId);
+      }
+    };
+
+    const handleCallParticipantLeft = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const leftUserId =
+        typeof data.left_user_id === "string" ? data.left_user_id : "";
+
+      if (leftUserId && leftUserId !== currentUserId) {
+        setChatNotice("Một thành viên đã rời cuộc gọi");
+      }
+    };
+
+    const handleCallMissed = (payload: unknown) => {
+      const data = payload as CallSignalPayload;
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const conversationId = normalizeConversationId(data.conversation_id);
+      const reason = typeof data.reason === "string" ? data.reason : "missed";
+
+      setActiveCall((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
+
+      setIncomingCall((current) => {
+        if (!current) {
+          return current;
+        }
+        if (callId && current.callId !== callId) {
+          return current;
+        }
+        return null;
+      });
+
+      if (conversationId) {
+        setMissedCallsByConversation((prev) => ({
+          ...prev,
+          [conversationId]: (prev[conversationId] ?? 0) + 1,
+        }));
+      }
+
+      setLiveKitTokenPayload(null);
+      setLiveKitTokenError(null);
+      liveKitRequestCallIdRef.current = null;
+
+      // Clear any wait-room timer for this call
+      if (callId && waitRoomTimersRef.current[callId]) {
+        clearTimeout(waitRoomTimersRef.current[callId]);
+        delete waitRoomTimersRef.current[callId];
+      }
+
+      if (callId && conversationId) {
+        // Backend persists the call-info message; no local append needed.
+        setChatNotice(
+          reason === "no_answer_timeout"
+            ? "Không có người nghe máy"
+            : "📞 Cuộc gọi nhỡ",
+        );
+      }
+    };
+
+    const handleCallError = (payload: unknown) => {
+      const data = payload as { message?: unknown; conversation_id?: unknown };
+      const message =
+        typeof data.message === "string" ? data.message : "call_error";
+      const conversationId = normalizeConversationId(data.conversation_id);
+
+      if (message === "call_already_active") {
+        setChatNotice("Cuộc gọi nhóm đang diễn ra. Đang tải...");
+        if (conversationId) {
+          void fetchActiveCallForConversation(conversationId);
+        }
+      } else {
+        setChatNotice(
+          message === "not_a_member"
+            ? "Bạn không có quyền thực hiện cuộc gọi."
+            : `Lỗi cuộc gọi: ${message}`,
+        );
+      }
+
+      setActiveCall(null);
+      setLiveKitTokenPayload(null);
+      liveKitRequestCallIdRef.current = null;
     };
 
     on("message:send_ack", handleSendAck);
+    on("receive_message", handleMessageReceive);
     on("message:receive", handleMessageReceive);
     on("message:typing", handleTyping);
+    on("message:read_receipt", handleReadReceipt);
+    on("message:deleted", handleMessageDeleted);
+    on("message:recalled", handleRecalled);
+    on("message:recall_ack", handleRecallAck);
+    on("message:reaction_updated", handleReactionUpdated);
+    on("message:reaction_ack", handleReactionAck);
+    on("message:delete_ack", handleDeleteAck);
+    on("message:delete_error", handleActionError);
+    on("message:recall_error", handleActionError);
+    on("message:reaction_error", handleActionError);
+    on("notification:reply", handleReplyNotification);
+    on("conversation:created", handleConversationCreated);
+    on("conversation:deleted", handleConversationDeleted);
+    on("conversation:member_left", handleConversationMemberLeft);
+    on("conversation:member_removed", handleConversationMemberRemoved);
+    on("conversation:member_role_updated", handleConversationMemberRoleUpdated);
+    on("conversation:members_added", handleConversationMembersAdded);
+    on("call:initiate_ack", handleCallInitiateAck);
+    on("call:initiate", handleCallInitiate);
+    on("call:accept", handleCallAccept);
+    on("call:decline", handleCallDecline);
+    on("call:end", handleCallEnd);
+    on("call:missed", handleCallMissed);
+    on("call:error", handleCallError);
+    on("call:participant_left", handleCallParticipantLeft);
 
     return () => {
       off("message:send_ack", handleSendAck);
+      off("receive_message", handleMessageReceive);
       off("message:receive", handleMessageReceive);
       off("message:typing", handleTyping);
+      off("message:read_receipt", handleReadReceipt);
+      off("message:deleted", handleMessageDeleted);
+      off("message:recalled", handleRecalled);
+      off("message:recall_ack", handleRecallAck);
+      off("message:reaction_updated", handleReactionUpdated);
+      off("message:reaction_ack", handleReactionAck);
+      off("message:delete_ack", handleDeleteAck);
+      off("message:delete_error", handleActionError);
+      off("message:recall_error", handleActionError);
+      off("message:reaction_error", handleActionError);
+      off("notification:reply", handleReplyNotification);
+      off("conversation:created", handleConversationCreated);
+      off("conversation:deleted", handleConversationDeleted);
+      off("conversation:member_left", handleConversationMemberLeft);
+      off("conversation:member_removed", handleConversationMemberRemoved);
+      off(
+        "conversation:member_role_updated",
+        handleConversationMemberRoleUpdated,
+      );
+      off("conversation:members_added", handleConversationMembersAdded);
+      off("call:initiate_ack", handleCallInitiateAck);
+      off("call:initiate", handleCallInitiate);
+      off("call:accept", handleCallAccept);
+      off("call:decline", handleCallDecline);
+      off("call:end", handleCallEnd);
+      off("call:missed", handleCallMissed);
+      off("call:error", handleCallError);
+      off("call:participant_left", handleCallParticipantLeft);
     };
-  }, [activeChatId, currentUserId, enrichMessage, off, on]);
+  }, [
+    activeChatId,
+    allUsers,
+    conversations,
+    currentUserId,
+    emit,
+    enrichMessage,
+    loadConversations,
+    markMessageRecalled,
+    off,
+    on,
+    removeMessageForCurrentUser,
+    markConversationAsRead,
+    setMessageReactions,
+    setUnreadByConversation,
+    syncConversationReadState,
+    shouldTrackUnreadLocally,
+  ]);
 
-  const handleSendMessage = (message: string) => {
-    if (!message.trim() || !activeChatId || !isConnected) return;
-    const tempId = `tmp-${Date.now()}`;
-    const optimistic: Message = {
-      id: tempId,
-      conversation_id: activeChatId,
-      sender_id: currentUserId,
-      type: "text",
-      content: message,
-      created_at: new Date().toISOString(),
-      read_by: [currentUserId],
-      sender_name: user?.fullName || "You",
-    };
+  const handleSendMessage = async (content: string) => {
+    if (!content.trim() || !activeChatId || isComposerBlocked) return;
 
-    setConversations((prev) =>
-      prev.map((conv) =>
-        conv.id === activeChatId
-          ? {
-              ...conv,
-              messages: [...conv.messages, optimistic],
-              preview: message,
-              time: new Date().toLocaleTimeString("vi-VN", {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-            }
-          : conv,
-      ),
-    );
+    if (localTypingStopTimerRef.current) {
+      clearTimeout(localTypingStopTimerRef.current);
+      localTypingStopTimerRef.current = null;
+    }
+    if (localTypingHeartbeatRef.current) {
+      clearInterval(localTypingHeartbeatRef.current);
+      localTypingHeartbeatRef.current = null;
+    }
+    localTypingHasTextRef.current = false;
+    if (localTypingActiveRef.current) {
+      emitTypingState(false);
+    }
 
-    emit("message:send", {
-      conversation_id: activeChatId,
-      type: "text",
-      content: message,
-      client_temp_id: tempId,
-    });
-  };
-
-  const handleSendFile = async (file: File, caption?: string) => {
-    if (!activeChatId || !isConnected) return;
-    const token = getAuthToken();
-    if (!token) return;
+    const replyTarget = replyingTo;
+    setReplyingTo(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      if (caption) formData.append("content", caption);
-
-      const response = await fetch(
-        `${API_BASE_URL}/api/messages/${activeChatId}/upload`,
+      const response = await authJsonRequest<{ data?: Message }>(
+        "/api/messages",
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
           },
-          body: formData,
+          body: JSON.stringify({
+            conversation_id: activeChatId,
+            type: "text",
+            content,
+            reply_to_message_id: replyTarget?.id,
+          }),
         },
       );
 
-      if (!response.ok) {
-        throw new Error(`http_${response.status}`);
+      const serverMessage = response.data ? enrichMessage(response.data) : null;
+      if (!serverMessage) {
+        return;
       }
 
-      const payload = (await response.json()) as { data?: Message };
-      const newMessage = payload.data as Message;
+      setConversations((prev) =>
+        prev.map((conv) => {
+          if (conv.id !== activeChatId) {
+            return conv;
+          }
+
+          if (conv.messages.some((item) => item.id === serverMessage.id)) {
+            return conv;
+          }
+
+          const nextMessages = [...conv.messages, serverMessage];
+          const lastMessage = nextMessages[nextMessages.length - 1];
+
+          return {
+            ...conv,
+            messages: nextMessages,
+            preview: getConversationPreviewFromMessage(
+              lastMessage,
+              currentUserId,
+            ),
+            time: new Date(lastMessage.created_at).toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          };
+        }),
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "";
+      if (errorMessage !== "http_404") {
+        console.error("Failed to send message", error);
+        if (errorMessage === "http_403") {
+          setChatNotice("Không thể gửi tin nhắn trong cuộc trò chuyện này.");
+        }
+        setReplyingTo(replyTarget ?? null);
+        return;
+      }
+
+      const tempId = `tmp-${Date.now()}`;
+      const optimistic: Message = {
+        id: tempId,
+        conversation_id: activeChatId,
+        sender_id: currentUserId,
+        type: "text",
+        content,
+        created_at: new Date().toISOString(),
+        read_by: [currentUserId],
+        sender_name: user?.fullName || "You",
+        reply_to_message_id: replyTarget?.id,
+      };
+
       setConversations((prev) =>
         prev.map((conv) =>
           conv.id === activeChatId
             ? {
                 ...conv,
-                messages: [...conv.messages, enrichMessage(newMessage)],
-                preview: "📎 Attachment",
+                messages: [...conv.messages, optimistic],
+                preview: `Bạn: ${content}`,
+                time: new Date().toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
               }
             : conv,
         ),
       );
-    } catch (error) {
-      console.error("File upload error:", error);
+
+      emit("message:send", {
+        conversation_id: activeChatId,
+        type: "text",
+        content,
+        client_temp_id: tempId,
+        reply_to_message_id: replyTarget?.id,
+      });
     }
   };
 
-  const handleCreateDirectConversation = async (selectedUserId: string) => {
+  const handleSendFile = async (file: File, caption?: string) => {
+    if (!activeChatId || isComposerBlocked) return;
     const token = getAuthToken();
     if (!token) return;
 
-    try {
-      const response = await authJsonRequest<{ data?: { id?: string } }>(
-        "/api/conversations/direct",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: selectedUserId }),
-        },
-      );
+    const normalizedConversationId = normalizeConversationId(activeChatId);
+    if (!normalizedConversationId) {
+      setChatNotice("Không xác định được cuộc trò chuyện để gửi file.");
+      return;
+    }
 
-      setActiveChatId(response.data?.id ?? null);
-      setShowUserSelection(false);
-      await loadConversations();
+    try {
+      const sendUpload = async (baseUrl: string) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        if (caption) {
+          formData.append("content", caption);
+        }
+
+        return fetch(
+          `${baseUrl}/api/messages/${encodeURIComponent(normalizedConversationId)}/upload`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          },
+        );
+      };
+
+      let lastUploadError: unknown;
+      const attemptUpload = async (baseUrl: string) => {
+        try {
+          return await sendUpload(baseUrl);
+        } catch (error) {
+          lastUploadError = error;
+          return null;
+        }
+      };
+
+      let response = await attemptUpload(API_BASE_URL);
+      if (response?.status && response.status >= 500) {
+        // Retry once for transient gateway/service hiccups.
+        const retry = await attemptUpload(API_BASE_URL);
+        if (retry) {
+          response = retry;
+        }
+      }
+
+      if (
+        (!response || (!response.ok && response.status >= 500)) &&
+        CHAT_SERVICE_BASE_URL !== API_BASE_URL
+      ) {
+        // Gateway can fail multipart with connection aborts; fallback to chat-service directly.
+        let directResponse = await attemptUpload(CHAT_SERVICE_BASE_URL);
+        if (directResponse?.status && directResponse.status >= 500) {
+          const retryDirect = await attemptUpload(CHAT_SERVICE_BASE_URL);
+          if (retryDirect) {
+            directResponse = retryDirect;
+          }
+        }
+
+        if (directResponse) {
+          response = directResponse;
+        }
+      }
+
+      if (!response) {
+        throw lastUploadError ?? new Error("upload_network_error");
+      }
+
+      if (!response.ok) {
+        let backendMessage = "";
+        try {
+          const body = (await response.json()) as { message?: string };
+          backendMessage = typeof body.message === "string" ? body.message : "";
+        } catch {
+          backendMessage = "";
+        }
+
+        throw new Error(
+          backendMessage
+            ? `http_${response.status}:${backendMessage}`
+            : `http_${response.status}`,
+        );
+      }
+
+      const payload = (await response.json()) as { data?: Message };
+      const newMessage = payload.data as Message;
+      setConversations((prev) =>
+        prev.map((conv) => {
+          if (conv.id !== normalizedConversationId) {
+            return conv;
+          }
+
+          if (conv.messages.some((item) => item.id === newMessage.id)) {
+            return conv;
+          }
+
+          const enrichedMessage = enrichMessage(newMessage);
+          const nextMessages = [...conv.messages, enrichedMessage];
+          const lastMessage = nextMessages[nextMessages.length - 1];
+
+          return {
+            ...conv,
+            messages: nextMessages,
+            preview: getConversationPreviewFromMessage(
+              lastMessage,
+              currentUserId,
+            ),
+            time: new Date(lastMessage.created_at).toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          };
+        }),
+      );
+      setReplyingTo(null);
     } catch (error) {
-      console.error("Error creating conversation:", error);
+      console.error("File upload error", error);
+      const errorMessage = error instanceof Error ? error.message : "";
+      if (
+        errorMessage === "http_403" ||
+        errorMessage.includes(":you_blocked_this_user") ||
+        errorMessage.includes(":you_are_blocked_by_user")
+      ) {
+        setChatNotice("Không thể gửi tệp trong cuộc trò chuyện này.");
+      } else if (errorMessage.includes(":file_type_not_supported")) {
+        setChatNotice("Định dạng file chưa được hỗ trợ.");
+      } else if (errorMessage.includes(":file_too_large")) {
+        setChatNotice("File vượt quá dung lượng cho phép (tối đa 50MB).");
+      } else if (errorMessage.startsWith("http_415")) {
+        setChatNotice("Định dạng file chưa được hỗ trợ.");
+      } else if (errorMessage.startsWith("http_413")) {
+        setChatNotice("File vượt quá dung lượng cho phép (tối đa 50MB).");
+      } else if (errorMessage.includes(":file_upload_invalid_form")) {
+        setChatNotice("Lỗi dữ liệu tải lên. Vui lòng thử lại.");
+      } else if (
+        errorMessage === "upload_network_error" ||
+        errorMessage.includes("Failed to fetch")
+      ) {
+        setChatNotice("Không thể kết nối dịch vụ upload. Vui lòng thử lại.");
+      } else {
+        setChatNotice("Không thể gửi file lúc này. Vui lòng thử lại.");
+      }
     }
   };
 
   const handleSelectConversation = (conversationId: string) => {
     setActiveChatId(conversationId);
+    setScrollToMessageId(null);
+    setReplyingTo(null);
+    setActiveConversationActionId(null);
     setUnreadByConversation((prev) => {
       const next = { ...prev };
       delete next[conversationId];
       return next;
     });
+    setMissedCallsByConversation((prev) => {
+      if (!(conversationId in prev)) {
+        return prev;
+      }
+
+      const next = { ...prev };
+      delete next[conversationId];
+      return next;
+    });
+    setChatNotice("");
   };
 
-  const normalizedSearch = searchTerm.trim().toLowerCase();
-  const filteredConversations = conversations.filter((chat) => {
-    if (!normalizedSearch) return true;
-    return [chat.name, chat.email ?? ""].some((value) =>
-      value.toLowerCase().includes(normalizedSearch),
-    );
-  });
+  const handleReply = (message: Message) => {
+    setReplyingTo(message);
+  };
 
-  const isAdmin = user?.role === "ADMIN";
-  const supportUsers = allUsers.filter(
-    (u) =>
-      u.id !== currentUserId &&
-      (isAdmin ? u.role === "USER" : u.role === "ADMIN"),
+  const requestLiveKitToken = useCallback(
+    async (callId: string, conversationId: string) => {
+      const sleep = (ms: number) =>
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, ms);
+        });
+
+      const maxAttempts = 6;
+      const retryDelayMs = 250;
+
+      try {
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          try {
+            const response = await authJsonRequest<{
+              data?: {
+                token: string;
+                ws_url: string;
+                room_name: string;
+                expires_at: string;
+              };
+            }>(`/api/calls/${encodeURIComponent(callId)}/livekit-token`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                conversation_id: conversationId,
+              }),
+            });
+
+            if (!response.data) {
+              setChatNotice("Không nhận được media token cho cuộc gọi.");
+              return null;
+            }
+
+            return response.data;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "request_failed";
+            const isNotReadyYet = message === "http_404";
+            const isLastAttempt = attempt >= maxAttempts;
+
+            if (!isNotReadyYet || isLastAttempt) {
+              throw error;
+            }
+
+            await sleep(retryDelayMs);
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "request_failed";
+        setChatNotice(`Không thể cấp media token: ${message}`);
+        return null;
+      }
+    },
+    [],
   );
 
-  const isActiveGroup = activeChat?.type === "group";
+  const loadLiveKitToken = useCallback(
+    async (callId: string, conversationId: string) => {
+      if (liveKitRequestCallIdRef.current === callId) {
+        return liveKitTokenPayload;
+      }
 
-  let conversationsContent: React.ReactNode;
-  if (loading) {
-    conversationsContent = (
-      <div className="p-4 text-center text-slate-500">
-        Loading conversations...
-      </div>
-    );
-  } else if (filteredConversations.length === 0) {
-    conversationsContent = (
-      <div className="p-4 text-center text-slate-500">No conversations yet</div>
-    );
-  } else {
-    conversationsContent = filteredConversations.map((chat) => (
-      <button
-        key={chat.id}
-        onClick={() => handleSelectConversation(chat.id)}
-        className={`w-full p-3 mb-2 rounded-xl flex gap-3 text-left transition-colors ${
-          activeChatId === chat.id ? "bg-[#ebeff5]" : "hover:bg-[#eef2f8]"
-        }`}
-      >
-        <img
-          src={chat.avatar}
-          alt={chat.name}
-          className="w-10 h-10 rounded-full object-cover"
-        />
-        <div className="flex-1 min-w-0">
-          <div className="flex justify-between items-center mb-1">
-            <p className="text-[11px] font-bold text-blue-600 tracking-wide truncate">
-              {chat.type === "group" ? "GROUP" : "TICKET"}
-            </p>
-            <span className="text-[11px] text-slate-400 whitespace-nowrap">
-              {chat.time}
-            </span>
-          </div>
-          <h3 className="text-[16px] leading-tight font-semibold text-slate-800 truncate mb-1">
-            {chat.name}
-          </h3>
-          <p className="text-xs text-slate-500 truncate">{chat.preview}</p>
-          {unreadByConversation[chat.id] > 0 && (
-            <span className="inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-rose-500 text-white text-[10px] font-semibold mt-1">
-              {unreadByConversation[chat.id]}
-            </span>
-          )}
-        </div>
-      </button>
-    ));
-  }
+      liveKitRequestCallIdRef.current = callId;
+      setLiveKitTokenError(null);
+      const payload = await requestLiveKitToken(callId, conversationId);
 
+      if (!payload) {
+        setLiveKitTokenPayload(null);
+        setLiveKitTokenError("Không nhận được media token cho cuộc gọi.");
+        return null;
+      }
+
+      setLiveKitTokenPayload(payload);
+      return payload;
+    },
+    [requestLiveKitToken, liveKitTokenPayload],
+  );
+
+  const appendCallInfoMessage = useCallback(
+    (input: {
+      callId: string;
+      conversationId: string;
+      kind: "ended" | "declined" | "missed";
+      text: string;
+    }) => {
+      const messageId = `call-info:${input.callId}:${input.kind}`;
+      const createdAt = new Date().toISOString();
+
+      setConversations((prev) =>
+        prev.map((conv) => {
+          if (conv.id !== input.conversationId) {
+            return conv;
+          }
+
+          if (conv.messages.some((item) => item.id === messageId)) {
+            return conv;
+          }
+
+          const infoMessage = enrichMessage({
+            id: messageId,
+            conversation_id: input.conversationId,
+            sender_id: currentUserId,
+            type: "text",
+            content: input.text,
+            created_at: createdAt,
+            read_by: [currentUserId],
+          });
+
+          return {
+            ...conv,
+            messages: [...conv.messages, infoMessage],
+            preview: input.text,
+            time: new Date(createdAt).toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          };
+        }),
+      );
+    },
+    [currentUserId, enrichMessage],
+  );
+
+  const handleRetryLiveKitToken = useCallback(() => {
+    if (!activeCall) {
+      return;
+    }
+
+    liveKitRequestCallIdRef.current = null;
+    void loadLiveKitToken(activeCall.callId, activeCall.conversationId);
+  }, [activeCall, loadLiveKitToken]);
+
+  useEffect(() => {
+    if (!activeCall) {
+      liveKitRequestCallIdRef.current = null;
+      setLiveKitTokenPayload(null);
+      setLiveKitTokenError(null);
+      return;
+    }
+
+    const expectedRoomName = `call-${activeCall.callId}`;
+    if (liveKitTokenPayload?.room_name === expectedRoomName) {
+      return;
+    }
+
+    void loadLiveKitToken(activeCall.callId, activeCall.conversationId);
+  }, [
+    activeCall,
+    liveKitTokenPayload?.room_name,
+    loadLiveKitToken,
+  ]);
+
+  const handleStartCall = useCallback(() => {
+    if (!activeChatId || activeCall) {
+      return;
+    }
+
+    const callId = createClientCallId();
+    const callType = activeChat?.type === "group" ? "group" : "direct";
+    setActiveCall({
+      callId,
+      conversationId: activeChatId,
+      status: "ringing",
+      isInitiator: true,
+      connectedAt: undefined,
+      callType,
+    });
+    if (callType === "group") {
+      setActiveGroupCalls((prev) => ({
+        ...prev,
+        [activeChatId]: { callId, callType: "group" },
+      }));
+    }
+
+    emit("call:initiate", {
+      call_id: callId,
+      conversation_id: activeChatId,
+      call_type: callType,
+    });
+  }, [activeCall, activeChat?.type, activeChatId, emit]);
+
+  const handleEndCall = useCallback(async () => {
+    if (!activeCall) {
+      return;
+    }
+
+    const conversationId = activeCall.conversationId;
+    const callId = activeCall.callId;
+
+    if (activeCall.callType === "group") {
+      let shouldEndImmediately = false;
+      try {
+        const activeResponse = await authJsonRequest<{
+          data?: {
+            participants?: Array<{ state?: string }>;
+          } | null;
+        }>(
+          `/api/calls/active-for-conversation?conversation_id=${conversationId}`,
+        );
+
+        const participants = Array.isArray(activeResponse.data?.participants)
+          ? activeResponse.data?.participants
+          : [];
+        const currentlyConnectedCount = participants.filter(
+          (participant) =>
+            participant.state === "connected" || participant.state === "initiated",
+        ).length;
+        shouldEndImmediately = currentlyConnectedCount <= 2;
+      } catch {
+        shouldEndImmediately = false;
+      }
+
+      if (shouldEndImmediately) {
+        emit("call:end", {
+          call_id: callId,
+          conversation_id: conversationId,
+          reason: "ended_by_user",
+        });
+      } else {
+        emit("call:leave", {
+          call_id: callId,
+          conversation_id: conversationId,
+        });
+      }
+      setActiveGroupCalls((prev) => {
+        const next = { ...prev };
+        delete next[conversationId];
+        return next;
+      });
+      setChatNotice("Bạn đã rời cuộc gọi nhóm");
+    } else {
+      // Direct call: end the whole call
+      emit("call:end", {
+        call_id: callId,
+        conversation_id: conversationId,
+        reason: "ended_by_user",
+      });
+      setChatNotice(
+        activeCall.connectedAt ? "Cuộc gọi đã kết thúc" : "Cuộc gọi nhỡ",
+      );
+    }
+
+    setActiveCall(null);
+    setLiveKitTokenPayload(null);
+    setLiveKitTokenError(null);
+    liveKitRequestCallIdRef.current = null;
+  }, [activeCall, authJsonRequest, emit]);
+
+  const handleAcceptIncomingCall = useCallback(() => {
+    if (!incomingCall) {
+      return;
+    }
+
+    emit("call:accept", {
+      call_id: incomingCall.callId,
+      conversation_id: incomingCall.conversationId,
+    });
+
+    setActiveCall({
+      callId: incomingCall.callId,
+      conversationId: incomingCall.conversationId,
+      status: "connected",
+      isInitiator: false,
+      connectedAt: Date.now(),
+      callType: incomingCall.callType,
+    });
+    setIncomingCall(null);
+    setCallNotification(null);
+  }, [emit, incomingCall]);
+
+  const handleDeclineIncomingCall = useCallback(() => {
+    if (!incomingCall) {
+      return;
+    }
+
+    emit("call:decline", {
+      call_id: incomingCall.callId,
+      conversation_id: incomingCall.conversationId,
+      reason: "declined_by_user",
+    });
+    setIncomingCall(null);
+    setCallNotification(null);
+  }, [emit, incomingCall]);
+
+  const handleRecall = async (message: Message) => {
+    try {
+      const response = await authJsonRequest<{ data?: Message }>(
+        `/api/messages/${message.id}/recall`,
+        {
+          method: "PATCH",
+        },
+      );
+
+      markMessageRecalled(
+        message.conversation_id,
+        message.id,
+        response.data?.recalled_at,
+        response.data?.recalled_by,
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "";
+      if (errorMessage !== "http_404") {
+        console.error("Failed to recall message", error);
+        return;
+      }
+
+      emit("message:recall", {
+        message_id: message.id,
+        conversation_id: message.conversation_id,
+      });
+
+      markMessageRecalled(message.conversation_id, message.id);
+    }
+  };
+
+  const handleReact = (
+    message: Message,
+    reaction?: MessageReaction["reaction"],
+  ) => {
+    void (async () => {
+      try {
+        const response = await authJsonRequest<{ data?: Message }>(
+          `/api/messages/${message.id}/reaction`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ reaction }),
+          },
+        );
+
+        setMessageReactions(
+          message.conversation_id,
+          message.id,
+          response.data?.reactions ?? [],
+        );
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "";
+        if (errorMessage !== "http_404") {
+          console.error("Failed to react message", error);
+          return;
+        }
+
+        emit("message:react", {
+          message_id: message.id,
+          conversation_id: message.conversation_id,
+          reaction,
+        });
+
+        const currentReactions = message.reactions ?? [];
+        const withoutMine = currentReactions.filter(
+          (item) => item.user_id !== currentUserId,
+        );
+        const nextReactions: MessageReaction[] = reaction
+          ? [
+              ...withoutMine,
+              {
+                user_id: currentUserId,
+                reaction,
+                created_at: new Date().toISOString(),
+              },
+            ]
+          : withoutMine;
+        setMessageReactions(message.conversation_id, message.id, nextReactions);
+      }
+    })();
+  };
+
+  const handleDeleteMessage = (message: Message) => {
+    void (async () => {
+      try {
+        await authJsonRequest<{ message?: string }>(
+          `/api/messages/${message.id}`,
+          {
+            method: "DELETE",
+          },
+        );
+
+        removeMessageForCurrentUser(message.conversation_id, message.id);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "";
+        if (errorMessage !== "http_404") {
+          console.error("Failed to delete message for current user", error);
+          return;
+        }
+
+        emit("message:delete", {
+          message_id: message.id,
+          conversation_id: message.conversation_id,
+        });
+
+        removeMessageForCurrentUser(message.conversation_id, message.id);
+      }
+    })();
+  };
+
+  const handleDeleteConversationForMe = async (conversationId: string) => {
+    try {
+      await authJsonRequest<{ message?: string }>(
+        `/api/conversations/${conversationId}/hide`,
+        {
+          method: "POST",
+        },
+      );
+
+      setConversations((prev) =>
+        prev.filter((item) => item.id !== conversationId),
+      );
+      setMutedByConversation((prev) => {
+        if (!(conversationId in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[conversationId];
+        return next;
+      });
+
+      if (activeChatId === conversationId) {
+        const next = conversations.find((item) => item.id !== conversationId);
+        setActiveChatId(next?.id ?? null);
+        setReplyingTo(null);
+      }
+    } catch (error) {
+      console.error("Failed to hide conversation", error);
+    } finally {
+      setActiveConversationActionId(null);
+    }
+  };
+
+  const handleStartDirectConversation = useCallback(
+    async (friend: {
+      id: string;
+      fullName: string;
+      email?: string;
+      phone?: string | null;
+      avatarUrl?: string | null;
+    }) => {
+      const response = await authJsonRequest<{
+        data?: {
+          id?: string;
+        };
+      }>("/api/conversations/direct", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId: friend.id }),
+      });
+
+      setAllUsers((prev) => {
+        const existing = prev.find((item) => item.id === friend.id);
+        const nextFriend: UserSummary = {
+          id: friend.id,
+          fullName: friend.fullName,
+          email: friend.email,
+          phone: friend.phone ?? undefined,
+          avatarUrl: friend.avatarUrl ?? null,
+        };
+
+        if (!existing) {
+          return [...prev, nextFriend];
+        }
+
+        return prev.map((item) =>
+          item.id === friend.id ? mergeUserSummary(item, nextFriend) : item,
+        );
+      });
+
+      const createdConversationId = normalizeConversationId(response.data?.id);
+      if (createdConversationId) {
+        setActiveChatId(createdConversationId);
+      }
+
+      await loadConversations();
+    },
+    [loadConversations],
+  );
+
+  const handleBlockStateChange = useCallback(
+    (state: { isBlocked: boolean; blockedByCurrentUser: boolean }) => {
+      if (!activeChatId) {
+        return;
+      }
+
+      setBlockedByConversation((prev) => ({
+        ...prev,
+        [activeChatId]: state,
+      }));
+
+      if (state.isBlocked) {
+        setChatNotice(
+          state.blockedByCurrentUser
+            ? "Bạn đã chặn người này. Mở chặn để tiếp tục nhắn tin."
+            : "Bạn đã bị chặn. Chỉ có thể nhắn lại khi đối phương mở chặn.",
+        );
+        return;
+      }
+
+      setChatNotice("");
+    },
+    [activeChatId],
+  );
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredConversations = conversations.filter((chat) =>
+    normalizedSearch
+      ? chat.name.toLowerCase().includes(normalizedSearch)
+      : true,
+  );
   return (
-    <div className="flex w-full h-full bg-[#dfe3e9] font-sans text-slate-800">
-      <div className="w-[320px] border-r border-slate-200/80 flex flex-col bg-[#f5f7fb]">
+    <div className="flex h-full w-full bg-[#dfe3e9] font-sans text-slate-800">
+      <div className="w-[320px] border-r border-slate-200/80 bg-[#f5f7fb]">
         <div className="p-5 flex items-center justify-between">
           <h1 className="text-[34px] leading-none font-bold tracking-tight">
-            OTT Care
+            Chats
           </h1>
-          <Bell className="w-5 h-5 text-slate-500" />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowStartConversation(true)}
+              className="p-1.5 rounded-full text-slate-500 hover:bg-slate-200/70 hover:text-slate-700 transition-colors"
+              title="Mở cuộc trò chuyện mới"
+              aria-label="Mở cuộc trò chuyện mới"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+            <Bell className="w-5 h-5 text-slate-500" />
+          </div>
         </div>
 
         <div className="px-4 pb-3 flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search..."
+              placeholder="Tìm cuộc trò chuyện"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               className="w-full bg-[#eef1f6] text-sm rounded-full py-2.5 pl-9 pr-4 outline-none"
@@ -692,90 +3485,404 @@ export default function ChatView() {
           </div>
           <button
             onClick={() => setShowCreateGroup(true)}
-            className="p-2 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors shrink-0"
-            title="Tạo nhóm chat"
+            className="p-2 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            title="Tạo nhóm"
           >
             <Users className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 pb-4">
-          {conversationsContent}
+        <div className="h-[calc(100%-180px)] overflow-y-auto px-3 pb-4">
+          {loading ? (
+            <div className="p-4 text-center text-slate-500">Đang tải...</div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="p-4 text-center text-slate-500">
+              Chưa có cuộc trò chuyện nào
+            </div>
+          ) : (
+            filteredConversations.map((chat) => (
+              <div
+                key={chat.id}
+                className={`w-full p-3 mb-2 rounded-xl flex gap-3 text-left transition-colors ${
+                  activeChatId === chat.id
+                    ? "bg-[#ebeff5]"
+                    : "hover:bg-[#eef2f8]"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSelectConversation(chat.id)}
+                  className="flex flex-1 min-w-0 gap-3 text-left"
+                >
+                  <div className="relative">
+                    <img
+                      src={chat.avatar}
+                      alt={chat.name}
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                    <span
+                      className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${
+                        chat.online ? "bg-emerald-500" : "bg-slate-400"
+                      }`}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center mb-1">
+                      <p className="text-[11px] font-bold text-blue-600 tracking-wide truncate">
+                        {chat.type === "group" ? "NHÓM" : "CÁ NHÂN"}
+                      </p>
+                      <div className="flex items-center gap-1">
+                        {mutedByConversation[chat.id] && (
+                          <BellOff className="h-3.5 w-3.5 text-slate-400" />
+                        )}
+                        {missedCallsByConversation[chat.id] > 0 && (
+                          <span className="inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-amber-100 text-[10px] font-semibold text-amber-700">
+                            {missedCallsByConversation[chat.id]}
+                          </span>
+                        )}
+                        {unreadByConversation[chat.id] > 0 && (
+                          <span
+                            className={`inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full text-[10px] font-semibold ${
+                              mutedByConversation[chat.id]
+                                ? "bg-slate-300 text-slate-600"
+                                : "bg-rose-500 text-white"
+                            }`}
+                          >
+                            {unreadByConversation[chat.id]}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                          {chat.time}
+                        </span>
+                      </div>
+                    </div>
+                    <h3 className="text-[16px] leading-tight font-semibold text-slate-800 truncate mb-1">
+                      {chat.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 truncate">
+                      {chat.preview}
+                    </p>
+                  </div>
+                </button>
+
+                <div className="relative self-start">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setActiveConversationActionId((current) =>
+                        current === chat.id ? null : chat.id,
+                      );
+                    }}
+                    className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    aria-label="Mở thao tác cuộc trò chuyện"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+
+                  {activeConversationActionId === chat.id && (
+                    <div className="absolute right-0 z-20 mt-1 min-w-36 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleDeleteConversationForMe(chat.id);
+                        }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-rose-600 hover:bg-rose-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Xóa cuộc trò chuyện
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
-        <div className="px-4 pb-4 pt-2 border-t border-slate-200/70">
-          <button
-            onClick={() => {
-              if (isAdmin) {
-                setShowUserSelection(true);
-                return;
-              }
-              const firstAdmin = supportUsers[0];
-              if (!firstAdmin) return;
-              void handleCreateDirectConversation(firstAdmin.id);
-            }}
-            className="w-full bg-blue-600 text-white text-sm font-semibold px-3 py-2.5 rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            + New Ticket
-          </button>
+        <div className="px-4 pb-4 pt-2 border-t border-slate-200/70 text-xs text-slate-500">
+          Bạn bè đã kết bạn sẽ tự động hiện trong danh sách chat.
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col bg-[#dde1e7] relative">
+      <div className="flex-1 flex flex-col bg-[#dde1e7]">
         {activeChat ? (
           <>
-            <div className="h-16 bg-[#f5f7fa] border-b border-slate-200 px-6 flex items-center justify-between z-10">
+            <div className="h-16 bg-[#f5f7fa] border-b border-slate-200 px-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <img
-                  src={activeChat.avatar}
-                  alt={activeChat.name}
-                  className="w-9 h-9 rounded-full object-cover"
-                />
+                <button
+                  type="button"
+                  className={`relative ${activeChat.type === "direct" && activeChat.peerId ? "cursor-pointer hover:opacity-80 transition-opacity" : "cursor-default"}`}
+                  onClick={() => {
+                    if (activeChat.type === "direct" && activeChat.peerId) {
+                      setProfileUserId(activeChat.peerId);
+                    }
+                  }}
+                  aria-label="Xem trang cá nhân"
+                >
+                  <img
+                    src={activeChat.avatar}
+                    alt={activeChat.name}
+                    className="w-9 h-9 rounded-full object-cover"
+                  />
+                </button>
                 <div>
                   <h2 className="text-[16px] leading-none font-semibold">
                     {activeChat.name}
                   </h2>
-                  <div className="text-xs text-slate-500">
-                    {activeChat.online ? "Online" : "Offline"}
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        activeChat.online ? "bg-emerald-500" : "bg-slate-400"
+                      }`}
+                    />
+                    <span>{activeChat.online ? "Trực tuyến" : "Ngoại tuyến"}</span>
                   </div>
                 </div>
               </div>
-              <button
-                type="button"
-                className="text-slate-500 hover:text-slate-700 transition-colors"
-                aria-label="More actions"
-              >
-                <MoreVertical className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeCall?.conversationId === activeChat.id) {
+                      handleEndCall();
+                    } else {
+                      handleStartCall();
+                    }
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    activeCall?.conversationId === activeChat.id
+                      ? "bg-rose-100 text-rose-700 hover:bg-rose-200"
+                      : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                  }`}
+                  aria-label={
+                    activeCall?.conversationId === activeChat.id
+                      ? "Kết thúc cuộc gọi"
+                      : "Bắt đầu cuộc gọi"
+                  }
+                >
+                  {activeCall?.conversationId === activeChat.id ? (
+                    <>
+                      <PhoneOff className="h-3.5 w-3.5" />
+                      Kết thúc
+                    </>
+                  ) : (
+                    <>
+                      <Phone className="h-3.5 w-3.5" />
+                      Gọi
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="text-slate-500 hover:text-slate-700 transition-colors"
+                  aria-label="Thao tác khác"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+              </div>
             </div>
+
+            {activeCall?.conversationId === activeChat.id && (
+              <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700">
+                {activeCall.status === "ringing"
+                  ? "Đang đổ chuông..."
+                  : "Cuộc gọi đang diễn ra"}
+              </div>
+            )}
+
+            {activeChat.type === "group" &&
+              activeGroupCalls[activeChat.id] &&
+              activeCall?.conversationId !== activeChat.id && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    // Re-verify authoritative active call state before joining to
+                    // avoid acting on a stale `activeGroupCalls` entry.
+                    try {
+                      await fetchActiveCallForConversation(activeChat.id);
+                    } catch {
+                      // ignore - fetchActiveCallForConversation logs errors
+                    }
+
+                    const groupCall = activeGroupCalls[activeChat.id];
+                    if (!groupCall) {
+                      setChatNotice("Không có cuộc gọi đang diễn ra");
+                      return;
+                    }
+
+                    emit("call:accept", {
+                      call_id: groupCall.callId,
+                      conversation_id: activeChat.id,
+                    });
+
+                    setActiveCall({
+                      callId: groupCall.callId,
+                      conversationId: activeChat.id,
+                      status: "connected",
+                      isInitiator: false,
+                      connectedAt: Date.now(),
+                      callType: "group",
+                    });
+                  }}
+                  className="flex w-full items-center justify-center gap-2 border-b border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
+                >
+                  <Phone className="h-4 w-4" />
+                  Cuộc gọi nhóm đang diễn ra — Tham gia
+                </button>
+              )}
 
             <MessageList
               messages={activeChat.messages}
               currentUserId={currentUserId}
               conversationName={activeChat.name}
+              readAt={lastReadAtByConversation[activeChat.id] ?? null}
               isLoading={loading}
-              isAdminView
               showSenderAvatar
+              scrollToMessageId={scrollToMessageId}
+              onScrolledToMessage={() => setScrollToMessageId(null)}
+              onReply={handleReply}
+              onRecall={handleRecall}
+              onReact={handleReact}
+              onDelete={handleDeleteMessage}
             />
+
+            {typingIndicatorText && (
+              <div className="px-4 pb-1">
+                <div className="inline-flex max-w-[78%] items-center gap-2 px-1 py-0.5 text-[12px] text-[#3f4956]">
+                  <span className="inline-flex items-center gap-1.5 text-[#0d6efd]">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#0d6efd] [animation-duration:900ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#0d6efd] [animation-delay:120ms] [animation-duration:900ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#0d6efd] [animation-delay:240ms] [animation-duration:900ms]" />
+                  </span>
+                  <span className="truncate">{typingIndicatorText}</span>
+                </div>
+              </div>
+            )}
 
             <MessageInput
               onSendMessage={handleSendMessage}
               onSendFile={handleSendFile}
               isLoading={loading}
-              isConnected={isConnected}
-              isAdminView
+              isConnected={Boolean(getAuthToken())}
+              disabled={isComposerBlocked}
+              disabledMessage={composerBlockedMessage}
+              replyToMessagePreview={
+                replyingTo
+                  ? replyingTo.type === "file"
+                    ? "Tệp đính kèm"
+                    : replyingTo.content
+                  : undefined
+              }
+              onCancelReply={() => setReplyingTo(null)}
+              onTypingChange={handleLocalTypingChange}
             />
+            {/* Connection loss modal (shown during disconnect grace) */}
+            {!suppressModals && connectionLossModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                <div className="w-[420px] rounded-lg bg-white p-6 shadow-lg">
+                  <h3 className="text-lg font-semibold mb-2">
+                    {connectionLossModal.state === "waiting" ? "Mất kết nối" : "Cuộc gọi đã kết thúc"}
+                  </h3>
+                  {connectionLossModal.state === "waiting" ? (
+                    <p className="text-sm text-slate-600 mb-4">
+                      Đang chờ kết nối lại — tự động kết thúc sau {connectionLossModal.countdown}s nếu không khôi phục.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-slate-600 mb-4">
+                      Cuộc gọi đã bị kết thúc vì không thể kết nối lại.
+                    </p>
+                  )}
+
+                  <div className="flex justify-end gap-2">
+                    {connectionLossModal.state === "waiting" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isConnected && activeCall) {
+                            emit("call:leave", {
+                              call_id: activeCall.callId,
+                              conversation_id: activeCall.conversationId,
+                            });
+                          }
+                          setActiveCall(null);
+                          setConnectionLossModal(null);
+                        }}
+                        className="rounded-md px-3 py-2 text-sm bg-rose-100 text-rose-700 hover:bg-rose-200"
+                      >
+                        Rời cuộc gọi
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setConnectionLossModal(null)}
+                      className="rounded-md px-3 py-2 text-sm bg-slate-100 hover:bg-slate-200"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {chatNotice && (
+              <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+                {chatNotice}
+              </div>
+            )}
           </>
         ) : (
-          <div className="flex items-center justify-center h-full text-slate-500">
-            Select a conversation to start messaging
+          <div className="h-full flex flex-col">
+            <div className="h-16 bg-[#f5f7fa] border-b border-slate-200 px-6 flex items-center">
+              <div className="h-9 w-9 rounded-full bg-slate-200 animate-pulse" />
+              <div className="ml-3 space-y-1">
+                <div className="h-3 w-28 rounded bg-slate-200 animate-pulse" />
+                <div className="h-2.5 w-20 rounded bg-slate-200 animate-pulse" />
+              </div>
+            </div>
+            <div className="flex-1 p-6 text-slate-500">
+              {loading ? (
+                <div className="space-y-3">
+                  <div className="h-10 w-2/3 rounded-2xl bg-slate-200 animate-pulse" />
+                  <div className="h-10 w-1/2 rounded-2xl bg-slate-200 animate-pulse ml-auto" />
+                  <div className="h-10 w-3/5 rounded-2xl bg-slate-200 animate-pulse" />
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  Chọn một cuộc trò chuyện để bắt đầu nhắn tin
+                </div>
+              )}
+            </div>
+            <div className="h-[72px] border-t border-slate-200 bg-white px-4 flex items-center">
+              <div className="h-10 w-full rounded-full bg-slate-100" />
+            </div>
           </div>
         )}
       </div>
 
-      {activeChat && isActiveGroup ? (
+      {activeChat ? (
         <GroupDetailPanel
           conversationId={activeChat.id}
+          conversationType={activeChat.type ?? "direct"}
+          messages={activeChat.messages}
+          userLookup={userLookup}
+          isMuted={Boolean(mutedByConversation[activeChat.id])}
+          onToggleMute={(muted: boolean) => {
+            setMutedByConversation((prev) => {
+              if (!muted) {
+                const next = { ...prev };
+                delete next[activeChat.id];
+                return next;
+              }
+
+              return {
+                ...prev,
+                [activeChat.id]: true,
+              };
+            });
+          }}
+          onBlockStateChange={handleBlockStateChange}
           onConversationUpdated={() => void loadConversations()}
           onConversationDeleted={() => {
             setActiveChatId(null);
@@ -783,66 +3890,104 @@ export default function ChatView() {
           }}
         />
       ) : (
-        <div className="w-80 border-l border-slate-200 bg-[#f5f7fb] flex flex-col overflow-y-auto">
-          <div className="p-6">
-            <p className="text-sm text-slate-500">
-              Chọn nhóm để xem chi tiết nhóm, hoặc chọn ticket để chat realtime.
-            </p>
+        <div className="w-80 border-l border-slate-200 bg-[#f5f7fb] flex flex-col">
+          <div className="p-6 border-b border-slate-200/70">
+            <div className="mx-auto h-16 w-16 rounded-full bg-slate-200 animate-pulse" />
+            <div className="mt-3 h-3 w-32 mx-auto rounded bg-slate-200 animate-pulse" />
+            <div className="mt-2 h-2.5 w-24 mx-auto rounded bg-slate-200 animate-pulse" />
+          </div>
+
+          <div className="p-4 border-b border-slate-200/70">
+            <div className="h-3 w-28 rounded bg-slate-200 animate-pulse mb-3" />
+            <div className="h-9 w-full rounded-lg bg-slate-100" />
+            <div className="mt-2 h-9 w-full rounded-lg bg-slate-100" />
+          </div>
+
+          <div className="p-4 border-b border-slate-200/70">
+            <div className="h-3 w-20 rounded bg-slate-200 animate-pulse mb-3" />
+            <div className="grid grid-cols-3 gap-2">
+              <div className="h-16 rounded bg-slate-100" />
+              <div className="h-16 rounded bg-slate-100" />
+              <div className="h-16 rounded bg-slate-100" />
+            </div>
+          </div>
+
+          <div className="p-4 text-xs text-slate-500">
+            Chọn hội thoại để xem thông tin chi tiết ở đây.
           </div>
         </div>
       )}
 
-      {isAdmin && showUserSelection && (
-        <div className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-lg max-w-sm w-full mx-4">
-            <div className="p-6 border-b border-slate-200">
-              <h2 className="text-lg font-bold">Chọn khách hàng cần hỗ trợ</h2>
-            </div>
-            <div className="divide-y max-h-96 overflow-y-auto">
-              {supportUsers.map((supportUser) => (
-                <button
-                  key={supportUser.id}
-                  onClick={() =>
-                    void handleCreateDirectConversation(supportUser.id)
-                  }
-                  className="w-full px-6 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left"
-                >
-                  <img
-                    src={
-                      supportUser.avatarUrl ||
-                      "https://api.dicebear.com/7.x/avataaars/svg?seed=1"
-                    }
-                    alt={supportUser.fullName}
-                    className="w-10 h-10 rounded-full"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-900">
-                      {supportUser.fullName}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {supportUser.email || supportUser.phone || supportUser.id}
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <div className="p-4 border-t border-slate-200 flex justify-end">
+      {!suppressModals && incomingCall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+            <h3 className="text-base font-semibold text-slate-800">
+              {callNotification?.title ?? "Cuộc gọi đến"}
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              {callNotification?.description ??
+                `Hội thoại ${incomingCall.callType === "group" ? "nhóm" : "1-1"} muốn bắt đầu cuộc gọi.`}
+            </p>
+            <div className="mt-4 flex items-center justify-end gap-2">
               <button
-                onClick={() => setShowUserSelection(false)}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                type="button"
+                onClick={handleDeclineIncomingCall}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
               >
-                Hủy
+                Từ chối
+              </button>
+              <button
+                type="button"
+                onClick={handleAcceptIncomingCall}
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                Chấp nhận
               </button>
             </div>
           </div>
         </div>
       )}
+      
+      {activeCall && (
+        <LiveKitCallOverlay
+          open={Boolean(activeCall)}
+          callId={activeCall.callId}
+          conversationName={activeChat?.name ?? "Cuộc gọi"}
+          callType={activeChat?.type === "group" ? "group" : "direct"}
+          status={activeCall.status}
+          tokenPayload={liveKitTokenPayload}
+          tokenError={liveKitTokenError}
+          onRetryToken={handleRetryLiveKitToken}
+          onHangUp={handleEndCall}
+        />
+      )}
 
-      <CreateGroupModal
-        open={showCreateGroup}
-        onClose={() => setShowCreateGroup(false)}
-        onCreated={() => void loadConversations()}
+      <StartConversationModal
+        open={showStartConversation}
+        onClose={() => setShowStartConversation(false)}
+        onSelectFriend={handleStartDirectConversation}
       />
+      {profileUserId && (
+        <UserProfileModal
+          userId={profileUserId}
+          onClose={() => setProfileUserId(null)}
+          onMessage={(userId) => {
+            setProfileUserId(null);
+            // Wait for modal to close before navigating
+            setTimeout(() => {
+               // We already have a function handleStartDirectConversation but it takes a full friend object.
+               // Let's just create a direct conversation if not already active
+               // Or simply close if we are already in the chat.
+               if (activeChat?.peerId !== userId) {
+                 const friend = allUsers.find(u => u.id === userId);
+                 if (friend) {
+                   void handleStartDirectConversation(friend);
+                 }
+               }
+            }, 100);
+          }}
+        />
+      )}
     </div>
   );
 }

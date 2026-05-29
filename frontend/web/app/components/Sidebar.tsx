@@ -7,7 +7,7 @@ import {
   LogIn,
   LogOut,
   MessageSquare,
-  Settings,
+  Newspaper,
   Users,
 } from "lucide-react";
 import { clearAuthSession, getSavedAuthUser, type AuthUser } from "../lib/auth";
@@ -77,6 +77,21 @@ export default function Sidebar({
       </button>
 
       <button
+        onClick={() => setCurrentView("posts")}
+        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "posts" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
+        title="Bảng tin"
+      >
+        <Newspaper className="w-6 h-6" />
+      </button>
+
+      <button
+        onClick={() => setCurrentView("friends")}
+        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "friends" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
+      >
+        <Users className="w-6 h-6" />
+      </button>
+
+      <button
         onClick={() => setCurrentView("chatbot")}
         className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "chatbot" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
       >
@@ -97,15 +112,7 @@ export default function Sidebar({
         <BarChart2 className="w-6 h-6" />
       </button>
 
-      <button
-        onClick={() => setCurrentView("friends")}
-        className={`cursor-pointer p-2 rounded-lg transition-colors ${currentView === "friends" ? "text-blue-600 bg-white shadow-sm" : "hover:text-white"}`}
-      >
-        <Users className="w-6 h-6" />
-      </button>
-
       <div className="grow"></div>
-      <Settings className="w-6 h-6 hover:text-white cursor-pointer transition-colors" />
       {user ? (
         <button
           onClick={handleLogout}

@@ -13,37 +13,83 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
+        tabBarInactiveTintColor: Colors[colorScheme ?? "light"].tabIconDefault,
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarStyle: {
+          backgroundColor: '#FFFFFF',
+          borderTopWidth: 1,
+          borderTopColor: '#E0E0E0',
+          elevation: 0,
+          shadowOpacity: 0,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '500',
+        }
       }}
     >
       <Tabs.Screen
         name="index"
+        listeners={({ navigation }) => ({
+          tabPress: (event) => {
+            // Always return to conversation list when user taps the Messages tab.
+            event.preventDefault();
+            navigation.navigate("index", {
+              showConversationListNonce: Date.now().toString(),
+              openConversationId: undefined,
+              openConversationNonce: undefined,
+            });
+          },
+        })}
         options={{
-          title: "Home",
+          title: "Tin nhắn",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="house.fill" color={color} />
+            <IconSymbol size={24} name="message.fill" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="posts"
+        options={{
+          title: "Bảng tin",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={24} name="newspaper.fill" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="friends"
+        options={{
+          title: "Danh bạ",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={24} name="person.2.fill" color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="chatbot"
         options={{
-          title: "Chatbot",
+          title: "Khám phá", // Renamed from Chatbot visually
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="message.fill" color={color} />
+            <IconSymbol size={24} name="brain.head.profile" color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="profile"
         options={{
-          title: "Explore",
+          title: "Cá nhân",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="paperplane.fill" color={color} />
+            <IconSymbol size={24} name="person.fill" color={color} />
           ),
         }}
       />
+      {/* Hide the default explore tab if exists, but we can just define ones we need */}
+      <Tabs.Screen name="explore" options={{ href: null }} />
     </Tabs>
   );
 }

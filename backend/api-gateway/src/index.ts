@@ -26,16 +26,38 @@ type AuthPayload = {
   plan: "FREE" | "PREMIUM";
 };
 
+type FriendProfile = {
+  id?: string;
+  fullName?: string;
+  phone?: string | null;
+  avatarUrl?: string | null;
+};
+
+type FriendRequestPayload = {
+  id?: string;
+  status?: "PENDING" | "ACCEPTED" | "REJECTED" | "BLOCKED";
+  message?: string | null;
+  requester?: FriendProfile;
+  addressee?: FriendProfile;
+};
+
+type ApiEnvelope<T> = {
+  message?: string;
+  data?: T;
+};
+
 const env = {
   PORT: Number(process.env.PORT ?? 3004),
-  USER_SERVICE_URL: process.env.USER_SERVICE_URL ?? "http://localhost:3001",
-  CHAT_SERVICE_URL: process.env.CHAT_SERVICE_URL ?? "http://localhost:3002",
+  USER_SERVICE_URL: process.env.USER_SERVICE_URL ?? "http://32.236.47.127:3001",
+  CHAT_SERVICE_URL: process.env.CHAT_SERVICE_URL ?? "http://32.236.47.127:3002",
   CHATBOT_SERVICE_URL:
-    process.env.CHATBOT_SERVICE_URL ?? "http://localhost:3003",
+    process.env.CHATBOT_SERVICE_URL ?? "http://32.236.47.127:3003",
+  POST_SERVICE_URL:
+    process.env.POST_SERVICE_URL ?? "http://32.236.47.127:3005",
   JWT_SECRET: process.env.JWT_SECRET ?? "dev-secret",
   JWT_ISSUER: process.env.JWT_ISSUER ?? "zalo-lite-user-service",
   JWT_AUDIENCE: process.env.JWT_AUDIENCE ?? "zalo-lite-clients",
-  CORS_ORIGINS: (process.env.CORS_ORIGINS ?? "http://localhost:3000")
+  CORS_ORIGINS: (process.env.CORS_ORIGINS ?? "http://32.236.47.127:3000")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean),
@@ -55,6 +77,7 @@ declare global {
 
 const app = express();
 const httpServer = http.createServer(app);
+const isProduction = process.env.NODE_ENV === "production";
 
 // Socket.io server - proxies to chat-service
 const io = new SocketIOServer(httpServer, {
@@ -67,7 +90,9 @@ const io = new SocketIOServer(httpServer, {
 });
 
 app.disable("x-powered-by");
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
 app.use(
   cors({
     origin: env.CORS_ORIGINS,
@@ -77,14 +102,58 @@ app.use(
 app.use(
   rateLimit({
     windowMs: 60_000,
-    max: 300,
+    max: isProduction ? 300 : 3000,
+    skip: (req) => req.method === "OPTIONS",
     standardHeaders: true,
     legacyHeaders: false,
   }),
 );
 
+// ── File uploads proxy (MUST come BEFORE express.json body parsing) ──────────
+// Proxied as a raw stream so binary file responses aren't corrupted by body
+// parsing middleware.  Auth is handled by the chat-service itself (via
+// ?token= query-string or Authorization header).
+app.use(
+  "/api/uploads",
+  createProxyMiddleware({
+    target: env.CHAT_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: (p, req) => {
+      const rewritten = `/${p}`.replace(/^\/\//, "/").replace(/^\//, "/uploads/");
+      console.log(`[Proxy] pathRewrite: ${p} -> ${rewritten}`);
+      return rewritten;
+    },
+    on: {
+      proxyRes(proxyRes) {
+        // Android OkHttp / Fresco throws "unexpected end of stream" when the
+        // upstream answers with Connection: close on a large binary body.
+        // Force keep-alive so the TCP socket stays open until the full
+        // Content-Length payload is delivered.
+        proxyRes.headers["connection"] = "keep-alive";
+
+        // Remove weak ETag prefix that can confuse some HTTP caches.
+        const etag = proxyRes.headers["etag"];
+        if (typeof etag === "string" && etag.startsWith('W/"')) {
+          proxyRes.headers["etag"] = etag.slice(2);
+        }
+      },
+      error(err, _req, res) {
+        console.error("[Proxy Error /api/uploads]", err);
+        const response = res as Response;
+        if (!response.headersSent) {
+          response.status(503).json({
+            message: "service_unavailable",
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      },
+    },
+  }) as unknown as express.RequestHandler,
+);
+
 // IMPORTANT: Parse body here so we can re-serialize it for the proxy.
-// Without this, http-proxy-middleware tries to forward an already-consumed stream → ERR_EMPTY_RESPONSE.
+// Without this, http-proxy-middleware tries to forward an already-consumed stream.
+// NOTE: /api/uploads is mounted ABOVE so file streaming is unaffected.
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
@@ -112,6 +181,19 @@ function buildProxy(
     // Allow us to modify the request before it's sent upstream
     on: {
       proxyReq(proxyReq, req) {
+        const contentTypeHeader = req.headers["content-type"];
+        const contentType = Array.isArray(contentTypeHeader)
+          ? contentTypeHeader[0]
+          : contentTypeHeader;
+
+        if (
+          typeof contentType === "string" &&
+          contentType.toLowerCase().startsWith("multipart/form-data")
+        ) {
+          // Multipart payload must remain stream-based; re-serializing can corrupt boundaries.
+          return;
+        }
+
         // Re-stream body that was already parsed by express.json().
         fixRequestBody(proxyReq, req as unknown as Request);
       },
@@ -155,6 +237,45 @@ function mapApiPrefix(apiPrefix: string, upstreamPrefix: string) {
   };
 }
 
+function getBearerHeader(req: Request) {
+  return typeof req.headers.authorization === "string"
+    ? req.headers.authorization
+    : "";
+}
+
+async function forwardJsonToUserService(
+  req: Request,
+  res: Response,
+  upstreamPath: string,
+): Promise<unknown> {
+  const response = await fetch(`${env.USER_SERVICE_URL}${upstreamPath}`, {
+    method: req.method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: getBearerHeader(req),
+    },
+    body: JSON.stringify(req.body ?? {}),
+  });
+
+  const raw = await response.text();
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType) {
+    res.setHeader("content-type", contentType);
+  }
+
+  res.status(response.status).send(raw);
+
+  if (!raw || !contentType.includes("application/json")) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public routes — no auth required
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,6 +288,80 @@ app.use(
 // ─────────────────────────────────────────────────────────────────────────────
 // Protected routes — JWT required
 // ─────────────────────────────────────────────────────────────────────────────
+
+app.post(
+  "/api/users/friend-requests",
+  authenticateJwt,
+  authorizeRoles("USER", "ADMIN"),
+  async (req, res, next) => {
+    try {
+      const payload = (await forwardJsonToUserService(
+        req,
+        res,
+        "/users/friend-requests",
+      )) as ApiEnvelope<FriendRequestPayload> | null;
+
+      const request = payload?.data;
+      if (!request || res.statusCode >= 400) {
+        return;
+      }
+
+      if (request.status === "ACCEPTED") {
+        const requesterId = request.requester?.id;
+        if (requesterId) {
+          io.to(`user_${requesterId}`).emit("friend_request:accepted", {
+            requestId: request.id,
+            friend: request.addressee,
+          });
+        }
+        return;
+      }
+
+      const addresseeId = request.addressee?.id;
+      if (addresseeId) {
+        io.to(`user_${addresseeId}`).emit("friend_request:incoming", {
+          requestId: request.id,
+          requester: request.requester,
+          message: request.message ?? null,
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.post(
+  "/api/users/friend-requests/:requestId/respond",
+  authenticateJwt,
+  authorizeRoles("USER", "ADMIN"),
+  async (req, res, next) => {
+    try {
+      const payload = (await forwardJsonToUserService(
+        req,
+        res,
+        `/users/friend-requests/${encodeURIComponent(
+          req.params.requestId,
+        )}/respond`,
+      )) as ApiEnvelope<FriendRequestPayload> | null;
+
+      const request = payload?.data;
+      if (!request || res.statusCode >= 400 || request.status !== "ACCEPTED") {
+        return;
+      }
+
+      const requesterId = request.requester?.id;
+      if (requesterId) {
+        io.to(`user_${requesterId}`).emit("friend_request:accepted", {
+          requestId: request.id,
+          friend: request.addressee,
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 app.use(
   "/api/users",
@@ -200,9 +395,14 @@ app.use(
 );
 
 app.use(
-  "/api/uploads",
-  buildProxy(env.CHAT_SERVICE_URL, mapApiPrefix("/api/uploads", "/uploads")),
+  "/api/calls",
+  authenticateJwt,
+  authorizeRoles("USER", "ADMIN"),
+  buildProxy(env.CHAT_SERVICE_URL, mapApiPrefix("/api/calls", "/calls")),
 );
+
+// /api/uploads is mounted before express.json() — see above.
+// Do NOT add it here; it is already registered.
 
 app.use(
   "/api/chatbot",
@@ -211,11 +411,48 @@ app.use(
   buildProxy(env.CHATBOT_SERVICE_URL, mapApiPrefix("/api/chatbot", "/chatbot")),
 );
 
+// ── Post Service Routes ──────────────────────────────────────────────────────
+app.use(
+  "/api/posts",
+  authenticateJwt,
+  authorizeRoles("USER", "ADMIN"),
+  buildProxy(env.POST_SERVICE_URL, mapApiPrefix("/api/posts", "/posts")),
+);
+
+// Post uploads proxy (file serving, needs raw stream like /api/uploads)
+app.use(
+  "/api/post-uploads",
+  createProxyMiddleware({
+    target: env.POST_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: (p) => {
+      const rewritten = `/${p}`.replace(/^\/\//, "/").replace(/^\//, "/post-uploads/");
+      return rewritten;
+    },
+    on: {
+      proxyRes(proxyRes) {
+        proxyRes.headers["connection"] = "keep-alive";
+      },
+      error(err, _req, res) {
+        console.error("[Proxy Error /api/post-uploads]", err);
+        const response = res as Response;
+        if (!response.headersSent) {
+          response.status(503).json({
+            message: "service_unavailable",
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      },
+    },
+  }) as unknown as express.RequestHandler,
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Socket.io connection handling
 // ─────────────────────────────────────────────────────────────────────────────
 
 io.use((socket: Socket, next: (err?: Error) => void) => {
+  let token: string | undefined = undefined;
   try {
     const headerToken = socket.handshake.headers.authorization;
     const authToken = socket.handshake.auth.token;
@@ -225,7 +462,7 @@ io.use((socket: Socket, next: (err?: Error) => void) => {
         ? headerToken.slice(7)
         : undefined;
 
-    const token = bearer ?? authToken;
+    token = (bearer ?? authToken) as string | undefined;
 
     if (!token || typeof token !== "string") {
       return next(new Error("unauthorized: missing_token"));
@@ -256,6 +493,14 @@ io.on("connection", (socket: Socket) => {
     return;
   }
 
+  const userId =
+    typeof socket.data.auth?.userId === "string"
+      ? socket.data.auth.userId
+      : undefined;
+  if (userId) {
+    socket.join(`user_${userId}`);
+  }
+
   const upstream: ClientSocket = createSocketClient(env.CHAT_SERVICE_URL, {
     path: "/socket.io/",
     auth: { token },
@@ -267,7 +512,7 @@ io.on("connection", (socket: Socket) => {
   });
 
   console.log(
-    `[Socket.io] Connected: ${socket.id} (user: ${socket.data.auth?.userId})`,
+    `[Socket.io] Connected: ${socket.id} (user: ${userId ?? "unknown"})`,
   );
 
   const clientToUpstreamEvents = [
@@ -277,6 +522,16 @@ io.on("connection", (socket: Socket) => {
     "message:typing",
     "message:read",
     "message:delete",
+    "message:recall",
+    "message:react",
+    "call:initiate",
+    "call:accept",
+    "call:decline",
+    "call:offer",
+    "call:answer",
+    "call:ice_candidate",
+    "call:participant_update",
+    "call:end",
   ];
 
   clientToUpstreamEvents.forEach((eventName) => {
@@ -289,12 +544,26 @@ io.on("connection", (socket: Socket) => {
     "connect",
     "disconnect",
     "connect_error",
+    "receive_message",
     "message:receive",
     "message:send_ack",
     "message:typing",
     "message:read_receipt",
     "message:deleted",
+    "message:delete_ack",
+    "message:recalled",
+    "force_logout",
+    "message:reaction_updated",
+    "message:recall_ack",
+    "message:reaction_ack",
     "notification:new_message",
+    "notification:reply",
+    "conversation:created",
+    "conversation:deleted",
+    "conversation:member_left",
+    "conversation:member_removed",
+    "conversation:member_role_updated",
+    "conversation:members_added",
     "user:online",
     "user:joined_conversation",
     "user:left_conversation",
@@ -304,6 +573,20 @@ io.on("connection", (socket: Socket) => {
     "leave_conversation_error",
     "message:read_error",
     "message:delete_error",
+    "message:recall_error",
+    "message:reaction_error",
+    "call:initiate",
+    "call:initiate_ack",
+    "call:accept",
+    "call:decline",
+    "call:offer",
+    "call:answer",
+    "call:ice_candidate",
+    "call:participant_update",
+    "call:end",
+    "call:missed",
+    "call:signal_ack",
+    "call:error",
   ];
 
   upstreamToClientEvents.forEach((eventName) => {
@@ -316,9 +599,20 @@ io.on("connection", (socket: Socket) => {
         console.log(`[Socket.io] Upstream disconnected for ${socket.id}`);
         return;
       }
+      if (eventName === "force_logout") {
+        console.log(`[Socket.io] Upstream received force_logout for ${socket.id}`);
+        socket.emit("force_logout", payload);
+        upstream.disconnect();
+        return;
+      }
       if (eventName === "connect_error") {
         console.error(`[Socket.io] Upstream error for ${socket.id}`, payload);
-        socket.emit("connect_error", payload);
+        socket.emit("upstream_connect_error", {
+          message:
+            payload instanceof Error
+              ? payload.message
+              : "Unable to connect to chat service",
+        });
         return;
       }
       socket.emit(eventName, payload);
@@ -326,9 +620,7 @@ io.on("connection", (socket: Socket) => {
   });
 
   socket.on("disconnect", () => {
-    if (upstream.connected) {
-      upstream.disconnect();
-    }
+    upstream.disconnect();
     console.log(`[Socket.io] Disconnected: ${socket.id}`);
   });
 });
@@ -371,6 +663,7 @@ signals.forEach((signal) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function authenticateJwt(req: Request, res: Response, next: NextFunction) {
+  console.log("[authenticateJwt] Hit for URL:", req.originalUrl);
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     return res.status(401).json({ message: "missing_bearer_token" });
@@ -402,3 +695,4 @@ function authorizeRoles(...roles: Array<"USER" | "ADMIN">) {
     return next();
   };
 }
+

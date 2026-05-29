@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { MessageService } from "../services/message.service.js";
 import { ConversationService } from "../services/conversation.service.js";
+import type { MessageReactionKey } from "../repositories/message.repository.js";
 
 const messageService = new MessageService();
 const conversationService = new ConversationService();
@@ -16,13 +17,31 @@ export class MessageController {
   ) {
     try {
       const userId = req.auth?.userId ?? "";
-      const { conversationId, content, type = "text" } = req.body;
+      const {
+        conversationId,
+        conversation_id,
+        content,
+        type = "text",
+        reply_to_message_id,
+      } = req.body;
+
+      const resolvedConversationId =
+        (typeof conversationId === "string" && conversationId) ||
+        (typeof conversation_id === "string" && conversation_id);
+
+      if (!resolvedConversationId) {
+        return res.status(400).json({ message: "conversation_id_required" });
+      }
 
       const message = await messageService.sendMessage({
-        conversation_id: conversationId,
+        conversation_id: resolvedConversationId,
         sender_id: userId,
         type,
         content,
+        reply_to_message_id:
+          typeof reply_to_message_id === "string"
+            ? reply_to_message_id
+            : undefined,
       });
 
       res.status(201).json({ data: message, message: "Message sent" });
@@ -81,7 +100,10 @@ export class MessageController {
     try {
       const userId = req.auth?.userId ?? "";
       const { conversationId } = req.params;
-      const limit = Number(req.query.limit ?? 50);
+      const rawLimit = Number(req.query.limit ?? 1000);
+      const limit = Number.isFinite(rawLimit)
+        ? Math.min(Math.max(rawLimit, 1), 1000)
+        : 1000;
 
       const data = await conversationService.getMessages(
         userId,
@@ -118,7 +140,52 @@ export class MessageController {
       const { messageId } = req.params;
 
       await messageService.deleteMessage(messageId, userId);
-      res.status(200).json({ message: "Message deleted" });
+      res.status(200).json({ message: "message_deleted_for_user" });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async recallMessage(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = req.auth?.userId ?? "";
+      const { messageId } = req.params;
+
+      const data = await messageService.recallMessage(messageId, userId);
+      res.status(200).json({ message: "message_recalled", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async reactToMessage(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = req.auth?.userId ?? "";
+      const { messageId } = req.params;
+
+      const reactionValue = req.body.reaction;
+      const reaction: MessageReactionKey | undefined =
+        reactionValue === "vui" ||
+        reactionValue === "buon" ||
+        reactionValue === "phan_no" ||
+        reactionValue === "wow"
+          ? reactionValue
+          : undefined;
+
+      const data = await messageService.reactToMessage(
+        messageId,
+        userId,
+        reaction,
+      );
+      res.status(200).json({ message: "message_reaction_updated", data });
     } catch (error) {
       next(error);
     }

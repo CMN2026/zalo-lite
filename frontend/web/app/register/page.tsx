@@ -1,12 +1,10 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { register, saveAuthSession } from "../lib/auth";
-import { useAuth } from "../contexts/auth";
+import { register } from "../lib/auth";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { login } = useAuth();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -52,9 +50,12 @@ export default function RegisterPage() {
         avatarUrl: undefined,
       });
 
-      saveAuthSession(response.data.token, response.data.user);
-      login(response.data.user);
-      router.push("/");
+      const params = new URLSearchParams({
+        session: response.data.verificationSessionId,
+        email: response.data.email,
+        expiresAt: response.data.expiresAt,
+      });
+      router.push(`/register/verify?${params.toString()}`);
     } catch (err) {
       const authError = err as Error & {
         errors?: Array<{ field: string; message: string }>;
@@ -64,6 +65,8 @@ export default function RegisterPage() {
         setError("Email này đã được sử dụng");
       } else if (authError.message === "phone_already_used") {
         setError("Số điện thoại này đã được sử dụng");
+      } else if (authError.message === "email_service_not_configured") {
+        setError("Hệ thống email chưa được cấu hình. Vui lòng liên hệ quản trị viên.");
       } else if (authError.message === "validation_error") {
         const firstError = authError.errors?.[0];
         if (firstError?.field === "password") {

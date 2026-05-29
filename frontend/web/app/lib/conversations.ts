@@ -1,5 +1,6 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
+import { WEB_GATEWAY_BASE_URL } from "./runtime-base-url";
+
+const API_BASE_URL = WEB_GATEWAY_BASE_URL;
 
 export type ConversationMember = {
   conversationId: string;
@@ -96,6 +97,20 @@ export async function removeMemberFromConversation(id: string, userId: string) {
     `/api/conversations/${id}/members/${userId}`,
     {
       method: "DELETE",
+    },
+  );
+}
+
+export async function updateConversationMemberRole(
+  id: string,
+  userId: string,
+  role: "member" | "admin" | "owner",
+) {
+  return request<ApiResponse<{ userId: string; role: string }>>(
+    `/api/conversations/${id}/members/${userId}/role`,
+    {
+      method: "PATCH",
+      body: { role },
     },
   );
 }

@@ -10,11 +10,16 @@ import { errorHandler } from "./middlewares/error.middleware.js";
 import { AuthService } from "./services/auth.service.js";
 import { startGRPCServer, stopGRPCServer } from "./grpc/auth-server.js";
 import type { Server as GrpcServer } from "@grpc/grpc-js";
+import { ensureEmailVerificationSchema } from "./config/bootstrap-db.js";
 
 const app = express();
 const authService = new AuthService();
 let grpcServer: GrpcServer | undefined;
 const startTime = Date.now();
+
+// This service runs behind Nginx/API gateway in production.
+// Enable trusted proxy headers so express-rate-limit can read client IP correctly.
+app.set("trust proxy", 1);
 
 app.disable("x-powered-by");
 app.use(helmet());
@@ -99,6 +104,7 @@ const seedDevUsers = async () => {
 
 async function start() {
   try {
+    await ensureEmailVerificationSchema();
     await seedDevUsers();
 
     // Start gRPC server

@@ -56,6 +56,25 @@ authRoutes.post(
 );
 
 authRoutes.post(
+  "/register/verify",
+  [
+    body("verificationSessionId").trim().isUUID(),
+    body("code").trim().matches(/^\d{6}$/),
+    validateRequest,
+  ],
+  AuthController.verifyRegisterCode,
+);
+
+authRoutes.post(
+  "/register/resend",
+  [
+    body("verificationSessionId").trim().isUUID(),
+    validateRequest,
+  ],
+  AuthController.resendRegisterCode,
+);
+
+authRoutes.post(
   "/google",
   [
     normalizeNameFieldsMiddleware,
@@ -75,6 +94,25 @@ authRoutes.post(
     validateRequest,
   ],
   AuthController.loginWithGoogle,
+);
+
+authRoutes.post(
+  "/forgot-password",
+  [
+    body("email").trim().isEmail(),
+    validateRequest,
+  ],
+  AuthController.requestPasswordReset,
+);
+
+authRoutes.post(
+  "/reset-password",
+  [
+    body("token").trim().notEmpty(),
+    body("newPassword").isLength({ min: 8, max: 72 }),
+    validateRequest,
+  ],
+  AuthController.resetPassword,
 );
 
 /**

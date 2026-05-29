@@ -1,5 +1,4 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3004";
+import { WEB_GATEWAY_BASE_URL } from "./runtime-base-url";
 
 export type AuthUser = {
   id: string;
@@ -55,12 +54,66 @@ export async function register(input: {
   phone?: string;
   avatarUrl?: string | null;
 }) {
-  return post<AuthResponse<{ token: string; user: AuthUser }>>(
+  return post<
+    AuthResponse<{
+      verificationSessionId: string;
+      email: string;
+      expiresAt: string;
+      resendAfterSeconds: number;
+      maxAttempts: number;
+    }>
+  >(
     "/api/auth/register",
     {
-      body: input,
+      body: {
+        ...input,
+        full_name: input.fullName,
+      },
     },
   );
+}
+
+export async function verifyRegisterCode(input: {
+  verificationSessionId: string;
+  code: string;
+}) {
+  return post<AuthResponse<{ token: string; user: AuthUser }>>(
+    "/api/auth/register/verify",
+    { body: input },
+  );
+}
+
+export async function resendRegisterCode(verificationSessionId: string) {
+  return post<
+    AuthResponse<{
+      verificationSessionId: string;
+      email: string;
+      expiresAt: string;
+      resendAfterSeconds: number;
+    }>
+  >("/api/auth/register/resend", {
+    body: { verificationSessionId },
+  });
+}
+
+export async function requestPasswordReset(email: string) {
+  return post<
+    AuthResponse<{
+      email: string;
+      expiresInMinutes: number;
+    }>
+  >("/api/auth/forgot-password", {
+    body: { email },
+  });
+}
+
+export async function resetPassword(input: {
+  token: string;
+  newPassword: string;
+}) {
+  return post<AuthResponse<{ success: boolean }>>("/api/auth/reset-password", {
+    body: input,
+  });
 }
 
 export const AUTH_TOKEN_KEY = "token";
@@ -94,7 +147,7 @@ export function clearAuthSession() {
 }
 
 async function post<T>(path: string, options: RequestOptions): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
+  const url = `${WEB_GATEWAY_BASE_URL}${path}`;
   const response = await fetch(url, {
     method: "POST",
     headers: {

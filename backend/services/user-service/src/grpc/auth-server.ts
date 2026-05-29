@@ -7,13 +7,23 @@ import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { existsSync } from "fs";
 import { verifyAccessToken } from "../utils/jwt.js";
 import { UserService } from "../services/user.service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const PROTO_PATH = join(__dirname, "auth.proto");
+const candidateProtoPaths = [
+  // Works in dev when running from src
+  join(__dirname, "auth.proto"),
+  // Works in prod when running compiled js from dist
+  join(__dirname, "../../src/grpc/auth.proto"),
+];
+
+const PROTO_PATH =
+  candidateProtoPaths.find((path) => existsSync(path)) ??
+  candidateProtoPaths[0];
 
 // Load proto file
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
