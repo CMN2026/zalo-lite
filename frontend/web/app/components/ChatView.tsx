@@ -229,6 +229,39 @@ function getConversationPreviewFromMessage(
     return DEFAULT_SYSTEM_PREVIEW;
   }
 
+  const normalizeCallPreview = (rawContent: string) => {
+    let text = rawContent.trim();
+
+    try {
+      const parsed = JSON.parse(rawContent) as { text?: unknown };
+      if (typeof parsed.text === "string" && parsed.text.trim()) {
+        text = parsed.text.trim();
+      }
+    } catch {
+      // Raw content is not JSON, keep as-is.
+    }
+
+    const durationMatch = text.match(/•\s*(.+)$/);
+    const directFormatMatch = text.match(/Cuộc gọi kết thúc:\s*(.+)$/i);
+    const duration = (durationMatch?.[1] ?? directFormatMatch?.[1] ?? "").trim();
+
+    if (duration) {
+      return `📞 Cuộc gọi kết thúc: ${duration}`;
+    }
+
+    return "📞 Cuộc gọi kết thúc";
+  };
+
+  const isCallLikeContent =
+    message.type === "call" ||
+    message.content.trim().startsWith("{\"text\"") ||
+    message.content.includes("đã gọi") ||
+    message.content.includes("Cuộc gọi");
+
+  if (isCallLikeContent) {
+    return normalizeCallPreview(message.content);
+  }
+
   const basePreview =
     message.type === "file" ? "Tệp đính kèm" : message.content;
   return message.sender_id === currentUserId
