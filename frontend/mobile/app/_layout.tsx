@@ -35,7 +35,9 @@ function RootLayoutNav() {
     const inAuthGroup =
       firstSegment === 'login' ||
       firstSegment === 'register' ||
-      firstSegment === 'register-verify';
+      firstSegment === 'register-verify' ||
+      firstSegment === 'forgot-password' ||
+      firstSegment === 'reset-password';
 
     if (!user && !inAuthGroup) {
       router.replace('/login');
@@ -51,6 +53,8 @@ function RootLayoutNav() {
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="register" options={{ headerShown: false }} />
         <Stack.Screen name="register-verify" options={{ headerShown: false }} />
+        <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
+        <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />

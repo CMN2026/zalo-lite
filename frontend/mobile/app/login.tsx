@@ -58,7 +58,7 @@ export default function LoginPage() {
             <View className="mt-4">
               <View className="flex-row justify-between items-center mb-1">
                 <Text className="text-xs font-bold text-slate-600 uppercase tracking-wide">MẬT KHẨU</Text>
-                <TouchableOpacity>
+                <TouchableOpacity onPress={() => router.push("/forgot-password")}>
                   <Text className="text-xs text-zalo-blue font-semibold">Quên mật khẩu?</Text>
                 </TouchableOpacity>
               </View>
