@@ -63,6 +63,7 @@ interface ConversationApi {
   createdBy?: string;
   type?: "direct" | "group";
   lastMessageAt?: string | null;
+  unreadCount?: number;
 }
 
 type ConversationCacheEntry = {
@@ -226,6 +227,39 @@ function getConversationPreviewFromMessage(
 ) {
   if (!message) {
     return DEFAULT_SYSTEM_PREVIEW;
+  }
+
+  const normalizeCallPreview = (rawContent: string) => {
+    let text = rawContent.trim();
+
+    try {
+      const parsed = JSON.parse(rawContent) as { text?: unknown };
+      if (typeof parsed.text === "string" && parsed.text.trim()) {
+        text = parsed.text.trim();
+      }
+    } catch {
+      // Raw content is not JSON, keep as-is.
+    }
+
+    const durationMatch = text.match(/•\s*(.+)$/);
+    const directFormatMatch = text.match(/Cuộc gọi kết thúc:\s*(.+)$/i);
+    const duration = (durationMatch?.[1] ?? directFormatMatch?.[1] ?? "").trim();
+
+    if (duration) {
+      return `📞 Cuộc gọi kết thúc: ${duration}`;
+    }
+
+    return "📞 Cuộc gọi kết thúc";
+  };
+
+  const isCallLikeContent =
+    message.type === "call" ||
+    message.content.trim().startsWith("{\"text\"") ||
+    message.content.includes("đã gọi") ||
+    message.content.includes("Cuộc gọi");
+
+  if (isCallLikeContent) {
+    return normalizeCallPreview(message.content);
   }
 
   const basePreview =
@@ -1095,6 +1129,40 @@ export default function ChatView({
         "/api/conversations",
       );
       const data = (response.data ?? []) as ConversationApi[];
+      const unreadFromServer = data.reduce<Record<string, number>>(
+        (acc, item) => {
+          const count =
+            typeof item.unreadCount === "number" && Number.isFinite(item.unreadCount)
+              ? Math.max(0, Math.floor(item.unreadCount))
+              : 0;
+          if (count > 0) {
+            acc[item.id] = count;
+          }
+          return acc;
+        },
+        {},
+      );
+
+      setUnreadByConversation((prev) => {
+        const next: Record<string, number> = {};
+        for (const [conversationId, count] of Object.entries(unreadFromServer)) {
+          if (conversationId === activeChatId) {
+            continue;
+          }
+          if (count > 0) {
+            next[conversationId] = count;
+          }
+        }
+
+        const sameSize = Object.keys(prev).length === Object.keys(next).length;
+        if (
+          sameSize &&
+          Object.entries(next).every(([id, count]) => prev[id] === count)
+        ) {
+          return prev;
+        }
+        return next;
+      });
 
       const mapped = data.reduce<Conversation[]>((acc, conv) => {
         if (conv.type === "group") {

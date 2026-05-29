@@ -90,6 +90,21 @@ export class MessageService {
       input.conversation_id,
       message.created_at,
     );
+    await this.conversationRepository.updateMemberLastReadAt(
+      input.conversation_id,
+      input.sender_id,
+      message.created_at,
+    );
+    await this.conversationRepository.resetUnreadCount(
+      input.conversation_id,
+      input.sender_id,
+    );
+    await this.conversationRepository.incrementUnreadCountForUsers(
+      input.conversation_id,
+      members
+        .map((member) => member.userId)
+        .filter((memberId) => memberId !== input.sender_id),
+    );
     await this.conversationRepository.restoreConversationForMembers(
       input.conversation_id,
     );
@@ -120,6 +135,12 @@ export class MessageService {
   async markMessagesAsRead(conversationId: string, userId: string) {
     await this.conversationService.assertMember(conversationId, userId);
     await this.messageRepository.markAsRead(conversationId, userId);
+    await this.conversationRepository.updateMemberLastReadAt(
+      conversationId,
+      userId,
+      new Date().toISOString(),
+    );
+    await this.conversationRepository.resetUnreadCount(conversationId, userId);
 
     // Publish read event to Redis
     await retry(

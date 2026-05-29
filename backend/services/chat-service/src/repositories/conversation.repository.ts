@@ -27,6 +27,8 @@ export type ConversationMember = {
   joinedAt: string;
   hiddenAt?: string | null;
   clearedAt?: string | null;
+  lastReadAt?: string | null;
+  unreadCount?: number;
 };
 
 // Helper mapper functions to centralise formatting
@@ -46,6 +48,11 @@ const mapMember = (item: any): ConversationMember => ({
   joinedAt: item.joined_at,
   hiddenAt: item.hidden_at ?? null,
   clearedAt: item.cleared_at ?? null,
+  lastReadAt: item.last_read_at ?? null,
+  unreadCount:
+    typeof item.unread_count === "number" && Number.isFinite(item.unread_count)
+      ? Math.max(0, Math.floor(item.unread_count))
+      : 0,
 });
 
 export class ConversationRepository {
@@ -90,6 +97,8 @@ export class ConversationRepository {
               joined_at: new Date().toISOString(),
               hidden_at: null,
               cleared_at: null,
+              last_read_at: null,
+              unread_count: 0,
             },
           }),
         ),
@@ -323,10 +332,11 @@ export class ConversationRepository {
             user_id: userId,
           },
           UpdateExpression:
-            "SET hidden_at = :hiddenAt, cleared_at = :clearedAt",
+            "SET hidden_at = :hiddenAt, cleared_at = :clearedAt, unread_count = :zero",
           ExpressionAttributeValues: {
             ":hiddenAt": hiddenAt,
             ":clearedAt": clearedAt,
+            ":zero": 0,
           },
         }),
       );
@@ -384,6 +394,69 @@ export class ConversationRepository {
     );
   }
 
+  async updateMemberLastReadAt(
+    conversationId: string,
+    userId: string,
+    timestamp: string,
+  ): Promise<void> {
+    await dynamo.send(
+      new UpdateCommand({
+        TableName: env.TABLE_CONVERSATION_MEMBERS,
+        Key: {
+          conversation_id: conversationId,
+          user_id: userId,
+        },
+        UpdateExpression: "SET last_read_at = :timestamp",
+        ExpressionAttributeValues: {
+          ":timestamp": timestamp,
+        },
+      }),
+    );
+  }
+
+  async incrementUnreadCountForUsers(
+    conversationId: string,
+    userIds: string[],
+  ): Promise<void> {
+    if (userIds.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      userIds.map((userId) =>
+        dynamo.send(
+          new UpdateCommand({
+            TableName: env.TABLE_CONVERSATION_MEMBERS,
+            Key: {
+              conversation_id: conversationId,
+              user_id: userId,
+            },
+            UpdateExpression: "ADD unread_count :inc",
+            ExpressionAttributeValues: {
+              ":inc": 1,
+            },
+          }),
+        ),
+      ),
+    );
+  }
+
+  async resetUnreadCount(conversationId: string, userId: string): Promise<void> {
+    await dynamo.send(
+      new UpdateCommand({
+        TableName: env.TABLE_CONVERSATION_MEMBERS,
+        Key: {
+          conversation_id: conversationId,
+          user_id: userId,
+        },
+        UpdateExpression: "SET unread_count = :zero",
+        ExpressionAttributeValues: {
+          ":zero": 0,
+        },
+      }),
+    );
+  }
+
   async addMembers(
     conversationId: string,
     userIds: string[],
@@ -402,6 +475,7 @@ export class ConversationRepository {
               joined_at: now,
               hidden_at: null,
               cleared_at: null,
+              unread_count: 0,
             },
           }),
         ),

@@ -46,7 +46,6 @@ function normalizeRealtimeId(value: unknown): string | null {
 
 const API_BASE_URL = WEB_GATEWAY_BASE_URL;
 const USER_SERVICE_BASE_URL = WEB_USER_SERVICE_BASE_URL;
-const unreadStorageKeyPrefix = "zalo-lite:web:unread:";
 const mutedStorageKeyPrefix = "zalo-lite:web:muted:";
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 5000) {
@@ -269,37 +268,15 @@ export default function DashboardLayout() {
       return;
     }
 
+    // Unread is ephemeral and should be derived from realtime/read-receipt flow.
+    // Do not restore from localStorage to avoid stale inflated counts after refresh.
+    setUnreadByConversation({});
+
+    // Best-effort cleanup of legacy persisted unread values.
     try {
-      const storageKey = `${unreadStorageKeyPrefix}${user.id}`;
-      const raw = window.localStorage.getItem(storageKey);
-      if (!raw) {
-        setUnreadByConversation({});
-        return;
-      }
-
-      const parsed = JSON.parse(raw) as unknown;
-      if (!parsed || typeof parsed !== "object") {
-        setUnreadByConversation({});
-        return;
-      }
-
-      const next = Object.entries(parsed as Record<string, unknown>).reduce<
-        Record<string, number>
-      >((acc, [conversationId, count]) => {
-        if (typeof count !== "number" || !Number.isFinite(count)) {
-          return acc;
-        }
-
-        const normalized = Math.max(0, Math.floor(count));
-        if (normalized > 0) {
-          acc[conversationId] = normalized;
-        }
-        return acc;
-      }, {});
-
-      setUnreadByConversation(next);
+      window.localStorage.removeItem(`zalo-lite:web:unread:${user.id}`);
     } catch {
-      setUnreadByConversation({});
+      // Ignore storage failures.
     }
   }, [user?.id]);
 
@@ -337,22 +314,6 @@ export default function DashboardLayout() {
       setMutedByConversation({});
     }
   }, [user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) {
-      return;
-    }
-
-    try {
-      const storageKey = `${unreadStorageKeyPrefix}${user.id}`;
-      window.localStorage.setItem(
-        storageKey,
-        JSON.stringify(unreadByConversation),
-      );
-    } catch {
-      // Ignore storage failures (private mode/quota).
-    }
-  }, [unreadByConversation, user?.id]);
 
   useEffect(() => {
     if (!user?.id) {
