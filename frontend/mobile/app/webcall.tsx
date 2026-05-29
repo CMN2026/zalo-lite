@@ -47,6 +47,14 @@ type LiveKitModule = {
     mirror?: boolean;
   }>;
   useTracks: (sources: unknown[]) => any[];
+  useLocalParticipant?: () => {
+    localParticipant: {
+      setCameraEnabled?: (enabled: boolean) => Promise<void>;
+      setMicrophoneEnabled?: (enabled: boolean) => Promise<void>;
+      isCameraEnabled?: boolean;
+      isMicrophoneEnabled?: boolean;
+    } | null;
+  };
 };
 
 let liveKit: LiveKitModule | null = null;
@@ -100,7 +108,35 @@ async function ensureMediaPermissions(): Promise<void> {
   }
 }
 
-function CallStage() {
+function AvatarFallback({
+  label,
+  subtitle,
+  seed,
+}: {
+  label: string;
+  subtitle?: string;
+  seed: string;
+}) {
+  const initial = (label || 'U').slice(0, 1).toUpperCase();
+  return (
+    <View style={styles.avatarStage}>
+      <View style={styles.avatarCircle}>
+        <Text style={styles.avatarInitial}>{initial}</Text>
+      </View>
+      <Text style={styles.avatarName}>{label}</Text>
+      {subtitle ? <Text style={styles.avatarSubtitle}>{subtitle}</Text> : null}
+      <Text style={styles.avatarSeed}>{seed}</Text>
+    </View>
+  );
+}
+
+function CallStage({
+  callType,
+  page,
+}: {
+  callType: 'direct' | 'group';
+  page: number;
+}) {
   if (!liveKit) {
     return (
       <View style={styles.emptyStage}>
@@ -113,10 +149,31 @@ function CallStage() {
     );
   }
 
-  const tracks = liveKit.useTracks([{ source: 'camera' }]);
+  const tracks = liveKit.useTracks([{ source: 'camera', withPlaceholder: true }]);
   const VideoTrack = liveKit.VideoTrack;
 
-  if (!tracks.length) {
+  const allTiles = tracks.map((trackRef: any, index: number) => {
+    const participant = trackRef?.participant;
+    const label =
+      participant?.name ||
+      participant?.identity ||
+      (index === 0 ? 'Bạn' : 'Người tham gia');
+    const seed = participant?.identity || participant?.sid || String(index);
+    const isCameraOff =
+      trackRef?.publication?.isMuted ||
+      trackRef?.source === 'camera' && !trackRef?.publication?.track;
+
+    return {
+      key: trackRef?.publication?.trackSid || `${seed}-${index}`,
+      trackRef,
+      label,
+      seed,
+      isCameraOff,
+      mirrored: Boolean(participant?.isLocal),
+    };
+  });
+
+  if (!allTiles.length) {
     return (
       <View style={styles.emptyStage}>
         <Ionicons name="videocam" size={42} color="#9FB3C8" />
@@ -128,21 +185,118 @@ function CallStage() {
     );
   }
 
+  if (callType === 'direct') {
+    const remoteTile = allTiles.find((tile) => !tile.mirrored) ?? allTiles[0];
+    const localTile = allTiles.find((tile) => tile.mirrored) ?? allTiles[0];
+
+    return (
+      <View style={styles.directStage}>
+        <View style={styles.directMainTile}>
+          {remoteTile.isCameraOff ? (
+            <AvatarFallback label={remoteTile.label} subtitle="Camera đang tắt" seed={remoteTile.seed} />
+          ) : (
+            <VideoTrack trackRef={remoteTile.trackRef} style={styles.videoTrack} objectFit="cover" />
+          )}
+        </View>
+
+        <View style={styles.pipTile}>
+          {localTile.isCameraOff ? (
+            <AvatarFallback label="Bạn" subtitle="Camera đang tắt" seed={localTile.seed} />
+          ) : (
+            <VideoTrack trackRef={localTile.trackRef} style={styles.videoTrack} objectFit="cover" mirror />
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  const pageSize = 6;
+  const totalPages = Math.max(1, Math.ceil(allTiles.length / pageSize));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pagedTiles = allTiles.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
+
   return (
-    <View style={styles.grid}>
-      {tracks.map((trackRef, index) => (
+    <View style={styles.groupStage}>
+      <View style={styles.groupGrid}>
+      {pagedTiles.map((tile) => (
         <View
-          key={trackRef.publication.trackSid}
-          style={[styles.tile, tracks.length === 1 && styles.singleTile]}
+          key={tile.key}
+          style={[styles.tile, pagedTiles.length === 1 && styles.singleTile]}
         >
-          <VideoTrack
-            trackRef={trackRef}
-            style={styles.videoTrack}
-            objectFit="cover"
-            mirror={index === 0}
-          />
+          {tile.isCameraOff ? (
+            <AvatarFallback label={tile.label} subtitle="Camera đang tắt" seed={tile.seed} />
+          ) : (
+            <VideoTrack
+              trackRef={tile.trackRef}
+              style={styles.videoTrack}
+              objectFit="cover"
+              mirror={tile.mirrored}
+            />
+          )}
+          <View style={styles.tileLabelBar}>
+            <Text style={styles.tileLabelText} numberOfLines={1}>
+              {tile.label}
+            </Text>
+          </View>
         </View>
       ))}
+      </View>
+      <View style={styles.pageBadge}>
+        <Text style={styles.pageBadgeText}>{currentPage + 1}/{totalPages}</Text>
+      </View>
+    </View>
+  );
+}
+
+function RoomControls({
+  ending,
+  onHangup,
+}: {
+  ending: boolean;
+  onHangup: () => void;
+}) {
+  const [micEnabled, setMicEnabled] = useState(true);
+  const [camEnabled, setCamEnabled] = useState(true);
+  const localParticipant = liveKit?.useLocalParticipant?.()?.localParticipant ?? null;
+
+  useEffect(() => {
+    setMicEnabled(Boolean(localParticipant?.isMicrophoneEnabled ?? true));
+    setCamEnabled(Boolean(localParticipant?.isCameraEnabled ?? true));
+  }, [localParticipant?.isCameraEnabled, localParticipant?.isMicrophoneEnabled]);
+
+  const toggleMic = async () => {
+    if (!localParticipant?.setMicrophoneEnabled) {
+      return;
+    }
+    const next = !micEnabled;
+    await localParticipant.setMicrophoneEnabled(next);
+    setMicEnabled(next);
+  };
+
+  const toggleCam = async () => {
+    if (!localParticipant?.setCameraEnabled) {
+      return;
+    }
+    const next = !camEnabled;
+    await localParticipant.setCameraEnabled(next);
+    setCamEnabled(next);
+  };
+
+  return (
+    <View style={styles.bottomBar}>
+      <Pressable style={styles.ctrlButton} onPress={() => void toggleCam()}>
+        <Ionicons name={camEnabled ? 'videocam' : 'videocam-off'} size={22} color="#FFFFFF" />
+      </Pressable>
+      <Pressable
+        style={[styles.hangupButton, ending && styles.hangupButtonDisabled]}
+        onPress={onHangup}
+        disabled={ending}
+      >
+        <Ionicons name="call" size={22} color="#FFFFFF" />
+      </Pressable>
+      <Pressable style={styles.ctrlButton} onPress={() => void toggleMic()}>
+        <Ionicons name={micEnabled ? 'mic' : 'mic-off'} size={22} color="#FFFFFF" />
+      </Pressable>
     </View>
   );
 }
@@ -157,6 +311,8 @@ export default function WebCallScreen() {
   const [shouldConnectRoom, setShouldConnectRoom] = useState(true);
   const [loading, setLoading] = useState(true);
   const [ending, setEnding] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [groupPage, setGroupPage] = useState(0);
   const [error, setError] = useState('');
   const { emit, on, off } = useSocket();
 
@@ -425,6 +581,22 @@ export default function WebCallScreen() {
     }
   }, [router, terminateCall]);
 
+  useEffect(() => {
+    if (!connection) {
+      return;
+    }
+    const timer = setInterval(() => {
+      setSeconds((value) => value + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [connection]);
+
+  const formatTimer = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
@@ -499,27 +671,34 @@ export default function WebCallScreen() {
             <Text style={styles.roomTitle}>{connection.conversationName}</Text>
             <Text style={styles.roomSubtitle}>{connection.roomName}</Text>
           </View>
-          <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
+          <View style={styles.timerBadge}>
+            <Text style={styles.timerText}>{formatTimer(seconds)}</Text>
           </View>
         </View>
 
         <View style={styles.stageWrap}>
-          <CallStage />
+          <CallStage callType={callType} page={groupPage} />
         </View>
 
-        <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}> 
-          <Pressable
-            style={[styles.hangupButton, ending && styles.hangupButtonDisabled]}
-            onPress={() => {
-              void handleHangup();
-            }}
-            disabled={ending}
-          >
-            <Ionicons name="call" size={22} color="#FFFFFF" />
-            <Text style={styles.hangupText}>{ending ? 'Đang rời...' : 'Kết thúc'}</Text>
-          </Pressable>
+        {callType === 'group' && (
+          <View style={styles.groupPager}>
+            <Pressable
+              style={styles.pagerBtn}
+              onPress={() => setGroupPage((p) => Math.max(0, p - 1))}
+            >
+              <Ionicons name="chevron-back" size={18} color="#E2E8F0" />
+            </Pressable>
+            <Pressable
+              style={styles.pagerBtn}
+              onPress={() => setGroupPage((p) => p + 1)}
+            >
+              <Ionicons name="chevron-forward" size={18} color="#E2E8F0" />
+            </Pressable>
+          </View>
+        )}
+
+        <View style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
+          <RoomControls ending={ending} onHangup={() => void handleHangup()} />
         </View>
       </SafeAreaView>
     </LiveKitRoom>
@@ -570,6 +749,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
+  timerBadge: {
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  timerText: {
+    color: '#22C55E',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
   liveDot: {
     width: 8,
     height: 8,
@@ -613,14 +804,45 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 12,
   },
-  tile: {
+  directStage: {
     flex: 1,
+  },
+  directMainTile: {
+    flex: 1,
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  pipTile: {
+    position: 'absolute',
+    right: 10,
+    top: 10,
+    width: 120,
+    height: 180,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: '#0F1C2E',
+  },
+  groupStage: {
+    flex: 1,
+  },
+  groupGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  tile: {
+    width: '31%',
     borderRadius: 28,
     overflow: 'hidden',
     backgroundColor: '#0F1C2E',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
-    minHeight: 220,
+    minHeight: 180,
   },
   singleTile: {
     minHeight: 360,
@@ -628,21 +850,109 @@ const styles = StyleSheet.create({
   videoTrack: {
     flex: 1,
   },
+  tileLabelBar: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 8,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  tileLabelText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  avatarStage: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#13253A',
+    paddingHorizontal: 8,
+  },
+  avatarCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    color: '#F8FBFF',
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  avatarName: {
+    marginTop: 10,
+    color: '#F8FBFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  avatarSubtitle: {
+    marginTop: 4,
+    color: '#9FB3C8',
+    fontSize: 12,
+  },
+  avatarSeed: {
+    marginTop: 4,
+    color: '#70859B',
+    fontSize: 10,
+  },
+  pageBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  pageBadgeText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  groupPager: {
+    position: 'absolute',
+    right: 20,
+    bottom: 94,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  pagerBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   bottomBar: {
     paddingHorizontal: 18,
     paddingTop: 6,
     alignItems: 'center',
-  },
-  hangupButton: {
-    minWidth: 160,
     flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 18,
+  },
+  ctrlButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+  },
+  hangupButton: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#EF4444',
     borderRadius: 999,
-    paddingVertical: 15,
-    paddingHorizontal: 22,
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowRadius: 12,
@@ -651,11 +961,6 @@ const styles = StyleSheet.create({
   },
   hangupButtonDisabled: {
     opacity: 0.75,
-  },
-  hangupText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
   },
   errorScreen: {
     flex: 1,

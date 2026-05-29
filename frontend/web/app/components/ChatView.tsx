@@ -39,6 +39,7 @@ interface Conversation {
   avatar: string;
   preview: string;
   time: string;
+  lastActivityAt: number;
   online: boolean;
   messages: Message[];
   createdBy?: string;
@@ -70,6 +71,7 @@ type ConversationCacheEntry = {
   avatar: string;
   preview: string;
   time: string;
+  lastActivityAt?: number;
   online: boolean;
   createdBy?: string;
   type?: "direct" | "group";
@@ -231,6 +233,14 @@ function getConversationPreviewFromMessage(
   return message.sender_id === currentUserId
     ? `Bạn: ${basePreview}`
     : basePreview;
+}
+
+function toActivityTimestamp(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function isResolvedFullName(value: string | undefined, userId: string) {
@@ -822,6 +832,11 @@ export default function ChatView({
               ? rawItem.preview
               : DEFAULT_SYSTEM_PREVIEW,
           time: typeof rawItem.time === "string" ? rawItem.time : "",
+          lastActivityAt:
+            typeof rawItem.lastActivityAt === "number" &&
+            Number.isFinite(rawItem.lastActivityAt)
+              ? rawItem.lastActivityAt
+              : 0,
           online: Boolean(rawItem.online),
           messages: [],
           createdBy: rawItem.createdBy,
@@ -855,6 +870,7 @@ export default function ChatView({
       avatar: item.avatar,
       preview: item.preview,
       time: item.time,
+      lastActivityAt: item.lastActivityAt,
       online: item.online,
       createdBy: item.createdBy,
       type: item.type,
@@ -907,6 +923,26 @@ export default function ChatView({
       return acc;
     }, {});
   }, [allUsers]);
+
+  const callParticipantDirectory = useMemo(() => {
+    const map: Record<string, { name?: string; avatarUrl?: string | null }> = {};
+
+    for (const entry of allUsers) {
+      map[entry.id] = {
+        name: entry.fullName || entry.email || entry.id,
+        avatarUrl: entry.avatarUrl ?? null,
+      };
+    }
+
+    if (currentUserId) {
+      map[currentUserId] = {
+        name: user?.fullName || user?.email || "Bạn",
+        avatarUrl: user?.avatarUrl ?? null,
+      };
+    }
+
+    return map;
+  }, [allUsers, currentUserId, user?.avatarUrl, user?.email, user?.fullName]);
 
   const clearTypingUsers = useCallback(() => {
     Object.values(typingUserTimeoutsRef.current).forEach((timer) => {
@@ -1073,6 +1109,7 @@ export default function ChatView({
                   minute: "2-digit",
                 })
               : "",
+            lastActivityAt: toActivityTimestamp(conv.lastMessageAt ?? conv.createdAt),
             online: Boolean((conv as { online?: unknown }).online),
             messages: [],
             createdBy: conv.createdBy,
@@ -1107,6 +1144,7 @@ export default function ChatView({
                 hour: "2-digit",
                 minute: "2-digit",
               }),
+          lastActivityAt: toActivityTimestamp(conv.lastMessageAt ?? conv.createdAt),
           online: Boolean((conv as { online?: unknown }).online),
           messages: [],
           createdBy: conv.createdBy,
@@ -1162,6 +1200,7 @@ export default function ChatView({
               hour: "2-digit",
               minute: "2-digit",
             }),
+            lastActivityAt: toActivityTimestamp(lastMessage.created_at),
           };
         });
       });
@@ -1223,6 +1262,7 @@ export default function ChatView({
                   hour: "2-digit",
                   minute: "2-digit",
                 }),
+                lastActivityAt: toActivityTimestamp(latest.created_at),
               };
             }),
           );
@@ -1737,6 +1777,34 @@ export default function ChatView({
   }, [activeChatId, conversations, currentUserId, markConversationAsRead]);
 
   useEffect(() => {
+    setUnreadByConversation((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      for (const conversation of conversations) {
+        if (!(conversation.id in next) || next[conversation.id] <= 0) {
+          continue;
+        }
+
+        const hasUnreadFromOthers = conversation.messages.some((message) => {
+          if (message.sender_id === currentUserId) {
+            return false;
+          }
+          const readBy = Array.isArray(message.read_by) ? message.read_by : [];
+          return !readBy.includes(currentUserId);
+        });
+
+        if (!hasUnreadFromOthers) {
+          delete next[conversation.id];
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [conversations, currentUserId, setUnreadByConversation]);
+
+  useEffect(() => {
     if (!pendingJump) {
       return;
     }
@@ -1873,6 +1941,7 @@ export default function ChatView({
               hour: "2-digit",
               minute: "2-digit",
             }),
+            lastActivityAt: toActivityTimestamp(incoming.created_at),
           };
         }),
       );
@@ -2714,6 +2783,7 @@ export default function ChatView({
               hour: "2-digit",
               minute: "2-digit",
             }),
+            lastActivityAt: toActivityTimestamp(lastMessage.created_at),
           };
         }),
       );
@@ -2752,6 +2822,7 @@ export default function ChatView({
                   hour: "2-digit",
                   minute: "2-digit",
                 }),
+                lastActivityAt: Date.now(),
               }
             : conv,
         ),
@@ -2880,6 +2951,7 @@ export default function ChatView({
               hour: "2-digit",
               minute: "2-digit",
             }),
+            lastActivityAt: toActivityTimestamp(lastMessage.created_at),
           };
         }),
       );
@@ -3057,6 +3129,7 @@ export default function ChatView({
               hour: "2-digit",
               minute: "2-digit",
             }),
+            lastActivityAt: toActivityTimestamp(createdAt),
           };
         }),
       );
@@ -3446,11 +3519,23 @@ export default function ChatView({
   );
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
-  const filteredConversations = conversations.filter((chat) =>
-    normalizedSearch
-      ? chat.name.toLowerCase().includes(normalizedSearch)
-      : true,
-  );
+  const filteredConversations = conversations
+    .filter((chat) =>
+      normalizedSearch
+        ? chat.name.toLowerCase().includes(normalizedSearch)
+        : true,
+    )
+    .sort((a, b) => {
+      const aLastMessageAt = a.messages[a.messages.length - 1]?.created_at;
+      const bLastMessageAt = b.messages[b.messages.length - 1]?.created_at;
+      const aTime = aLastMessageAt
+        ? toActivityTimestamp(aLastMessageAt)
+        : a.lastActivityAt;
+      const bTime = bLastMessageAt
+        ? toActivityTimestamp(bLastMessageAt)
+        : b.lastActivityAt;
+      return bTime - aTime;
+    });
   return (
     <div className="flex h-full w-full bg-[#dfe3e9] font-sans text-slate-800">
       <div className="w-[320px] border-r border-slate-200/80 bg-[#f5f7fb]">
@@ -3957,6 +4042,8 @@ export default function ChatView({
           status={activeCall.status}
           tokenPayload={liveKitTokenPayload}
           tokenError={liveKitTokenError}
+          currentUserId={currentUserId}
+          participantDirectory={callParticipantDirectory}
           onRetryToken={handleRetryLiveKitToken}
           onHangUp={handleEndCall}
         />
