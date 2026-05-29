@@ -3585,15 +3585,25 @@ export default function ChatView({
               Chưa có cuộc trò chuyện nào
             </div>
           ) : (
-            filteredConversations.map((chat) => (
-              <div
-                key={chat.id}
-                className={`w-full p-3 mb-2 rounded-xl flex gap-3 text-left transition-colors ${
-                  activeChatId === chat.id
-                    ? "bg-[#ebeff5]"
-                    : "hover:bg-[#eef2f8]"
-                }`}
-              >
+            filteredConversations.map((chat) => {
+              const lastMessage = chat.messages[chat.messages.length - 1];
+              const isLastMessageByCurrentUser =
+                Boolean(lastMessage?.sender_id) &&
+                String(lastMessage.sender_id).trim() ===
+                  String(currentUserId).trim();
+              const unreadCountForBadge = isLastMessageByCurrentUser
+                ? 0
+                : unreadByConversation[chat.id] ?? 0;
+
+              return (
+                <div
+                  key={chat.id}
+                  className={`w-full p-3 mb-2 rounded-xl flex gap-3 text-left transition-colors ${
+                    activeChatId === chat.id
+                      ? "bg-[#ebeff5]"
+                      : "hover:bg-[#eef2f8]"
+                  }`}
+                >
                 <button
                   type="button"
                   onClick={() => handleSelectConversation(chat.id)}
@@ -3625,7 +3635,7 @@ export default function ChatView({
                             {missedCallsByConversation[chat.id]}
                           </span>
                         )}
-                        {unreadByConversation[chat.id] > 0 && (
+                        {unreadCountForBadge > 0 && (
                           <span
                             className={`inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full text-[10px] font-semibold ${
                               mutedByConversation[chat.id]
@@ -3633,7 +3643,7 @@ export default function ChatView({
                                 : "bg-rose-500 text-white"
                             }`}
                           >
-                            {unreadByConversation[chat.id]}
+                            {unreadCountForBadge}
                           </span>
                         )}
                         <span className="text-[11px] text-slate-400 whitespace-nowrap">
@@ -3681,8 +3691,9 @@ export default function ChatView({
                     </div>
                   )}
                 </div>
-              </div>
-            ))
+                </div>
+              );
+            })
           )}
         </div>
 
