@@ -500,22 +500,25 @@ export default function DashboardLayout() {
         return;
       }
 
+      const messageId =
+        normalizeRealtimeId(data.message_id) ?? normalizeRealtimeId(data.id);
+      if (!messageId) {
+        // Ignore non-message notifications to avoid unread being inflated.
+        return;
+      }
+
       if (data.sender_id && data.sender_id === currentUserId) {
         return;
       }
 
-      const messageId =
-        normalizeRealtimeId(data.message_id) ?? normalizeRealtimeId(data.id);
-      if (messageId) {
-        const key = `${conversationId}:${messageId}`;
-        if (seenRealtimeMessages.current.has(key)) {
-          return;
-        }
+      const key = `${conversationId}:${messageId}`;
+      if (seenRealtimeMessages.current.has(key)) {
+        return;
+      }
 
-        seenRealtimeMessages.current.add(key);
-        if (seenRealtimeMessages.current.size > 300) {
-          seenRealtimeMessages.current.clear();
-        }
+      seenRealtimeMessages.current.add(key);
+      if (seenRealtimeMessages.current.size > 300) {
+        seenRealtimeMessages.current.clear();
       }
 
       const isViewingConversation =
