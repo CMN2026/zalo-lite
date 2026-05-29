@@ -1,9 +1,10 @@
+import "./observability/tracing.js";
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import { createServer } from "http";
+import { createServer } from "node:http";
 import { Server as SocketIOServer } from "socket.io";
 import { env } from "./config/env.js";
 import { initDynamoDB } from "./config/dynamodb.js";
@@ -12,8 +13,13 @@ import { adminRoutes } from "./routes/notification.routes.js";
 import { chatbotRoutes } from "./routes/chatbot.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { ChatbotIOHandler } from "./handlers/chatbot.io.handler.js";
-import { authMiddleware } from "./middlewares/auth.middleware.js";
 import { authGRPCClient } from "./grpc/auth-client.js";
+import {
+  getProviderHealthSnapshot,
+  renderMetrics,
+} from "./observability/metrics.js";
+import { logger } from "./observability/logger.js";
+import { randomUUID } from "node:crypto";
 
 const app = express();
 const httpServer = createServer(app);
@@ -46,13 +52,31 @@ app.use(
 );
 app.use(express.json({ limit: "1mb" }));
 
+app.use((req, res, next) => {
+  const requestId = (req.header("x-request-id") || randomUUID()).toString();
+  res.setHeader("x-request-id", requestId);
+  (req as express.Request & { requestId: string }).requestId = requestId;
+  logger.info("http_request", {
+    requestId,
+    method: req.method,
+    path: req.path,
+  });
+  next();
+});
+
 // Health check
 app.get("/health", (_req, res) => {
   res.status(200).json({
     service: "chatbot-service",
     status: "ok",
     grpc: "connected",
+    providers: getProviderHealthSnapshot(),
   });
+});
+
+app.get("/metrics", (_req, res) => {
+  res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+  res.status(200).send(renderMetrics());
 });
 
 // Routes
@@ -68,31 +92,32 @@ chatbotIOHandler.setupHandlers();
 
 // Graceful shutdown
 process.on("SIGTERM", async () => {
-  console.log("SIGTERM received, shutting down gracefully...");
+  logger.info("shutdown_signal", { signal: "SIGTERM" });
   authGRPCClient.close();
   process.exit(0);
 });
 
 process.on("SIGINT", async () => {
-  console.log("SIGINT received, shutting down gracefully...");
+  logger.info("shutdown_signal", { signal: "SIGINT" });
   authGRPCClient.close();
   process.exit(0);
 });
 
 // Startup
-async function start() {
-  try {
-    await initDynamoDB();
-    await redisClient.connect();
+try {
+  await initDynamoDB();
+  await redisClient.connect();
 
-    httpServer.listen(env.PORT, () => {
-      console.log(`chatbot-service listening on ${env.PORT}`);
-      console.log(`gRPC connection established to user-service:50051`);
+  httpServer.listen(env.PORT, () => {
+    logger.info("service_started", {
+      service: "chatbot-service",
+      port: env.PORT,
     });
-  } catch (error) {
-    console.error("Failed to start chatbot service:", error);
-    process.exit(1);
-  }
+    logger.info("grpc_ready", { target: "user-service:50051" });
+  });
+} catch (error) {
+  logger.error("service_start_failed", {
+    error: error instanceof Error ? error.message : String(error),
+  });
+  process.exit(1);
 }
-
-start();

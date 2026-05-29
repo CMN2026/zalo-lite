@@ -1,7 +1,10 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import io, { Socket } from "socket.io-client";
+import { useAuth } from "../contexts/auth";
 import { API_BASE_URL } from "../lib/api";
+import { WEB_CHATBOT_SERVICE_BASE_URL } from "../lib/runtime-base-url";
 
 // ============================================================================
 // TYPES
@@ -15,6 +18,8 @@ interface ChatMessage {
   senderName?: string;
   createdAt: DateValue;
   confidence?: number;
+  isStreaming?: boolean;
+  streamStatus?: "streaming" | "done" | "error";
 }
 
 type DateValue = number | string | Date;
@@ -127,6 +132,7 @@ function getLastPreview(conv: Conversation): string {
 // ============================================================================
 
 export default function ChatbotView() {
+  const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -136,9 +142,15 @@ export default function ChatbotView() {
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [socketConnected, setSocketConnected] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const chatbotSocketRef = useRef<Socket | null>(null);
+  const streamingMessageIdRef = useRef<string | null>(null);
+  const streamingConversationIdRef = useRef<string | null>(null);
+  const streamedTextRef = useRef<string>("");
+  const isStreamingRef = useRef(false);
 
   // ─── API ──────────────────────────────────────────────────────────────────
 
@@ -198,6 +210,118 @@ export default function ChatbotView() {
     [],
   );
 
+  const resetStreamingState = useCallback(() => {
+    streamingMessageIdRef.current = null;
+    streamingConversationIdRef.current = null;
+    streamedTextRef.current = "";
+    isStreamingRef.current = false;
+    setBotTyping(false);
+    setSending(false);
+  }, []);
+
+  const updateStreamingMessage = useCallback(
+    (nextText: string, status?: ChatMessage["streamStatus"]) => {
+      const messageId = streamingMessageIdRef.current;
+      if (!messageId) return;
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                content: nextText,
+                isStreaming: status === "streaming",
+                streamStatus: status ?? message.streamStatus,
+              }
+            : message,
+        ),
+      );
+    },
+    [],
+  );
+
+  const appendStreamingChunk = useCallback(
+    (chunk: string) => {
+      if (!isStreamingRef.current || !chunk) return;
+
+      const previous = streamedTextRef.current;
+      if (previous.endsWith(chunk)) return;
+
+      const next = `${previous}${chunk}`;
+      streamedTextRef.current = next;
+      updateStreamingMessage(next, "streaming");
+    },
+    [updateStreamingMessage],
+  );
+
+  const finalizeStreamingMessage = useCallback(
+    (payload?: { conversationId?: string; message?: ChatMessage }) => {
+      const messageId = streamingMessageIdRef.current;
+      if (!messageId) return;
+
+      const finalContent = payload?.message?.content ?? streamedTextRef.current;
+      const finalMessage: ChatMessage = payload?.message
+        ? {
+            ...payload.message,
+            id: payload.message.id,
+            content: finalContent,
+            isStreaming: false,
+            streamStatus: "done",
+          }
+        : {
+            id: messageId,
+            content: finalContent,
+            senderId: "chatbot",
+            type: "system",
+            createdAt: Date.now(),
+            isStreaming: false,
+            streamStatus: "done",
+          };
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId ? finalMessage : message,
+        ),
+      );
+
+      const resolvedConversationId =
+        payload?.conversationId ??
+        streamingConversationIdRef.current ??
+        activeId;
+      resetStreamingState();
+
+      if (resolvedConversationId && !activeId) {
+        setActiveId(resolvedConversationId);
+      }
+
+      if (resolvedConversationId) {
+        void fetchMessages(resolvedConversationId);
+      }
+      void fetchConversations().then((fresh) => {
+        if (fresh) setConversations(fresh);
+      });
+    },
+    [activeId, fetchConversations, fetchMessages, resetStreamingState],
+  );
+
+  const markStreamingError = useCallback(
+    (message: string) => {
+      const messageId = streamingMessageIdRef.current;
+      if (messageId) {
+        setMessages((prev) =>
+          prev.map((item) =>
+            item.id === messageId
+              ? { ...item, streamStatus: "error", isStreaming: false }
+              : item,
+          ),
+        );
+      }
+      setSendError(message);
+      resetStreamingState();
+    },
+    [resetStreamingState],
+  );
+
   // ─── ACTIONS ──────────────────────────────────────────────────────────────
 
   const handleSend = useCallback(
@@ -208,6 +332,7 @@ export default function ChatbotView() {
       setSending(true);
       setBotTyping(true);
       setSendError(null);
+      const convId = targetConvId === undefined ? activeId : targetConvId;
 
       // Optimistic user message
       const optMsg: ChatMessage = {
@@ -220,8 +345,42 @@ export default function ChatbotView() {
       setMessages((prev) => [...prev, optMsg]);
       setInputValue("");
 
+      const canStream = Boolean(
+        socketConnected && chatbotSocketRef.current?.connected && user,
+      );
+      if (canStream) {
+        const streamMessageId = `stream-${Date.now()}`;
+        streamingMessageIdRef.current = streamMessageId;
+        streamingConversationIdRef.current = convId ?? null;
+        streamedTextRef.current = "";
+        isStreamingRef.current = true;
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: streamMessageId,
+            content: "",
+            senderId: "chatbot",
+            type: "system",
+            createdAt: Date.now(),
+            isStreaming: true,
+            streamStatus: "streaming",
+          },
+        ]);
+
+        const socket = chatbotSocketRef.current;
+        if (socket && user) {
+          socket.emit("send_message_stream", {
+            userId: user.id,
+            message: trimmed,
+            conversationId: convId ?? undefined,
+          });
+        }
+
+        return;
+      }
+
       try {
-        const convId = targetConvId === undefined ? activeId : targetConvId;
         const resultConvId = await postMessage(trimmed, convId);
 
         const resolvedConvId = resultConvId ?? convId;
@@ -242,8 +401,37 @@ export default function ChatbotView() {
         inputRef.current?.focus();
       }
     },
-    [activeId, sending, postMessage, fetchConversations, fetchMessages],
+    [
+      activeId,
+      sending,
+      postMessage,
+      fetchConversations,
+      fetchMessages,
+      socketConnected,
+      user,
+    ],
   );
+
+  const handleCancelStreaming = useCallback(() => {
+    if (chatbotSocketRef.current && isStreamingRef.current) {
+      chatbotSocketRef.current.emit("chatbot:ai:cancel", {
+        conversationId: streamingConversationIdRef.current ?? activeId,
+      });
+    }
+
+    if (streamingMessageIdRef.current) {
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === streamingMessageIdRef.current
+            ? { ...message, isStreaming: false, streamStatus: "error" }
+            : message,
+        ),
+      );
+    }
+
+    resetStreamingState();
+    setSendError("Đã hủy tạo phản hồi.");
+  }, [activeId, resetStreamingState]);
 
   const handleSelectConv = useCallback(
     async (convId: string) => {
@@ -303,6 +491,96 @@ export default function ChatbotView() {
       /* ignore */
     }
   }, [activeId, fetchConversations, fetchMessages]);
+
+  useEffect(() => {
+    if (!user) {
+      chatbotSocketRef.current?.disconnect();
+      chatbotSocketRef.current = null;
+      setSocketConnected(false);
+      return;
+    }
+
+    const token = getToken();
+    if (!token) return;
+
+    const socket: Socket = io(WEB_CHATBOT_SERVICE_BASE_URL, {
+      path: "/socket.io/",
+      auth: { token },
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+      transports: ["polling", "websocket"],
+      timeout: 6000,
+    });
+
+    chatbotSocketRef.current = socket;
+
+    const onConnect = () => setSocketConnected(true);
+    const onDisconnect = () => setSocketConnected(false);
+    const onChunk = (payload: { conversationId?: string; chunk?: string }) => {
+      if (!isStreamingRef.current) return;
+      if (
+        payload.conversationId &&
+        streamingConversationIdRef.current &&
+        payload.conversationId !== streamingConversationIdRef.current
+      )
+        return;
+      appendStreamingChunk(payload.chunk ?? "");
+    };
+    const onDone = (payload: {
+      conversationId?: string;
+      message?: ChatMessage;
+    }) => {
+      if (!isStreamingRef.current) return;
+      if (
+        payload.conversationId &&
+        streamingConversationIdRef.current &&
+        payload.conversationId !== streamingConversationIdRef.current
+      )
+        return;
+      finalizeStreamingMessage(payload);
+    };
+    const onError = (payload: {
+      conversationId?: string;
+      message?: string;
+    }) => {
+      if (!isStreamingRef.current) return;
+      if (
+        payload.conversationId &&
+        streamingConversationIdRef.current &&
+        payload.conversationId !== streamingConversationIdRef.current
+      )
+        return;
+      markStreamingError(
+        payload.message ?? "Không thể tạo phản hồi. Vui lòng thử lại.",
+      );
+    };
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("chatbot:ai:chunk", onChunk);
+    socket.on("chatbot:ai:done", onDone);
+    socket.on("chatbot:ai:error", onError);
+
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("chatbot:ai:chunk", onChunk);
+      socket.off("chatbot:ai:done", onDone);
+      socket.off("chatbot:ai:error", onError);
+      socket.disconnect();
+      if (chatbotSocketRef.current === socket) {
+        chatbotSocketRef.current = null;
+      }
+      setSocketConnected(false);
+    };
+  }, [
+    appendStreamingChunk,
+    finalizeStreamingMessage,
+    markStreamingError,
+    user,
+  ]);
 
   // ─── LIFECYCLE ────────────────────────────────────────────────────────────
 
@@ -493,6 +771,11 @@ export default function ChatbotView() {
                 >
                   {msg.content}
                 </div>
+                {msg.isStreaming && !isUser && (
+                  <span className="mt-1 text-[10px] text-blue-500 font-medium">
+                    Đang tạo phản hồi...
+                  </span>
+                )}
                 <span className="text-[10px] text-slate-400 mt-0.5">
                   {formatTime(msg.createdAt)}
                 </span>
@@ -656,6 +939,14 @@ export default function ChatbotView() {
                 }
                 className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 transition-all"
               />
+              {botTyping && socketConnected && (
+                <button
+                  onClick={handleCancelStreaming}
+                  className="px-3 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-medium rounded-xl transition-colors shrink-0 border border-amber-200"
+                >
+                  Hủy
+                </button>
+              )}
               <button
                 onClick={() => handleSend(inputValue, activeId ?? null)}
                 disabled={!inputValue.trim() || sending}
