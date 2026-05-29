@@ -63,14 +63,7 @@ export default function RegisterPage() {
       const authError = err as Error & {
         errors?: Array<{ field: string; message: string }>;
       };
-
-      if (authError.message === "email_already_registered") {
-        setError("Email này đã được sử dụng");
-      } else if (authError.message === "phone_already_used") {
-        setError("Số điện thoại này đã được sử dụng");
-      } else if (authError.message === "email_service_not_configured") {
-        setError("Hệ thống email chưa được cấu hình. Vui lòng liên hệ quản trị viên.");
-      } else if (authError.message === "validation_error") {
+      if (authError.message === "validation_error") {
         const firstError = authError.errors?.[0];
         if (firstError?.field === "password") {
           setError("Mật khẩu phải có từ 8 đến 72 ký tự");
@@ -84,7 +77,17 @@ export default function RegisterPage() {
           setError("Dữ liệu không hợp lệ, vui lòng kiểm tra lại thông tin");
         }
       } else {
-        setError("Không thể đăng ký. Vui lòng thử lại.");
+        const errorMap: Record<string, string> = {
+          email_already_registered: "Email này đã được sử dụng.",
+          phone_already_used: "Số điện thoại này đã được sử dụng.",
+          email_service_not_configured:
+            "Hệ thống email chưa được cấu hình. Vui lòng liên hệ quản trị viên.",
+          register_pending_verification:
+            "Tài khoản đang chờ xác minh. Vui lòng kiểm tra email OTP.",
+          api_response_is_not_json_check_api_base_url:
+            "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
+        };
+        setError(errorMap[authError.message] ?? "Không thể đăng ký. Vui lòng thử lại.");
       }
     } finally {
       setLoading(false);

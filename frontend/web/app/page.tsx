@@ -668,7 +668,7 @@ export default function DashboardLayout() {
             
           />
         )}
-        {currentView === "chatbot" && <ChatbotView />}
+        {currentView === "chatbot" && <ChatbotView language={language} />}
         {currentView === "posts" && <PostView language={language} />}
         {currentView === "friends" && (
           <FriendsView

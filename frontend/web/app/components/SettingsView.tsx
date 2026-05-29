@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Eye, EyeOff, Globe, Lock, Monitor, Moon, Shield, Sun } from "lucide-react";
-import { getAuthToken } from "../lib/auth";
+import { clearAuthSession, getAuthToken } from "../lib/auth";
 import { WEB_GATEWAY_BASE_URL } from "../lib/runtime-base-url";
 
 type SettingsCategory = "security" | "appearance";
@@ -53,6 +53,16 @@ export default function SettingsView({
           changeFail: "Unable to change password. Please try again.",
           changed: "Password changed successfully.",
           connectFail: "Cannot connect to server. Please try again.",
+          successTitle: "Password changed successfully",
+          successDesc: "You will be signed out in",
+          seconds: "seconds",
+          reloginHint: "Please sign in again to use a new token.",
+          invalidOrExpiredToken: "Session expired. Please log in again.",
+          currentPasswordInvalid: "Current password is incorrect.",
+          newPasswordMustDiffer: "New password must be different from current password.",
+          userNotFound: "User not found.",
+          validationError: "Invalid data. Please check your input.",
+          serverError: "Server error. Please try again later.",
         }
       : {
           title: "Cài đặt",
@@ -82,6 +92,16 @@ export default function SettingsView({
           changeFail: "Không thể đổi mật khẩu. Vui lòng thử lại.",
           changed: "Đổi mật khẩu thành công.",
           connectFail: "Không thể kết nối máy chủ. Vui lòng thử lại.",
+          successTitle: "Thay đổi mật khẩu thành công",
+          successDesc: "Bạn sẽ được đăng xuất sau",
+          seconds: "giây",
+          reloginHint: "Vui lòng đăng nhập lại để dùng token mới.",
+          invalidOrExpiredToken: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+          currentPasswordInvalid: "Mật khẩu hiện tại không đúng.",
+          newPasswordMustDiffer: "Mật khẩu mới phải khác mật khẩu hiện tại.",
+          userNotFound: "Không tìm thấy người dùng.",
+          validationError: "Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.",
+          serverError: "Máy chủ đang bận. Vui lòng thử lại sau.",
         };
   const [category, setCategory] = useState<SettingsCategory>("security");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -92,6 +112,8 @@ export default function SettingsView({
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [logoutCountdown, setLogoutCountdown] = useState(3);
 
   const handleChangePassword = async () => {
     setPasswordNotice("");
@@ -139,14 +161,45 @@ export default function SettingsView({
           setPasswordNotice(t.noEndpoint);
           return;
         }
-        setPasswordNotice(payload.message || t.changeFail);
+        const rawCode = payload.message ?? "";
+        const backendErrorMap: Record<string, string> = {
+          invalid_or_expired_token: t.invalidOrExpiredToken,
+          missing_bearer_token: t.invalidOrExpiredToken,
+          current_password_invalid: t.currentPasswordInvalid,
+          new_password_must_differ: t.newPasswordMustDiffer,
+          user_not_found: t.userNotFound,
+          validation_error: t.validationError,
+        };
+        if (backendErrorMap[rawCode]) {
+          setPasswordNotice(backendErrorMap[rawCode]);
+          return;
+        }
+        if (response.status >= 500) {
+          setPasswordNotice(t.serverError);
+          return;
+        }
+        setPasswordNotice(t.changeFail);
         return;
       }
 
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setPasswordNotice(t.changed);
+      setPasswordNotice("");
+      setLogoutCountdown(3);
+      setShowSuccessModal(true);
+
+      const timer = window.setInterval(() => {
+        setLogoutCountdown((prev) => {
+          if (prev <= 1) {
+            window.clearInterval(timer);
+            clearAuthSession();
+            window.location.href = "/login";
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     } catch {
       setPasswordNotice(t.connectFail);
     } finally {
@@ -354,6 +407,17 @@ export default function SettingsView({
           )}
         </section>
       </div>
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 className="text-xl font-semibold text-slate-900">{t.successTitle}</h3>
+            <p className="mt-3 text-sm text-slate-600">
+              {t.successDesc} <span className="font-semibold">{logoutCountdown}</span> {t.seconds}.
+            </p>
+            <p className="mt-1 text-sm text-slate-500">{t.reloginHint}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

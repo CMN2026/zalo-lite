@@ -6,6 +6,7 @@ import '../global.css';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '../contexts/auth';
+import { SettingsProvider, useSettings } from "../contexts/settings";
 import { useEffect } from 'react';
 import ForceLogoutModal from '../components/ForceLogoutModal';
 
@@ -24,6 +25,7 @@ export const unstable_settings = {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const { theme } = useSettings();
   const { user, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
@@ -47,7 +49,7 @@ function RootLayoutNav() {
   }, [user, isLoading, segments, router]);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={(theme === "dark" || (theme !== "light" && colorScheme === "dark")) ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
@@ -64,9 +66,11 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootLayoutNav />
-      <ForceLogoutModal />
-    </AuthProvider>
+    <SettingsProvider>
+      <AuthProvider>
+        <RootLayoutNav />
+        <ForceLogoutModal />
+      </AuthProvider>
+    </SettingsProvider>
   );
 }
