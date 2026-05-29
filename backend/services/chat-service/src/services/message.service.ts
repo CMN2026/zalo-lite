@@ -90,6 +90,21 @@ export class MessageService {
       input.conversation_id,
       message.created_at,
     );
+    await this.conversationRepository.updateMemberLastReadAt(
+      input.conversation_id,
+      input.sender_id,
+      message.created_at,
+    );
+    await this.conversationRepository.resetUnreadCount(
+      input.conversation_id,
+      input.sender_id,
+    );
+    await this.conversationRepository.incrementUnreadCountForUsers(
+      input.conversation_id,
+      members
+        .map((member) => member.userId)
+        .filter((memberId) => memberId !== input.sender_id),
+    );
     await this.conversationRepository.restoreConversationForMembers(
       input.conversation_id,
     );
@@ -119,7 +134,24 @@ export class MessageService {
 
   async markMessagesAsRead(conversationId: string, userId: string) {
     await this.conversationService.assertMember(conversationId, userId);
-    await this.messageRepository.markAsRead(conversationId, userId);
+    await this.conversationRepository.updateMemberLastReadAt(
+      conversationId,
+      userId,
+      new Date().toISOString(),
+    );
+    await this.conversationRepository.resetUnreadCount(conversationId, userId);
+
+    // Legacy compatibility: update read_by best-effort only.
+    // Do not fail the read endpoint if this expensive backfill times out.
+    try {
+      await this.messageRepository.markAsRead(conversationId, userId);
+    } catch (error) {
+      console.warn("markAsRead(read_by) best-effort failed", {
+        conversationId,
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     // Publish read event to Redis
     await retry(

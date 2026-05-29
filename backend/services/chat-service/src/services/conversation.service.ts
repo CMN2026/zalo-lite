@@ -8,6 +8,7 @@ import { UserClientService } from "./user-client.service.js";
 
 export type ConversationWithMembers = Conversation & {
   memberIds: string[];
+  unread_count: number;
 };
 
 type GroupRole = "owner" | "admin" | "member";
@@ -123,6 +124,9 @@ export class ConversationService {
         return {
           ...conversation,
           memberIds: members.map((member) => member.userId),
+          unread_count:
+            members.find((member) => member.userId === userId)?.unreadCount ??
+            0,
         };
       }),
     );
@@ -164,7 +168,15 @@ export class ConversationService {
       }
     }
 
-    return [...groups, ...directByFriendId.values()];
+    const merged = [...groups, ...directByFriendId.values()];
+
+    merged.sort((a, b) => {
+      const aTs = a.lastMessageAt ?? a.createdAt ?? "1970-01-01T00:00:00.000Z";
+      const bTs = b.lastMessageAt ?? b.createdAt ?? "1970-01-01T00:00:00.000Z";
+      return new Date(bTs).getTime() - new Date(aTs).getTime();
+    });
+
+    return merged;
   }
 
   async getMessages(userId: string, conversationId: string, limit: number) {

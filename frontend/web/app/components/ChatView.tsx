@@ -39,6 +39,7 @@ interface Conversation {
   avatar: string;
   preview: string;
   time: string;
+  lastActivityAt: number;
   online: boolean;
   messages: Message[];
   createdBy?: string;
@@ -62,6 +63,7 @@ interface ConversationApi {
   createdBy?: string;
   type?: "direct" | "group";
   lastMessageAt?: string | null;
+  unreadCount?: number;
 }
 
 type ConversationCacheEntry = {
@@ -70,6 +72,7 @@ type ConversationCacheEntry = {
   avatar: string;
   preview: string;
   time: string;
+  lastActivityAt?: number;
   online: boolean;
   createdBy?: string;
   type?: "direct" | "group";
@@ -226,11 +229,52 @@ function getConversationPreviewFromMessage(
     return DEFAULT_SYSTEM_PREVIEW;
   }
 
+  const normalizeCallPreview = (rawContent: string) => {
+    let text = rawContent.trim();
+
+    try {
+      const parsed = JSON.parse(rawContent) as { text?: unknown };
+      if (typeof parsed.text === "string" && parsed.text.trim()) {
+        text = parsed.text.trim();
+      }
+    } catch {
+      // Raw content is not JSON, keep as-is.
+    }
+
+    const durationMatch = text.match(/•\s*(.+)$/);
+    const directFormatMatch = text.match(/Cuộc gọi kết thúc:\s*(.+)$/i);
+    const duration = (durationMatch?.[1] ?? directFormatMatch?.[1] ?? "").trim();
+
+    if (duration) {
+      return `📞 Cuộc gọi kết thúc: ${duration}`;
+    }
+
+    return "📞 Cuộc gọi kết thúc";
+  };
+
+  const isCallLikeContent =
+    message.type === "call" ||
+    message.content.trim().startsWith("{\"text\"") ||
+    message.content.includes("đã gọi") ||
+    message.content.includes("Cuộc gọi");
+
+  if (isCallLikeContent) {
+    return normalizeCallPreview(message.content);
+  }
+
   const basePreview =
     message.type === "file" ? "Tệp đính kèm" : message.content;
   return message.sender_id === currentUserId
     ? `Bạn: ${basePreview}`
     : basePreview;
+}
+
+function toActivityTimestamp(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function isResolvedFullName(value: string | undefined, userId: string) {
@@ -822,6 +866,11 @@ export default function ChatView({
               ? rawItem.preview
               : DEFAULT_SYSTEM_PREVIEW,
           time: typeof rawItem.time === "string" ? rawItem.time : "",
+          lastActivityAt:
+            typeof rawItem.lastActivityAt === "number" &&
+            Number.isFinite(rawItem.lastActivityAt)
+              ? rawItem.lastActivityAt
+              : 0,
           online: Boolean(rawItem.online),
           messages: [],
           createdBy: rawItem.createdBy,
@@ -855,6 +904,7 @@ export default function ChatView({
       avatar: item.avatar,
       preview: item.preview,
       time: item.time,
+      lastActivityAt: item.lastActivityAt,
       online: item.online,
       createdBy: item.createdBy,
       type: item.type,
@@ -907,6 +957,26 @@ export default function ChatView({
       return acc;
     }, {});
   }, [allUsers]);
+
+  const callParticipantDirectory = useMemo(() => {
+    const map: Record<string, { name?: string; avatarUrl?: string | null }> = {};
+
+    for (const entry of allUsers) {
+      map[entry.id] = {
+        name: entry.fullName || entry.email || entry.id,
+        avatarUrl: entry.avatarUrl ?? null,
+      };
+    }
+
+    if (currentUserId) {
+      map[currentUserId] = {
+        name: user?.fullName || user?.email || "Bạn",
+        avatarUrl: user?.avatarUrl ?? null,
+      };
+    }
+
+    return map;
+  }, [allUsers, currentUserId, user?.avatarUrl, user?.email, user?.fullName]);
 
   const clearTypingUsers = useCallback(() => {
     Object.values(typingUserTimeoutsRef.current).forEach((timer) => {
@@ -1059,6 +1129,40 @@ export default function ChatView({
         "/api/conversations",
       );
       const data = (response.data ?? []) as ConversationApi[];
+      const unreadFromServer = data.reduce<Record<string, number>>(
+        (acc, item) => {
+          const count =
+            typeof item.unreadCount === "number" && Number.isFinite(item.unreadCount)
+              ? Math.max(0, Math.floor(item.unreadCount))
+              : 0;
+          if (count > 0) {
+            acc[item.id] = count;
+          }
+          return acc;
+        },
+        {},
+      );
+
+      setUnreadByConversation((prev) => {
+        const next: Record<string, number> = {};
+        for (const [conversationId, count] of Object.entries(unreadFromServer)) {
+          if (conversationId === activeChatId) {
+            continue;
+          }
+          if (count > 0) {
+            next[conversationId] = count;
+          }
+        }
+
+        const sameSize = Object.keys(prev).length === Object.keys(next).length;
+        if (
+          sameSize &&
+          Object.entries(next).every(([id, count]) => prev[id] === count)
+        ) {
+          return prev;
+        }
+        return next;
+      });
 
       const mapped = data.reduce<Conversation[]>((acc, conv) => {
         if (conv.type === "group") {
@@ -1073,6 +1177,7 @@ export default function ChatView({
                   minute: "2-digit",
                 })
               : "",
+            lastActivityAt: toActivityTimestamp(conv.lastMessageAt ?? conv.createdAt),
             online: Boolean((conv as { online?: unknown }).online),
             messages: [],
             createdBy: conv.createdBy,
@@ -1107,6 +1212,7 @@ export default function ChatView({
                 hour: "2-digit",
                 minute: "2-digit",
               }),
+          lastActivityAt: toActivityTimestamp(conv.lastMessageAt ?? conv.createdAt),
           online: Boolean((conv as { online?: unknown }).online),
           messages: [],
           createdBy: conv.createdBy,
@@ -1162,6 +1268,7 @@ export default function ChatView({
               hour: "2-digit",
               minute: "2-digit",
             }),
+            lastActivityAt: toActivityTimestamp(lastMessage.created_at),
           };
         });
       });
@@ -1223,6 +1330,7 @@ export default function ChatView({
                   hour: "2-digit",
                   minute: "2-digit",
                 }),
+                lastActivityAt: toActivityTimestamp(latest.created_at),
               };
             }),
           );
@@ -1737,6 +1845,34 @@ export default function ChatView({
   }, [activeChatId, conversations, currentUserId, markConversationAsRead]);
 
   useEffect(() => {
+    setUnreadByConversation((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      for (const conversation of conversations) {
+        if (!(conversation.id in next) || next[conversation.id] <= 0) {
+          continue;
+        }
+
+        const hasUnreadFromOthers = conversation.messages.some((message) => {
+          if (message.sender_id === currentUserId) {
+            return false;
+          }
+          const readBy = Array.isArray(message.read_by) ? message.read_by : [];
+          return !readBy.includes(currentUserId);
+        });
+
+        if (!hasUnreadFromOthers) {
+          delete next[conversation.id];
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [conversations, currentUserId, setUnreadByConversation]);
+
+  useEffect(() => {
     if (!pendingJump) {
       return;
     }
@@ -1873,6 +2009,7 @@ export default function ChatView({
               hour: "2-digit",
               minute: "2-digit",
             }),
+            lastActivityAt: toActivityTimestamp(incoming.created_at),
           };
         }),
       );
@@ -2714,6 +2851,7 @@ export default function ChatView({
               hour: "2-digit",
               minute: "2-digit",
             }),
+            lastActivityAt: toActivityTimestamp(lastMessage.created_at),
           };
         }),
       );
@@ -2752,6 +2890,7 @@ export default function ChatView({
                   hour: "2-digit",
                   minute: "2-digit",
                 }),
+                lastActivityAt: Date.now(),
               }
             : conv,
         ),
@@ -2880,6 +3019,7 @@ export default function ChatView({
               hour: "2-digit",
               minute: "2-digit",
             }),
+            lastActivityAt: toActivityTimestamp(lastMessage.created_at),
           };
         }),
       );
@@ -3057,6 +3197,7 @@ export default function ChatView({
               hour: "2-digit",
               minute: "2-digit",
             }),
+            lastActivityAt: toActivityTimestamp(createdAt),
           };
         }),
       );
@@ -3446,11 +3587,23 @@ export default function ChatView({
   );
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
-  const filteredConversations = conversations.filter((chat) =>
-    normalizedSearch
-      ? chat.name.toLowerCase().includes(normalizedSearch)
-      : true,
-  );
+  const filteredConversations = conversations
+    .filter((chat) =>
+      normalizedSearch
+        ? chat.name.toLowerCase().includes(normalizedSearch)
+        : true,
+    )
+    .sort((a, b) => {
+      const aLastMessageAt = a.messages[a.messages.length - 1]?.created_at;
+      const bLastMessageAt = b.messages[b.messages.length - 1]?.created_at;
+      const aTime = aLastMessageAt
+        ? toActivityTimestamp(aLastMessageAt)
+        : a.lastActivityAt;
+      const bTime = bLastMessageAt
+        ? toActivityTimestamp(bLastMessageAt)
+        : b.lastActivityAt;
+      return bTime - aTime;
+    });
   return (
     <div className="flex h-full w-full bg-[#dfe3e9] font-sans text-slate-800">
       <div className="w-[320px] border-r border-slate-200/80 bg-[#f5f7fb]">
@@ -3500,15 +3653,25 @@ export default function ChatView({
               Chưa có cuộc trò chuyện nào
             </div>
           ) : (
-            filteredConversations.map((chat) => (
-              <div
-                key={chat.id}
-                className={`w-full p-3 mb-2 rounded-xl flex gap-3 text-left transition-colors ${
-                  activeChatId === chat.id
-                    ? "bg-[#ebeff5]"
-                    : "hover:bg-[#eef2f8]"
-                }`}
-              >
+            filteredConversations.map((chat) => {
+              const lastMessage = chat.messages[chat.messages.length - 1];
+              const isLastMessageByCurrentUser =
+                Boolean(lastMessage?.sender_id) &&
+                String(lastMessage.sender_id).trim() ===
+                  String(currentUserId).trim();
+              const unreadCountForBadge = isLastMessageByCurrentUser
+                ? 0
+                : unreadByConversation[chat.id] ?? 0;
+
+              return (
+                <div
+                  key={chat.id}
+                  className={`w-full p-3 mb-2 rounded-xl flex gap-3 text-left transition-colors ${
+                    activeChatId === chat.id
+                      ? "bg-[#ebeff5]"
+                      : "hover:bg-[#eef2f8]"
+                  }`}
+                >
                 <button
                   type="button"
                   onClick={() => handleSelectConversation(chat.id)}
@@ -3540,7 +3703,7 @@ export default function ChatView({
                             {missedCallsByConversation[chat.id]}
                           </span>
                         )}
-                        {unreadByConversation[chat.id] > 0 && (
+                        {unreadCountForBadge > 0 && (
                           <span
                             className={`inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full text-[10px] font-semibold ${
                               mutedByConversation[chat.id]
@@ -3548,7 +3711,7 @@ export default function ChatView({
                                 : "bg-rose-500 text-white"
                             }`}
                           >
-                            {unreadByConversation[chat.id]}
+                            {unreadCountForBadge}
                           </span>
                         )}
                         <span className="text-[11px] text-slate-400 whitespace-nowrap">
@@ -3596,8 +3759,9 @@ export default function ChatView({
                     </div>
                   )}
                 </div>
-              </div>
-            ))
+                </div>
+              );
+            })
           )}
         </div>
 
@@ -3957,10 +4121,22 @@ export default function ChatView({
           status={activeCall.status}
           tokenPayload={liveKitTokenPayload}
           tokenError={liveKitTokenError}
+          currentUserId={currentUserId}
+          participantDirectory={callParticipantDirectory}
           onRetryToken={handleRetryLiveKitToken}
           onHangUp={handleEndCall}
         />
       )}
+
+      <CreateGroupModal
+        open={showCreateGroup}
+        onClose={() => setShowCreateGroup(false)}
+        onCreated={(conversationId: string) => {
+          setShowCreateGroup(false);
+          setActiveChatId(conversationId);
+          void loadConversations();
+        }}
+      />
 
       <StartConversationModal
         open={showStartConversation}
