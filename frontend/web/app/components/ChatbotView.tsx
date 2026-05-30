@@ -131,7 +131,7 @@ function getLastPreview(conv: Conversation): string {
 // COMPONENT
 // ============================================================================
 
-export default function ChatbotView() {
+export default function ChatbotView({ language }: { language?: any }) {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);

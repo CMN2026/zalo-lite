@@ -18,6 +18,10 @@ html.dark {
   --blue: #3b82f6;
 }
 
+html.dark {
+  color-scheme: dark;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -33,6 +37,28 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), sans-serif;
+}
+
+html.dark body {
+  background: #0b1220;
+  color: #e2e8f0;
+}
+
+/* Dark-mode compatibility layer for existing hard-coded light utility classes. */
+html.dark :where(.bg-white, .bg-slate-50, .bg-slate-100, .bg-\[\#f5f7fa\], .bg-\[\#eef2f7\], .bg-\[\#dde1e7\], .bg-\[\#f5f7fb\]) {
+  background-color: #111827 !important;
+}
+
+html.dark :where(.text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600, .text-slate-500) {
+  color: #cbd5e1 !important;
+}
+
+html.dark :where(.border-slate-100, .border-slate-200, .border-slate-300) {
+  border-color: #334155 !important;
+}
+
+html.dark :where(.bg-blue-50) {
+  background-color: rgba(59, 130, 246, 0.15) !important;
 }
 
 * {

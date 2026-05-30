@@ -5,21 +5,24 @@ import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useSettings } from "../../contexts/settings";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const { language, theme } = useSettings();
+  const scheme = theme === "dark" ? "dark" : (colorScheme ?? "light");
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
-        tabBarInactiveTintColor: Colors[colorScheme ?? "light"].tabIconDefault,
+        tabBarActiveTintColor: Colors[scheme].tint,
+        tabBarInactiveTintColor: Colors[scheme].tabIconDefault,
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
+          backgroundColor: theme === "dark" ? "#111827" : "#FFFFFF",
           borderTopWidth: 1,
-          borderTopColor: '#E0E0E0',
+          borderTopColor: theme === "dark" ? "#334155" : "#E0E0E0",
           elevation: 0,
           shadowOpacity: 0,
           height: 60,
@@ -46,7 +49,7 @@ export default function TabLayout() {
           },
         })}
         options={{
-          title: "Tin nhắn",
+          title: language === "en" ? "Messages" : "Tin nhắn",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={24} name="message.fill" color={color} />
           ),
@@ -55,7 +58,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="posts"
         options={{
-          title: "Bảng tin",
+          title: language === "en" ? "Posts" : "Bảng tin",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={24} name="newspaper.fill" color={color} />
           ),
@@ -64,7 +67,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="friends"
         options={{
-          title: "Danh bạ",
+          title: language === "en" ? "Contacts" : "Danh bạ",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={24} name="person.2.fill" color={color} />
           ),
@@ -73,7 +76,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="chatbot"
         options={{
-          title: "Khám phá", // Renamed from Chatbot visually
+          title: language === "en" ? "Explore" : "Khám phá",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={24} name="brain.head.profile" color={color} />
           ),
@@ -82,7 +85,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Cá nhân",
+          title: language === "en" ? "Profile" : "Cá nhân",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={24} name="person.fill" color={color} />
           ),

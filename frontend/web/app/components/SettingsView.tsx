@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Globe, Lock, Monitor, Moon, Shield, Sun } from "lucide-react";
-import { getAuthToken } from "../lib/auth";
+import { Eye, EyeOff, Globe, Lock, Monitor, Moon, Shield, Sun } from "lucide-react";
+import { clearAuthSession, getAuthToken } from "../lib/auth";
 import { WEB_GATEWAY_BASE_URL } from "../lib/runtime-base-url";
 
 type SettingsCategory = "security" | "appearance";
@@ -53,6 +53,16 @@ export default function SettingsView({
           changeFail: "Unable to change password. Please try again.",
           changed: "Password changed successfully.",
           connectFail: "Cannot connect to server. Please try again.",
+          successTitle: "Password changed successfully",
+          successDesc: "You will be signed out in",
+          seconds: "seconds",
+          reloginHint: "Please sign in again to use a new token.",
+          invalidOrExpiredToken: "Session expired. Please log in again.",
+          currentPasswordInvalid: "Current password is incorrect.",
+          newPasswordMustDiffer: "New password must be different from current password.",
+          userNotFound: "User not found.",
+          validationError: "Invalid data. Please check your input.",
+          serverError: "Server error. Please try again later.",
         }
       : {
           title: "Cài đặt",
@@ -82,6 +92,16 @@ export default function SettingsView({
           changeFail: "Không thể đổi mật khẩu. Vui lòng thử lại.",
           changed: "Đổi mật khẩu thành công.",
           connectFail: "Không thể kết nối máy chủ. Vui lòng thử lại.",
+          successTitle: "Thay đổi mật khẩu thành công",
+          successDesc: "Bạn sẽ được đăng xuất sau",
+          seconds: "giây",
+          reloginHint: "Vui lòng đăng nhập lại để dùng token mới.",
+          invalidOrExpiredToken: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+          currentPasswordInvalid: "Mật khẩu hiện tại không đúng.",
+          newPasswordMustDiffer: "Mật khẩu mới phải khác mật khẩu hiện tại.",
+          userNotFound: "Không tìm thấy người dùng.",
+          validationError: "Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.",
+          serverError: "Máy chủ đang bận. Vui lòng thử lại sau.",
         };
   const [category, setCategory] = useState<SettingsCategory>("security");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -89,6 +109,11 @@ export default function SettingsView({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordNotice, setPasswordNotice] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [logoutCountdown, setLogoutCountdown] = useState(3);
 
   const handleChangePassword = async () => {
     setPasswordNotice("");
@@ -136,14 +161,45 @@ export default function SettingsView({
           setPasswordNotice(t.noEndpoint);
           return;
         }
-        setPasswordNotice(payload.message || t.changeFail);
+        const rawCode = payload.message ?? "";
+        const backendErrorMap: Record<string, string> = {
+          invalid_or_expired_token: t.invalidOrExpiredToken,
+          missing_bearer_token: t.invalidOrExpiredToken,
+          current_password_invalid: t.currentPasswordInvalid,
+          new_password_must_differ: t.newPasswordMustDiffer,
+          user_not_found: t.userNotFound,
+          validation_error: t.validationError,
+        };
+        if (backendErrorMap[rawCode]) {
+          setPasswordNotice(backendErrorMap[rawCode]);
+          return;
+        }
+        if (response.status >= 500) {
+          setPasswordNotice(t.serverError);
+          return;
+        }
+        setPasswordNotice(t.changeFail);
         return;
       }
 
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setPasswordNotice(t.changed);
+      setPasswordNotice("");
+      setLogoutCountdown(3);
+      setShowSuccessModal(true);
+
+      const timer = window.setInterval(() => {
+        setLogoutCountdown((prev) => {
+          if (prev <= 1) {
+            window.clearInterval(timer);
+            clearAuthSession();
+            window.location.href = "/login";
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     } catch {
       setPasswordNotice(t.connectFail);
     } finally {
@@ -194,37 +250,70 @@ export default function SettingsView({
                   <label className="mb-1 block text-sm font-semibold text-slate-600">
                     {t.currentPassword}
                   </label>
-                  <input
-                    type="password"
-                    value={currentPassword}
-                    onChange={(event) => setCurrentPassword(event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={t.currentPlaceholder}
-                  />
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? "text" : "password"}
+                      value={currentPassword}
+                      onChange={(event) => setCurrentPassword(event.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={t.currentPlaceholder}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword((prev) => !prev)}
+                      className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
+                      aria-label={showCurrentPassword ? "Ẩn mật khẩu hiện tại" : "Hiện mật khẩu hiện tại"}
+                      title={showCurrentPassword ? "Ẩn mật khẩu hiện tại" : "Hiện mật khẩu hiện tại"}
+                    >
+                      {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-slate-600">
                     {t.newPassword}
                   </label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(event) => setNewPassword(event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={t.newPlaceholder}
-                  />
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={t.newPlaceholder}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((prev) => !prev)}
+                      className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
+                      aria-label={showNewPassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"}
+                      title={showNewPassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"}
+                    >
+                      {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-slate-600">
                     {t.confirmPassword}
                   </label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={t.confirmPlaceholder}
-                  />
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={t.confirmPlaceholder}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
+                      className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
+                      aria-label={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
+                      title={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -318,6 +407,17 @@ export default function SettingsView({
           )}
         </section>
       </div>
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 className="text-xl font-semibold text-slate-900">{t.successTitle}</h3>
+            <p className="mt-3 text-sm text-slate-600">
+              {t.successDesc} <span className="font-semibold">{logoutCountdown}</span> {t.seconds}.
+            </p>
+            <p className="mt-1 text-sm text-slate-500">{t.reloginHint}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -13,6 +13,8 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useAuth } from "../../contexts/auth";
+import { useSettings } from "../../contexts/settings";
+import { changePassword } from "../../lib/auth";
 import { getMe, updateAvatar, updateCover, updateMe, type ProfileUser } from "../../lib/users";
 
 function getFriendlyError(error: unknown) {
@@ -39,6 +41,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function ProfileScreen() {
   const { user: authUser, logout } = useAuth();
+  const { language, setLanguage, theme, setTheme } = useSettings();
 
   const [profile, setProfile] = useState<ProfileUser | null>(null);
   const [fullName, setFullName] = useState("");
@@ -50,6 +53,59 @@ export default function ProfileScreen() {
   const [savingCover, setSavingCover] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [countdownVisible, setCountdownVisible] = useState(false);
+  const [logoutCountdown, setLogoutCountdown] = useState(3);
+
+  const t =
+    language === "en"
+      ? {
+          profile: "Profile",
+          refresh: "Refresh",
+          personalInfo: "Personal information",
+          saveChanges: "Save changes",
+          logout: "Sign out",
+          logoutConfirm: "Do you want to sign out?",
+          cancel: "Cancel",
+          settings: "Settings",
+          language: "Language",
+          theme: "Theme",
+          security: "Security",
+          currentPassword: "Current password",
+          newPassword: "New password",
+          confirmPassword: "Confirm new password",
+          changePassword: "Change password",
+          changing: "Changing...",
+          passwordChanged: "Password changed successfully",
+          reloginIn: "You will be signed out in",
+          seconds: "seconds",
+          reloginHint: "Please sign in again to use a new token.",
+        }
+      : {
+          profile: "Cá nhân",
+          refresh: "Làm mới",
+          personalInfo: "Thông tin cá nhân",
+          saveChanges: "Lưu thay đổi",
+          logout: "Đăng xuất",
+          logoutConfirm: "Bạn có chắc muốn đăng xuất?",
+          cancel: "Huỷ",
+          settings: "Cài đặt",
+          language: "Ngôn ngữ",
+          theme: "Giao diện",
+          security: "Bảo mật",
+          currentPassword: "Mật khẩu hiện tại",
+          newPassword: "Mật khẩu mới",
+          confirmPassword: "Xác nhận mật khẩu mới",
+          changePassword: "Đổi mật khẩu",
+          changing: "Đang đổi...",
+          passwordChanged: "Thay đổi mật khẩu thành công",
+          reloginIn: "Bạn sẽ được đăng xuất sau",
+          seconds: "giây",
+          reloginHint: "Vui lòng đăng nhập lại để dùng token mới.",
+        };
 
   const initials = useMemo(() => {
     const src = profile?.fullName || profile?.email || "U";
@@ -153,18 +209,72 @@ export default function ProfileScreen() {
   }
 
   function handleLogout() {
-    Alert.alert("Đăng xuất", "Bạn có chắc muốn đăng xuất?", [
-      { text: "Huỷ", style: "cancel" },
-      { text: "Đăng xuất", style: "destructive", onPress: () => logout() },
+    Alert.alert(t.logout, t.logoutConfirm, [
+      { text: t.cancel, style: "cancel" },
+      { text: t.logout, style: "destructive", onPress: () => logout() },
     ]);
+  }
+
+  async function handleChangePassword() {
+    setError("");
+    setMessage("");
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setError(language === "en" ? "Please fill all password fields." : "Vui lòng nhập đầy đủ thông tin.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError(language === "en" ? "New password must be at least 8 characters." : "Mật khẩu mới cần tối thiểu 8 ký tự.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError(language === "en" ? "Password confirmation does not match." : "Mật khẩu xác nhận không khớp.");
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      await changePassword({ currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setLogoutCountdown(3);
+      setCountdownVisible(true);
+      const timer = setInterval(() => {
+        setLogoutCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            void logout();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "request_failed";
+      const map: Record<string, string> = language === "en"
+        ? {
+            current_password_invalid: "Current password is incorrect.",
+            new_password_must_differ: "New password must be different from current password.",
+            invalid_or_expired_token: "Session expired. Please sign in again.",
+            validation_error: "Invalid data. Please check your input.",
+          }
+        : {
+            current_password_invalid: "Mật khẩu hiện tại không đúng.",
+            new_password_must_differ: "Mật khẩu mới phải khác mật khẩu hiện tại.",
+            invalid_or_expired_token: "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.",
+            validation_error: "Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.",
+          };
+      setError(map[code] ?? (language === "en" ? "Unable to change password." : "Không thể đổi mật khẩu."));
+    } finally {
+      setChangingPassword(false);
+    }
   }
 
   return (
     <SafeAreaView className="flex-1 bg-zalo-bg">
       <View className="bg-zalo-blue px-4 py-3 border-b border-zalo-blue flex-row items-center justify-between">
-        <Text className="text-xl font-bold text-white">Cá nhân</Text>
+        <Text className="text-xl font-bold text-white">{t.profile}</Text>
         <TouchableOpacity onPress={loadProfile}>
-          <Text className="text-blue-100 text-sm font-semibold">Refresh</Text>
+          <Text className="text-blue-100 text-sm font-semibold">{t.refresh}</Text>
         </TouchableOpacity>
       </View>
 
@@ -236,7 +346,7 @@ export default function ProfileScreen() {
 
         {/* Edit Form */}
         <View className="bg-white mt-4 mx-4 rounded-2xl border border-slate-100 p-5 shadow-sm">
-          <Text className="font-bold text-slate-800 mb-4">Thông tin cá nhân</Text>
+          <Text className="font-bold text-slate-800 mb-4">{t.personalInfo}</Text>
 
           {loading ? (
             <ActivityIndicator size="large" color="#2563EB" className="py-8" />
@@ -286,20 +396,121 @@ export default function ProfileScreen() {
                 {saving ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text className="text-white font-semibold">Lưu thay đổi</Text>
+                  <Text className="text-white font-semibold">{t.saveChanges}</Text>
                 )}
               </TouchableOpacity>
             </>
           )}
         </View>
 
+        <View className="bg-white mt-4 mx-4 rounded-2xl border border-slate-100 p-5 shadow-sm">
+          <Text className="font-bold text-slate-800 mb-4">{t.settings}</Text>
+          <Field label={t.language}>
+            <View className="flex-row gap-2">
+              <TouchableOpacity
+                onPress={() => setLanguage("vi")}
+                className={`px-3 py-2 rounded-lg ${language === "vi" ? "bg-blue-600" : "bg-slate-100"}`}
+              >
+                <Text className={`${language === "vi" ? "text-white" : "text-slate-700"}`}>Tiếng Việt</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setLanguage("en")}
+                className={`px-3 py-2 rounded-lg ${language === "en" ? "bg-blue-600" : "bg-slate-100"}`}
+              >
+                <Text className={`${language === "en" ? "text-white" : "text-slate-700"}`}>English</Text>
+              </TouchableOpacity>
+            </View>
+          </Field>
+          <Field label={t.theme}>
+            <View className="flex-row gap-2">
+              <TouchableOpacity
+                onPress={() => setTheme("light")}
+                className={`px-3 py-2 rounded-lg ${theme === "light" ? "bg-blue-600" : "bg-slate-100"}`}
+              >
+                <Text className={`${theme === "light" ? "text-white" : "text-slate-700"}`}>{language === "en" ? "Light" : "Sáng"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setTheme("dark")}
+                className={`px-3 py-2 rounded-lg ${theme === "dark" ? "bg-blue-600" : "bg-slate-100"}`}
+              >
+                <Text className={`${theme === "dark" ? "text-white" : "text-slate-700"}`}>{language === "en" ? "Dark" : "Tối"}</Text>
+              </TouchableOpacity>
+            </View>
+          </Field>
+          <Text className="font-semibold text-slate-700 mb-3">{t.security}</Text>
+          <Field label={t.currentPassword}>
+            <TextInput
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+              secureTextEntry
+              className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800"
+            />
+          </Field>
+          <Field label={t.newPassword}>
+            <TextInput
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800"
+            />
+          </Field>
+          <Field label={t.confirmPassword}>
+            <TextInput
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800"
+            />
+          </Field>
+          <TouchableOpacity
+            onPress={() => void handleChangePassword()}
+            disabled={changingPassword}
+            className={`bg-blue-600 py-3 rounded-xl items-center mt-1 ${changingPassword ? "opacity-70" : ""}`}
+          >
+            {changingPassword ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text className="text-white font-semibold">{t.changePassword}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
         {/* Logout */}
         <View className="bg-white mt-4 mx-4 rounded-2xl border border-slate-100 shadow-sm mb-8">
           <TouchableOpacity onPress={handleLogout} className="p-4 items-center">
-            <Text className="text-red-600 font-semibold text-base">Đăng xuất</Text>
+            <Text className="text-red-600 font-semibold text-base">{t.logout}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+      <AlertModal
+        visible={countdownVisible}
+        title={t.passwordChanged}
+        description={`${t.reloginIn} ${logoutCountdown} ${t.seconds}.`}
+        hint={t.reloginHint}
+      />
     </SafeAreaView>
+  );
+}
+
+function AlertModal({
+  visible,
+  title,
+  description,
+  hint,
+}: {
+  visible: boolean;
+  title: string;
+  description: string;
+  hint: string;
+}) {
+  if (!visible) return null;
+  return (
+    <View className="absolute inset-0 bg-black/40 items-center justify-center px-6">
+      <View className="w-full rounded-2xl bg-white p-5">
+        <Text className="text-lg font-bold text-slate-900">{title}</Text>
+        <Text className="text-sm text-slate-600 mt-2">{description}</Text>
+        <Text className="text-xs text-slate-500 mt-1">{hint}</Text>
+      </View>
+    </View>
   );
 }

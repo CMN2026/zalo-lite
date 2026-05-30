@@ -1,6 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { register } from "../lib/auth";
 
 export default function RegisterPage() {
@@ -11,6 +12,8 @@ export default function RegisterPage() {
   const [phone, setPhone] = useState(""); // ✅ giữ phone
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -60,14 +63,7 @@ export default function RegisterPage() {
       const authError = err as Error & {
         errors?: Array<{ field: string; message: string }>;
       };
-
-      if (authError.message === "email_already_registered") {
-        setError("Email này đã được sử dụng");
-      } else if (authError.message === "phone_already_used") {
-        setError("Số điện thoại này đã được sử dụng");
-      } else if (authError.message === "email_service_not_configured") {
-        setError("Hệ thống email chưa được cấu hình. Vui lòng liên hệ quản trị viên.");
-      } else if (authError.message === "validation_error") {
+      if (authError.message === "validation_error") {
         const firstError = authError.errors?.[0];
         if (firstError?.field === "password") {
           setError("Mật khẩu phải có từ 8 đến 72 ký tự");
@@ -81,7 +77,17 @@ export default function RegisterPage() {
           setError("Dữ liệu không hợp lệ, vui lòng kiểm tra lại thông tin");
         }
       } else {
-        setError("Không thể đăng ký. Vui lòng thử lại.");
+        const errorMap: Record<string, string> = {
+          email_already_registered: "Email này đã được sử dụng.",
+          phone_already_used: "Số điện thoại này đã được sử dụng.",
+          email_service_not_configured:
+            "Hệ thống email chưa được cấu hình. Vui lòng liên hệ quản trị viên.",
+          register_pending_verification:
+            "Tài khoản đang chờ xác minh. Vui lòng kiểm tra email OTP.",
+          api_response_is_not_json_check_api_base_url:
+            "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
+        };
+        setError(errorMap[authError.message] ?? "Không thể đăng ký. Vui lòng thử lại.");
       }
     } finally {
       setLoading(false);
@@ -149,13 +155,24 @@ export default function RegisterPage() {
             <label className="text-xs font-semibold text-slate-500 uppercase">
               Password
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full mt-1 px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="relative mt-1">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pr-11 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
+                aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                title={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           {/* Confirm Password */}
@@ -163,13 +180,28 @@ export default function RegisterPage() {
             <label className="text-xs font-semibold text-slate-500 uppercase">
               Confirm Password
             </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full mt-1 px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="relative mt-1">
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pr-11 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
+                aria-label={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
+                title={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
+              >
+                {showConfirmPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Terms */}

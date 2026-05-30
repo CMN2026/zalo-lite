@@ -24,6 +24,16 @@ export async function login(identifier: string, password: string) {
   });
 }
 
+export async function loginWithGoogle(input: {
+  idToken: string;
+  fullName?: string;
+  avatarUrl?: string | null;
+}) {
+  return post<AuthResponse<{ token: string; user: AuthUser }>>("/api/auth/google", {
+    body: input,
+  });
+}
+
 export async function register(input: {
   email: string;
   password: string;
@@ -85,6 +95,35 @@ export async function resetPassword(input: {
   return post<AuthResponse<{ success: boolean }>>("/api/auth/reset-password", {
     body: input,
   });
+}
+
+export async function changePassword(input: {
+  currentPassword: string;
+  newPassword: string;
+}) {
+  const token = await getAuthToken();
+  const response = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token ?? ""}`,
+    },
+    body: JSON.stringify(input),
+  });
+
+  const raw = await response.text();
+  let payload: any = null;
+  try {
+    payload = raw ? JSON.parse(raw) : null;
+  } catch {
+    throw new Error("request_failed");
+  }
+
+  if (!response.ok) {
+    throw new Error(payload?.message || "request_failed");
+  }
+
+  return payload as AuthResponse<{ success: boolean }>;
 }
 
 export const AUTH_TOKEN_KEY = "token";

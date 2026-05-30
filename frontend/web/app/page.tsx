@@ -657,6 +657,7 @@ export default function DashboardLayout() {
       <div className="flex-1 flex overflow-hidden">
         {currentView === "chat" && (
           <ChatView
+            language={language}
             onFocusedConversationChange={handleFocusedConversationChange}
             unreadByConversation={unreadByConversation}
             onUnreadByConversationChange={setUnreadByConversation}
@@ -667,10 +668,11 @@ export default function DashboardLayout() {
             
           />
         )}
-        {currentView === "chatbot" && <ChatbotView />}
-        {currentView === "posts" && <PostView />}
+        {currentView === "chatbot" && <ChatbotView language={language} />}
+        {currentView === "posts" && <PostView language={language} />}
         {currentView === "friends" && (
           <FriendsView
+            language={language}
             onStartChat={handleStartChatFromFriends}
             onRealtimeEvent={on}
             offRealtimeEvent={off}

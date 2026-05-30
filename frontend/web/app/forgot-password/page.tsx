@@ -21,11 +21,16 @@ export default function ForgotPasswordPage() {
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : "request_failed";
-      if (message === "email_not_found") {
-        setError("Email này chưa được đăng ký tài khoản.");
-      } else {
-        setError("Không thể gửi yêu cầu đặt lại mật khẩu.");
-      }
+      const errorMap: Record<string, string> = {
+        email_not_found: "Email này chưa được đăng ký tài khoản.",
+        account_inactive: "Tài khoản đã bị vô hiệu hóa.",
+        validation_error: "Email không hợp lệ.",
+        email_service_not_configured:
+          "Hệ thống email chưa được cấu hình. Vui lòng liên hệ quản trị viên.",
+        api_response_is_not_json_check_api_base_url:
+          "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
+      };
+      setError(errorMap[message] ?? "Không thể gửi yêu cầu đặt lại mật khẩu.");
     } finally {
       setLoading(false);
     }
@@ -76,4 +81,3 @@ export default function ForgotPasswordPage() {
     </div>
   );
 }
-

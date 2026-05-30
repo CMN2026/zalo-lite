@@ -23,6 +23,7 @@ import {
   type ProfileUser,
 } from "../lib/users";
 import UserProfileModal from "./UserProfileModal";
+import type { AppLanguage } from "./SettingsView";
 
 type TabId = "friends" | "search" | "requests" | "sent";
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
@@ -36,16 +37,100 @@ type FriendNotification = {
 };
 
 interface FriendsViewProps {
+  language?: AppLanguage;
   onStartChat?: (friend: ProfileUser) => Promise<void>;
   onRealtimeEvent?: SocketListener;
   offRealtimeEvent?: SocketListener;
 }
 
 export default function FriendsView({
+  language = "vi",
   onStartChat,
   onRealtimeEvent,
   offRealtimeEvent,
 }: Readonly<FriendsViewProps>) {
+  const t =
+    language === "en"
+      ? {
+          friends: "Friends",
+          subtitle:
+            "Search by phone number, manage requests, and keep your contacts updated.",
+          currentPhone: "Current phone number:",
+          tabFriends: "Friends",
+          tabSearch: "Search",
+          tabRequests: "Requests",
+          tabSent: "Sent",
+          searchFriends: "Search friends...",
+          refresh: "Refresh",
+          loadingFriends: "Loading friends list...",
+          noFriends: "No friends found.",
+          chat: "Message",
+          opening: "Opening...",
+          removing: "Removing...",
+          unfriend: "Unfriend",
+          searchByPhone: "Search by phone number",
+          phoneHint: "Enter a phone number or partial number.",
+          phone: "Phone number",
+          optionalMessage: "Optional message",
+          searching: "Searching...",
+          searchBtn: "Search",
+          searchResult: "Search results",
+          sendReqHint: "Send a friend request to active users.",
+          noSearchResult: "Search results will appear here.",
+          sending: "Sending...",
+          addFriend: "Add friend",
+          incomingTitle: "Incoming requests",
+          incomingHint: "Accept or reject requests from others.",
+          loadingReq: "Loading requests...",
+          noReq: "No friend requests.",
+          accept: "Accept",
+          reject: "Reject",
+          sentTitle: "Sent requests",
+          sentHint: "Track pending friend requests.",
+          loadingSent: "Loading sent requests...",
+          noSent: "No sent requests yet.",
+          pending: "Pending",
+        }
+      : {
+          friends: "Bạn bè",
+          subtitle:
+            "Tìm kiếm bằng số điện thoại, quản lý lời mời và giữ danh bạ luôn cập nhật.",
+          currentPhone: "Số điện thoại đang dùng:",
+          tabFriends: "Bạn bè",
+          tabSearch: "Tìm kiếm",
+          tabRequests: "Lời mời",
+          tabSent: "Đã gửi",
+          searchFriends: "Tìm bạn bè...",
+          refresh: "Làm mới",
+          loadingFriends: "Đang tải danh sách bạn bè...",
+          noFriends: "Chưa tìm thấy bạn bè nào.",
+          chat: "Nhắn tin",
+          opening: "Đang mở...",
+          removing: "Đang hủy...",
+          unfriend: "Hủy kết bạn",
+          searchByPhone: "Tìm bằng số điện thoại",
+          phoneHint: "Nhập số điện thoại hoặc một phần số điện thoại.",
+          phone: "Số điện thoại",
+          optionalMessage: "Lời nhắn tùy chọn",
+          searching: "Đang tìm...",
+          searchBtn: "Tìm kiếm",
+          searchResult: "Kết quả tìm kiếm",
+          sendReqHint: "Gửi lời mời kết bạn đến người dùng đang hoạt động.",
+          noSearchResult: "Kết quả tìm kiếm sẽ hiển thị ở đây.",
+          sending: "Đang gửi...",
+          addFriend: "Kết bạn",
+          incomingTitle: "Lời mời đến",
+          incomingHint: "Chấp nhận hoặc từ chối người muốn kết bạn với bạn.",
+          loadingReq: "Đang tải lời mời...",
+          noReq: "Không có lời mời kết bạn nào.",
+          accept: "Chấp nhận",
+          reject: "Từ chối",
+          sentTitle: "Lời mời đã gửi",
+          sentHint: "Theo dõi những lời mời kết bạn đang chờ phản hồi.",
+          loadingSent: "Đang tải lời mời đã gửi...",
+          noSent: "Bạn chưa gửi lời mời kết bạn nào.",
+          pending: "Đang chờ",
+        };
   const [activeTab, setActiveTab] = useState<TabId>("friends");
   const [currentPhone, setCurrentPhone] = useState("");
   const [friends, setFriends] = useState<ProfileUser[]>([]);
@@ -352,14 +437,13 @@ export default function FriendsView({
     <div className="flex-1 overflow-y-auto bg-slate-50 p-8 h-full font-sans text-slate-800">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Bạn bè</h1>
+          <h1 className="text-2xl font-bold">{t.friends}</h1>
           <p className="text-slate-500 text-sm mt-1">
-            Tìm kiếm bằng số điện thoại, quản lý lời mời và giữ danh bạ luôn
-            cập nhật.
+            {t.subtitle}
           </p>
           {currentPhone && (
             <p className="text-xs text-slate-400 mt-1">
-              Số điện thoại đang dùng: {currentPhone}
+              {t.currentPhone} {currentPhone}
             </p>
           )}
         </div>
@@ -368,26 +452,26 @@ export default function FriendsView({
             active={activeTab === "friends"}
             onClick={() => setActiveTab("friends")}
             icon={<Users className="w-4 h-4" />}
-            label="Bạn bè"
+            label={t.tabFriends}
           />
           <TabButton
             active={activeTab === "search"}
             onClick={() => setActiveTab("search")}
             icon={<UserPlus className="w-4 h-4" />}
-            label="Tìm kiếm"
+            label={t.tabSearch}
           />
           <TabButton
             active={activeTab === "requests"}
             onClick={() => setActiveTab("requests")}
             icon={<UserCheck className="w-4 h-4" />}
-            label="Lời mời"
+            label={t.tabRequests}
             badgeCount={incomingRequests.length}
           />
           <TabButton
             active={activeTab === "sent"}
             onClick={() => setActiveTab("sent")}
             icon={<Send className="w-4 h-4" />}
-            label="Đã gửi"
+            label={t.tabSent}
             badgeCount={outgoingRequests.length}
           />
         </div>
@@ -431,7 +515,7 @@ export default function FriendsView({
               <input
                 value={friendFilter}
                 onChange={(event) => setFriendFilter(event.target.value)}
-                placeholder="Tìm bạn bè..."
+                placeholder={t.searchFriends}
                 className="w-full bg-slate-50 border border-slate-200 text-sm rounded-lg py-2 pl-9 pr-4 outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -439,14 +523,14 @@ export default function FriendsView({
               onClick={() => void refreshFriends()}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
             >
-              Làm mới
+              {t.refresh}
             </button>
           </div>
 
           {loadingFriends ? (
-            <EmptyState text="Đang tải danh sách bạn bè..." />
+            <EmptyState text={t.loadingFriends} />
           ) : filteredFriends.length === 0 ? (
-            <EmptyState text="Chưa tìm thấy bạn bè nào." />
+            <EmptyState text={t.noFriends} />
           ) : (
             <div className="divide-y divide-slate-100">
               {filteredFriends.map((friend) => (
@@ -466,7 +550,7 @@ export default function FriendsView({
                         disabled={!onStartChat || openingChatId === friend.id}
                         className="bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full disabled:opacity-60"
                       >
-                        {openingChatId === friend.id ? "Đang mở..." : "Nhắn tin"}
+                        {openingChatId === friend.id ? t.opening : t.chat}
                       </button>
                       <button
                         type="button"
@@ -474,7 +558,7 @@ export default function FriendsView({
                         disabled={busyId === friend.id}
                         className="bg-white border border-red-200 text-red-600 text-xs font-semibold px-3 py-1 rounded-full disabled:opacity-60"
                       >
-                        {busyId === friend.id ? "Đang hủy..." : "Hủy kết bạn"}
+                        {busyId === friend.id ? t.removing : t.unfriend}
                       </button>
                     </div>
                   }
@@ -491,13 +575,13 @@ export default function FriendsView({
             onSubmit={handleSearch}
             className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 h-fit"
           >
-            <h2 className="font-bold text-lg">Tìm bằng số điện thoại</h2>
+            <h2 className="font-bold text-lg">{t.searchByPhone}</h2>
             <p className="text-sm text-slate-500 mt-1 mb-5">
-              Nhập số điện thoại hoặc một phần số điện thoại.
+              {t.phoneHint}
             </p>
             <label className="block mb-4">
               <span className="text-xs font-semibold uppercase text-slate-500">
-                Số điện thoại
+                {t.phone}
               </span>
               <input
                 value={phoneQuery}
@@ -508,7 +592,7 @@ export default function FriendsView({
             </label>
             <label className="block mb-5">
               <span className="text-xs font-semibold uppercase text-slate-500">
-                Lời nhắn tùy chọn
+                {t.optionalMessage}
               </span>
               <textarea
                 value={requestMessage}
@@ -524,19 +608,19 @@ export default function FriendsView({
               className="w-full bg-blue-600 text-white flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium disabled:opacity-70"
             >
               <Search className="w-4 h-4" />
-              {searching ? "Đang tìm..." : "Tìm kiếm"}
+              {searching ? t.searching : t.searchBtn}
             </button>
           </form>
 
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="p-4 border-b border-slate-100">
-              <h2 className="font-bold">Kết quả tìm kiếm</h2>
+              <h2 className="font-bold">{t.searchResult}</h2>
               <p className="text-sm text-slate-500">
-                Gửi lời mời kết bạn đến người dùng đang hoạt động.
+                {t.sendReqHint}
               </p>
             </div>
             {searchResults.length === 0 ? (
-              <EmptyState text="Kết quả tìm kiếm sẽ hiển thị ở đây." />
+              <EmptyState text={t.noSearchResult} />
             ) : (
               <div className="divide-y divide-slate-100">
                 {searchResults.map((user) => (
@@ -552,7 +636,7 @@ export default function FriendsView({
                         className="bg-blue-600 text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-70"
                       >
                         <Send className="w-4 h-4" />
-                        {busyId === user.id ? "Đang gửi..." : "Kết bạn"}
+                        {busyId === user.id ? t.sending : t.addFriend}
                       </button>
                     }
                   />
@@ -567,23 +651,23 @@ export default function FriendsView({
         <section className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <h2 className="font-bold">Lời mời đến</h2>
+              <h2 className="font-bold">{t.incomingTitle}</h2>
               <p className="text-sm text-slate-500">
-                Chấp nhận hoặc từ chối người muốn kết bạn với bạn.
+                {t.incomingHint}
               </p>
             </div>
             <button
               onClick={() => void refreshRequests()}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
             >
-              Làm mới
+              {t.refresh}
             </button>
           </div>
 
           {loadingRequests ? (
-            <EmptyState text="Đang tải lời mời..." />
+            <EmptyState text={t.loadingReq} />
           ) : incomingRequests.length === 0 ? (
-            <EmptyState text="Không có lời mời kết bạn nào." />
+            <EmptyState text={t.noReq} />
           ) : (
             <div className="divide-y divide-slate-100">
               {incomingRequests.map((request) => {
@@ -602,7 +686,7 @@ export default function FriendsView({
                           className="bg-green-600 text-white flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-70"
                         >
                           <Check className="w-4 h-4" />
-                          Chấp nhận
+                          {t.accept}
                         </button>
                         <button
                           onClick={() => void handleRespond(request, "reject")}
@@ -610,7 +694,7 @@ export default function FriendsView({
                           className="bg-white border border-slate-200 text-slate-700 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-70"
                         >
                           <X className="w-4 h-4" />
-                          Từ chối
+                          {t.reject}
                         </button>
                       </div>
                     }
@@ -626,23 +710,23 @@ export default function FriendsView({
         <section className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <h2 className="font-bold">Lời mời đã gửi</h2>
+              <h2 className="font-bold">{t.sentTitle}</h2>
               <p className="text-sm text-slate-500">
-                Theo dõi những lời mời kết bạn đang chờ phản hồi.
+                {t.sentHint}
               </p>
             </div>
             <button
               onClick={() => void refreshOutgoingRequests()}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
             >
-              Làm mới
+              {t.refresh}
             </button>
           </div>
 
           {loadingOutgoingRequests ? (
-            <EmptyState text="Đang tải lời mời đã gửi..." />
+            <EmptyState text={t.loadingSent} />
           ) : outgoingRequests.length === 0 ? (
-            <EmptyState text="Bạn chưa gửi lời mời kết bạn nào." />
+            <EmptyState text={t.noSent} />
           ) : (
             <div className="divide-y divide-slate-100">
               {outgoingRequests.map((request) => {
@@ -655,7 +739,7 @@ export default function FriendsView({
                     meta={request.message || addressee?.phone || "Không có lời nhắn"}
                     action={
                       <span className="bg-amber-50 text-amber-700 text-xs font-semibold px-3 py-1 rounded-full">
-                        Đang chờ
+                        {t.pending}
                       </span>
                     }
                   />
