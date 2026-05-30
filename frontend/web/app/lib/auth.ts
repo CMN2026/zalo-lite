@@ -47,6 +47,19 @@ export async function login(identifier: string, password: string) {
   );
 }
 
+export async function loginWithGoogle(input: {
+  idToken: string;
+  fullName?: string;
+  avatarUrl?: string | null;
+}) {
+  return post<AuthResponse<{ token: string; user: AuthUser }>>(
+    "/api/auth/google",
+    {
+      body: input,
+    },
+  );
+}
+
 export async function register(input: {
   email: string;
   password: string;

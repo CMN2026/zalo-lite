@@ -1,19 +1,121 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Script from "next/script";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../contexts/auth";
-import { login as loginRequest, saveAuthSession } from "../lib/auth";
+import { login as loginRequest, loginWithGoogle, saveAuthSession } from "../lib/auth";
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (input: {
+            client_id: string;
+            callback: (response: { credential?: string }) => void;
+          }) => void;
+          renderButton: (
+            parent: HTMLElement,
+            options: {
+              type?: "standard" | "icon";
+              theme?: "outline" | "filled_blue" | "filled_black";
+              text?:
+                | "signin_with"
+                | "signup_with"
+                | "continue_with"
+                | "signin";
+              size?: "large" | "medium" | "small";
+              shape?: "rectangular" | "pill" | "circle" | "square";
+              logo_alignment?: "left" | "center";
+              width?: number;
+            },
+          ) => void;
+        };
+      };
+    };
+  }
+}
 
 export default function LoginPage() {
   const router = useRouter();
   const { login: authLogin } = useAuth();
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "";
+
+  const handleGoogleCredential = useCallback(
+    async (credential: string) => {
+      setError("");
+      setGoogleLoading(true);
+      try {
+        const response = await loginWithGoogle({ idToken: credential });
+        saveAuthSession(response.data.token, response.data.user);
+        authLogin(response.data.user);
+        router.push("/");
+      } catch (err: unknown) {
+        const rawMessage =
+          err instanceof Error && err.message
+            ? err.message
+            : "Đăng nhập Google thất bại.";
+        const errorMap: Record<string, string> = {
+          invalid_google_token: "Google token không hợp lệ.",
+          google_email_not_verified: "Email Google chưa được xác minh.",
+          google_auth_not_configured: "Máy chủ chưa cấu hình Google OAuth.",
+          account_inactive: "Tài khoản đã bị vô hiệu hóa.",
+          validation_error: "Dữ liệu đăng nhập Google không hợp lệ.",
+          api_response_is_not_json_check_api_base_url:
+            "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
+        };
+        setError(errorMap[rawMessage] ?? "Đăng nhập Google thất bại.");
+      } finally {
+        setGoogleLoading(false);
+      }
+    },
+    [authLogin, router],
+  );
+
+  const initializeGoogleButton = useCallback(() => {
+    if (!googleClientId || !googleButtonRef.current || !window.google) {
+      return;
+    }
+
+    googleButtonRef.current.innerHTML = "";
+    window.google.accounts.id.initialize({
+      client_id: googleClientId,
+      callback: (response) => {
+        const credential = response.credential?.trim();
+        if (!credential) {
+          setError("Không nhận được Google token.");
+          return;
+        }
+        void handleGoogleCredential(credential);
+      },
+    });
+
+    window.google.accounts.id.renderButton(googleButtonRef.current, {
+      type: "standard",
+      theme: "outline",
+      text: "signin_with",
+      size: "large",
+      shape: "rectangular",
+      logo_alignment: "left",
+      width: 360,
+    });
+  }, [googleClientId, handleGoogleCredential]);
+
+  useEffect(() => {
+    if (window.google) {
+      initializeGoogleButton();
+    }
+  }, [initializeGoogleButton]);
 
   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -150,14 +252,17 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Social Buttons */}
-        <div className="flex gap-3">
-          <button className="flex-1 border border-slate-300 rounded-lg py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition">
-            Google
-          </button>
-          <button className="flex-1 border border-slate-300 rounded-lg py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition">
-            Facebook
-          </button>
+        {/* Google Sign-In */}
+        <div className="flex justify-center">
+          {googleClientId ? (
+            <div className="w-full flex justify-center">
+              <div ref={googleButtonRef} className={googleLoading ? "pointer-events-none opacity-60" : ""} />
+            </div>
+          ) : (
+            <p className="text-sm text-amber-600 text-center">
+              Thiếu cấu hình `NEXT_PUBLIC_GOOGLE_CLIENT_ID` để bật đăng nhập Google.
+            </p>
+          )}
         </div>
 
         {/* Footer */}
@@ -193,6 +298,12 @@ export default function LoginPage() {
           <strong>Password:</strong> test12345
         </p>
       </div>
+
+      <Script
+        src="https://accounts.google.com/gsi/client"
+        strategy="afterInteractive"
+        onLoad={initializeGoogleButton}
+      />
     </div>
   );
 }

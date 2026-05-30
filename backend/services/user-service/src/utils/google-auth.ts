@@ -5,12 +5,12 @@ import { HttpError } from "./http-error.js";
 let oauthClient: OAuth2Client | null = null;
 
 function getOAuthClient(): OAuth2Client {
-  if (!env.GOOGLE_CLIENT_ID) {
+  if (!env.GOOGLE_CLIENT_IDS.length) {
     throw new HttpError(503, "google_auth_not_configured");
   }
 
   if (!oauthClient) {
-    oauthClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
+    oauthClient = new OAuth2Client();
   }
 
   return oauthClient;
@@ -25,7 +25,7 @@ export type GoogleIdentity = {
 };
 
 export async function verifyGoogleIdToken(idToken: string): Promise<GoogleIdentity> {
-  if (!env.GOOGLE_CLIENT_ID) {
+  if (!env.GOOGLE_CLIENT_IDS.length) {
     throw new HttpError(503, "google_auth_not_configured");
   }
 
@@ -33,7 +33,7 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleIdenti
     const client = getOAuthClient();
     const ticket = await client.verifyIdToken({
       idToken,
-      audience: env.GOOGLE_CLIENT_ID,
+      audience: env.GOOGLE_CLIENT_IDS,
     });
 
     const payload = ticket.getPayload();

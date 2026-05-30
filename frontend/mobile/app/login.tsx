@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import { FontAwesome } from "@expo/vector-icons";
+import * as WebBrowser from "expo-web-browser";
+import * as Google from "expo-auth-session/providers/google";
 import { useAuth } from "../contexts/auth";
-import { login as loginRequest, saveAuthSession } from "../lib/auth";
+import { login as loginRequest, loginWithGoogle, saveAuthSession } from "../lib/auth";
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,6 +17,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const [request, , promptAsync] = Google.useIdTokenAuthRequest({
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
 
   const handleLogin = async () => {
     setError("");
@@ -28,6 +40,48 @@ export default function LoginPage() {
       setError(message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setError("");
+    if (!request) {
+      setError("Google Sign-In chưa sẵn sàng. Vui lòng thử lại.");
+      return;
+    }
+
+    setGoogleLoading(true);
+    try {
+      const result = await promptAsync();
+      if (result.type !== "success") {
+        return;
+      }
+
+      const idToken = result.params?.id_token;
+      if (!idToken) {
+        setError("Không nhận được Google token.");
+        return;
+      }
+
+      const apiResponse = await loginWithGoogle({ idToken });
+      await saveAuthSession(apiResponse.data.token, apiResponse.data.user);
+      authLogin(apiResponse.data.user);
+      router.replace("/");
+    } catch (err: unknown) {
+      const rawMessage =
+        err instanceof Error && err.message
+          ? err.message
+          : "Đăng nhập Google thất bại.";
+      const errorMap: Record<string, string> = {
+        invalid_google_token: "Google token không hợp lệ.",
+        google_email_not_verified: "Email Google chưa được xác minh.",
+        google_auth_not_configured: "Máy chủ chưa cấu hình Google OAuth.",
+        account_inactive: "Tài khoản đã bị vô hiệu hóa.",
+        validation_error: "Dữ liệu đăng nhập Google không hợp lệ.",
+      };
+      setError(errorMap[rawMessage] ?? "Đăng nhập Google thất bại.");
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -94,11 +148,16 @@ export default function LoginPage() {
           </View>
 
           <View className="flex-row gap-3">
-            <TouchableOpacity className="flex-1 border border-slate-300 rounded-lg py-2 items-center">
-              <Text className="text-sm font-semibold text-slate-700">Google</Text>
-            </TouchableOpacity>
-            <TouchableOpacity className="flex-1 border border-slate-300 rounded-lg py-2 items-center">
-              <Text className="text-sm font-semibold text-slate-700">Facebook</Text>
+            <TouchableOpacity
+              onPress={handleGoogleLogin}
+              disabled={googleLoading || !request}
+              className={`flex-1 border border-slate-300 rounded-lg py-2 items-center justify-center flex-row gap-2 ${googleLoading || !request ? "opacity-60" : ""}`}
+            >
+              {googleLoading ? <ActivityIndicator size="small" color="#EA4335" /> : null}
+              <FontAwesome name="google" size={14} color="#EA4335" />
+              <Text className="text-sm font-semibold text-slate-700">
+                {googleLoading ? "Đang xử lý..." : "Google"}
+              </Text>
             </TouchableOpacity>
           </View>
 
