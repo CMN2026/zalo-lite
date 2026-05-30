@@ -18,7 +18,7 @@ export class UserController {
   static async getMe(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.auth?.userId;
-      const data = await userService.getByIdOrThrow(userId);
+      const data = await userService.getMeOrThrow(userId);
       res.status(200).json({ data });
     } catch (error) {
       next(error);

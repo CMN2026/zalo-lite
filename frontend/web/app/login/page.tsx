@@ -71,6 +71,8 @@ export default function LoginPage() {
           google_auth_not_configured: "Máy chủ chưa cấu hình Google OAuth.",
           account_inactive: "Tài khoản đã bị vô hiệu hóa.",
           validation_error: "Dữ liệu đăng nhập Google không hợp lệ.",
+          email_registered_use_password_login:
+            "Email này đã đăng ký tài khoản. Vui lòng đăng nhập bằng mật khẩu.",
           api_response_is_not_json_check_api_base_url:
             "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
         };

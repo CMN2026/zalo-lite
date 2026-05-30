@@ -75,6 +75,57 @@ export class UserService {
     return user;
   }
 
+  async getMeOrThrow(userId: string | undefined) {
+    if (!userId) {
+      throw new HttpError(401, "unauthorized");
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        phone: true,
+        fullName: true,
+        avatarUrl: true,
+        coverUrl: true,
+        bio: true,
+        gender: true,
+        dateOfBirth: true,
+        role: true,
+        plan: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        localCredential: {
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new HttpError(404, "user_not_found");
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      phone: user.phone,
+      fullName: user.fullName,
+      avatarUrl: user.avatarUrl,
+      coverUrl: user.coverUrl,
+      bio: user.bio,
+      gender: user.gender,
+      dateOfBirth: user.dateOfBirth,
+      role: user.role,
+      plan: user.plan,
+      isActive: user.isActive,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      canChangePassword: Boolean(user.localCredential),
+    };
+  }
+
   async updateProfile(
     userId: string | undefined,
     input: {

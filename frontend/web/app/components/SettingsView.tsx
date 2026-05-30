@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Eye, EyeOff, Globe, Lock, Monitor, Moon, Shield, Sun } from "lucide-react";
 import { clearAuthSession, getAuthToken } from "../lib/auth";
 import { WEB_GATEWAY_BASE_URL } from "../lib/runtime-base-url";
+import { getMe } from "../lib/users";
 
 type SettingsCategory = "security" | "appearance";
 
@@ -31,6 +32,7 @@ export default function SettingsView({
           security: "Security",
           appearance: "Appearance",
           securityTitle: "Security",
+          chooseChangePassword: "Choose Change Password",
           currentPassword: "Current password",
           newPassword: "New password",
           confirmPassword: "Confirm new password",
@@ -51,6 +53,8 @@ export default function SettingsView({
           expired: "Session expired. Please log in again.",
           noEndpoint: "Change-password endpoint is not enabled on server yet.",
           changeFail: "Unable to change password. Please try again.",
+          googleNoPasswordChange:
+            "Password change feature is not available for Google accounts!",
           changed: "Password changed successfully.",
           connectFail: "Cannot connect to server. Please try again.",
           successTitle: "Password changed successfully",
@@ -70,6 +74,7 @@ export default function SettingsView({
           security: "Bảo mật",
           appearance: "Giao diện",
           securityTitle: "Bảo mật",
+          chooseChangePassword: "Chọn đổi mật khẩu",
           currentPassword: "Mật khẩu hiện tại",
           newPassword: "Mật khẩu mới",
           confirmPassword: "Xác nhận mật khẩu mới",
@@ -90,6 +95,8 @@ export default function SettingsView({
           expired: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
           noEndpoint: "Chức năng đổi mật khẩu chưa được bật trên máy chủ.",
           changeFail: "Không thể đổi mật khẩu. Vui lòng thử lại.",
+          googleNoPasswordChange:
+            "Tính năng đổi mật khẩu không khả dụng với tài khoản google!",
           changed: "Đổi mật khẩu thành công.",
           connectFail: "Không thể kết nối máy chủ. Vui lòng thử lại.",
           successTitle: "Thay đổi mật khẩu thành công",
@@ -114,6 +121,26 @@ export default function SettingsView({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [logoutCountdown, setLogoutCountdown] = useState(3);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [canChangePassword, setCanChangePassword] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadMe = async () => {
+      try {
+        const response = await getMe();
+        if (!isMounted) return;
+        setCanChangePassword(response.data.canChangePassword !== false);
+      } catch {
+        if (!isMounted) return;
+        setCanChangePassword(true);
+      }
+    };
+    void loadMe();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleChangePassword = async () => {
     setPasswordNotice("");
@@ -245,91 +272,112 @@ export default function SettingsView({
           {category === "security" ? (
             <>
               <h2 className="mb-5 text-4xl font-bold text-slate-900">{t.securityTitle}</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-600">
-                    {t.currentPassword}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showCurrentPassword ? "text" : "password"}
-                      value={currentPassword}
-                      onChange={(event) => setCurrentPassword(event.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={t.currentPlaceholder}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowCurrentPassword((prev) => !prev)}
-                      className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
-                      aria-label={showCurrentPassword ? "Ẩn mật khẩu hiện tại" : "Hiện mật khẩu hiện tại"}
-                      title={showCurrentPassword ? "Ẩn mật khẩu hiện tại" : "Hiện mật khẩu hiện tại"}
-                    >
-                      {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPasswordNotice("");
+                  setShowPasswordForm((prev) => !prev);
+                }}
+                disabled={!canChangePassword}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                <Lock className="h-4 w-4" />
+                {t.chooseChangePassword}
+              </button>
+
+              {!canChangePassword && (
+                <p className="mt-3 text-sm font-medium text-red-600">{t.googleNoPasswordChange}</p>
+              )}
+
+              {showPasswordForm && canChangePassword && (
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="mb-1 block text-sm font-semibold text-slate-600">
+                      {t.currentPassword}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showCurrentPassword ? "text" : "password"}
+                        value={currentPassword}
+                        onChange={(event) => setCurrentPassword(event.target.value)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={t.currentPlaceholder}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCurrentPassword((prev) => !prev)}
+                        className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
+                        aria-label={showCurrentPassword ? "Ẩn mật khẩu hiện tại" : "Hiện mật khẩu hiện tại"}
+                        title={showCurrentPassword ? "Ẩn mật khẩu hiện tại" : "Hiện mật khẩu hiện tại"}
+                      >
+                        {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-semibold text-slate-600">
+                      {t.newPassword}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showNewPassword ? "text" : "password"}
+                        value={newPassword}
+                        onChange={(event) => setNewPassword(event.target.value)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={t.newPlaceholder}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword((prev) => !prev)}
+                        className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
+                        aria-label={showNewPassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"}
+                        title={showNewPassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"}
+                      >
+                        {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-semibold text-slate-600">
+                      {t.confirmPassword}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={confirmPassword}
+                        onChange={(event) => setConfirmPassword(event.target.value)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={t.confirmPlaceholder}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword((prev) => !prev)}
+                        className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
+                        aria-label={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
+                        title={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-600">
-                    {t.newPassword}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showNewPassword ? "text" : "password"}
-                      value={newPassword}
-                      onChange={(event) => setNewPassword(event.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={t.newPlaceholder}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPassword((prev) => !prev)}
-                      className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
-                      aria-label={showNewPassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"}
-                      title={showNewPassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"}
-                    >
-                      {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-600">
-                    {t.confirmPassword}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showConfirmPassword ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(event) => setConfirmPassword(event.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={t.confirmPlaceholder}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword((prev) => !prev)}
-                      className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
-                      aria-label={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
-                      title={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
-                    >
-                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
+              )}
 
               {passwordNotice && (
                 <p className="mt-4 text-sm text-slate-600">{passwordNotice}</p>
               )}
 
-              <button
-                type="button"
-                onClick={() => void handleChangePassword()}
-                disabled={changingPassword}
-                className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                <Lock className="h-4 w-4" />
-                {changingPassword ? t.changing : t.changePassword}
-              </button>
+              {showPasswordForm && canChangePassword && (
+                <button
+                  type="button"
+                  onClick={() => void handleChangePassword()}
+                  disabled={changingPassword}
+                  className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <Lock className="h-4 w-4" />
+                  {changingPassword ? t.changing : t.changePassword}
+                </button>
+              )}
             </>
           ) : (
             <>

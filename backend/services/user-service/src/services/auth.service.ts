@@ -383,6 +383,15 @@ export class AuthService {
       throw new HttpError(403, "google_email_not_verified");
     }
 
+    const existingUserByEmail = await prisma.user.findUnique({
+      where: { email: identity.email },
+      include: { localCredential: true },
+    });
+
+    if (existingUserByEmail?.localCredential) {
+      throw new HttpError(409, "email_registered_use_password_login");
+    }
+
     if (input.phone) {
       const occupied = await prisma.user.findUnique({ where: { phone: input.phone } });
       if (occupied && occupied.email !== identity.email) {
@@ -427,10 +436,6 @@ export class AuthService {
       : UserRole.USER;
 
     const user = await prisma.$transaction(async (tx) => {
-      const existingUserByEmail = await tx.user.findUnique({
-        where: { email: identity.email },
-      });
-
       const targetUser = existingUserByEmail
         ? await tx.user.update({
             where: { id: existingUserByEmail.id },
