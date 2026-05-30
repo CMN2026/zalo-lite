@@ -15,6 +15,7 @@ export type ProfileUser = {
   isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
+  canChangePassword?: boolean;
 };
 
 export type FriendRequest = {
