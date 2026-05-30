@@ -4,16 +4,16 @@ services:
     container_name: zalo-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: zalo_user
-      POSTGRES_USER: zalo
-      POSTGRES_PASSWORD: zalo
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../../backend/services/user-service/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U zalo -d zalo_user" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -45,19 +45,19 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      PORT: 3001
-      DATABASE_URL: postgres://zalo:zalo@postgres:5432/zalo_user
-      GOOGLE_CLIENT_ID: ""
-      GOOGLE_CLIENT_IDS: ""
-      ADMIN_EMAILS: ""
-      JWT_SECRET: super-strong-jwt-secret
-      JWT_EXPIRES_IN: 7d
-      JWT_ISSUER: zalo-lite-user-service
-      JWT_AUDIENCE: zalo-lite-clients
-      BCRYPT_ROUNDS: 10
-      RATE_LIMIT_WINDOW_MS: 60000
-      RATE_LIMIT_MAX: 200
-      CORS_ORIGINS: http://32.236.47.127:3000,http://32.236.47.127:3004
+      PORT: ${USER_SERVICE_PORT}
+      DATABASE_URL: ${USER_SERVICE_DATABASE_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS}
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      JWT_ISSUER: ${JWT_ISSUER}
+      JWT_AUDIENCE: ${JWT_AUDIENCE}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS}
+      RATE_LIMIT_WINDOW_MS: ${USER_RATE_LIMIT_WINDOW_MS}
+      RATE_LIMIT_MAX: ${USER_RATE_LIMIT_MAX}
+      CORS_ORIGINS: ${CORS_ORIGINS}
     ports:
       - "3001:3001"
       - "50051:50051"
@@ -82,35 +82,35 @@ services:
       livekit:
         condition: service_started
     environment:
-      PORT: 3002
-      REDIS_URL: redis://redis:6379
+      PORT: ${CHAT_SERVICE_PORT}
+      REDIS_URL: ${CHAT_SERVICE_REDIS_URL}
       # DYNAMODB_ENDPOINT: removed — using AWS DynamoDB Cloud
-      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_REGION: ${AWS_REGION}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      USE_S3: ${USE_S3:-true}
-      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-zalo-lite-uploads-nhom10}
-      USER_SERVICE_BASE_URL: http://user-service:3001
-      JWT_SECRET: super-strong-jwt-secret
-      JWT_ISSUER: zalo-lite-user-service
-      JWT_AUDIENCE: zalo-lite-clients
-      RATE_LIMIT_WINDOW_MS: 60000
-      RATE_LIMIT_MAX: 300
-      REDIS_MESSAGE_CHANNEL: chat:messages
-      REDIS_CALL_SIGNAL_CHANNEL: chat:calls:signaling
-      TABLE_CONVERSATIONS: conversations
-      TABLE_CONVERSATION_MEMBERS: conversation_members
-      TABLE_MESSAGES: messages
-      TABLE_FRIEND_REQUESTS: friend_requests
-      TABLE_FRIENDSHIPS: friendships
-      TABLE_CALL_SESSIONS: call_sessions
-      TABLE_CALL_HISTORY: call_history
-      LIVEKIT_URL: ws://livekit:7880
-      LIVEKIT_PUBLIC_URL: ws://32.236.47.127:7880
-      LIVEKIT_API_KEY: dev-livekit-api-key-zalo-lite-2026
-      LIVEKIT_API_SECRET: dev-livekit-api-secret-zalo-lite-2026-production-ready
-      CALL_INVITE_TIMEOUT_SECONDS: 30
-      CORS_ORIGINS: http://32.236.47.127:3000,http://32.236.47.127:3004
+      USE_S3: ${USE_S3}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      USER_SERVICE_BASE_URL: ${CHAT_SERVICE_USER_SERVICE_BASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER}
+      JWT_AUDIENCE: ${JWT_AUDIENCE}
+      RATE_LIMIT_WINDOW_MS: ${CHAT_RATE_LIMIT_WINDOW_MS}
+      RATE_LIMIT_MAX: ${CHAT_RATE_LIMIT_MAX}
+      REDIS_MESSAGE_CHANNEL: ${REDIS_MESSAGE_CHANNEL}
+      REDIS_CALL_SIGNAL_CHANNEL: ${REDIS_CALL_SIGNAL_CHANNEL}
+      TABLE_CONVERSATIONS: ${TABLE_CONVERSATIONS}
+      TABLE_CONVERSATION_MEMBERS: ${TABLE_CONVERSATION_MEMBERS}
+      TABLE_MESSAGES: ${TABLE_MESSAGES}
+      TABLE_FRIEND_REQUESTS: ${TABLE_FRIEND_REQUESTS}
+      TABLE_FRIENDSHIPS: ${TABLE_FRIENDSHIPS}
+      TABLE_CALL_SESSIONS: ${TABLE_CALL_SESSIONS}
+      TABLE_CALL_HISTORY: ${TABLE_CALL_HISTORY}
+      LIVEKIT_URL: ${LIVEKIT_URL}
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      CALL_INVITE_TIMEOUT_SECONDS: ${CALL_INVITE_TIMEOUT_SECONDS}
+      CORS_ORIGINS: ${CORS_ORIGINS}
     ports:
       - "3002:3002"
     volumes:
@@ -134,29 +134,29 @@ services:
       redis:
         condition: service_healthy
     environment:
-      PORT: 3003
-      NODE_ENV: development
-      REDIS_URL: redis://redis:6379
+      PORT: ${CHATBOT_SERVICE_PORT}
+      NODE_ENV: ${NODE_ENV}
+      REDIS_URL: ${CHATBOT_SERVICE_REDIS_URL}
       # DYNAMODB_ENDPOINT: removed — using AWS DynamoDB Cloud
-      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_REGION: ${AWS_REGION}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      USER_SERVICE_BASE_URL: http://user-service:3001
-      CHAT_SERVICE_BASE_URL: http://chat-service:3002
-      JWT_SECRET: super-strong-jwt-secret
-      JWT_ISSUER: zalo-lite-user-service
-      JWT_AUDIENCE: zalo-lite-clients
-      RATE_LIMIT_WINDOW_MS: 60000
-      RATE_LIMIT_MAX: 200
-      TABLE_CONVERSATIONS: chatbot_conversations
-      TABLE_FAQ: chatbot_faq
-      TABLE_NOTIFICATIONS: chatbot_notifications
-      TABLE_ANALYTICS: chatbot_analytics
-      AUTO_CLOSE_INACTIVE_HOURS: 24
-      REDIS_NOTIFICATION_CHANNEL: notifications:broadcast
-      CORS_ORIGINS: http://32.236.47.127:3000,http://32.236.47.127:3004
-      ENABLE_AI_ENGINE: "true"
-      GEMINI_API_KEY: AIzaSyAT_rd1_cJxwNUYSBUDiLCLU-AJU-CWVMY
+      USER_SERVICE_BASE_URL: ${CHATBOT_USER_SERVICE_BASE_URL}
+      CHAT_SERVICE_BASE_URL: ${CHATBOT_CHAT_SERVICE_BASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER}
+      JWT_AUDIENCE: ${JWT_AUDIENCE}
+      RATE_LIMIT_WINDOW_MS: ${CHATBOT_RATE_LIMIT_WINDOW_MS}
+      RATE_LIMIT_MAX: ${CHATBOT_RATE_LIMIT_MAX}
+      TABLE_CONVERSATIONS: ${CHATBOT_TABLE_CONVERSATIONS}
+      TABLE_FAQ: ${CHATBOT_TABLE_FAQ}
+      TABLE_NOTIFICATIONS: ${CHATBOT_TABLE_NOTIFICATIONS}
+      TABLE_ANALYTICS: ${CHATBOT_TABLE_ANALYTICS}
+      AUTO_CLOSE_INACTIVE_HOURS: ${AUTO_CLOSE_INACTIVE_HOURS}
+      REDIS_NOTIFICATION_CHANNEL: ${REDIS_NOTIFICATION_CHANNEL}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      ENABLE_AI_ENGINE: ${ENABLE_AI_ENGINE}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
     ports:
       - "3003:3003"
     healthcheck:
@@ -204,14 +204,14 @@ services:
       chatbot-service:
         condition: service_healthy
     environment:
-      PORT: 3004
-      USER_SERVICE_URL: http://user-service:3001
-      CHAT_SERVICE_URL: http://chat-service:3002
-      CHATBOT_SERVICE_URL: http://chatbot-service:3003
-      JWT_SECRET: super-strong-jwt-secret
-      JWT_ISSUER: zalo-lite-user-service
-      JWT_AUDIENCE: zalo-lite-clients
-      CORS_ORIGINS: http://32.236.47.127:3000,http://32.236.47.127:3004
+      PORT: ${API_GATEWAY_PORT}
+      USER_SERVICE_URL: ${API_GATEWAY_USER_SERVICE_URL}
+      CHAT_SERVICE_URL: ${API_GATEWAY_CHAT_SERVICE_URL}
+      CHATBOT_SERVICE_URL: ${API_GATEWAY_CHATBOT_SERVICE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER}
+      JWT_AUDIENCE: ${JWT_AUDIENCE}
+      CORS_ORIGINS: ${CORS_ORIGINS}
     ports:
       - "3004:3004"
     healthcheck:

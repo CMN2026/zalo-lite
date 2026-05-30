@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: ["**"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-check:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: API Gateway
+            working_directory: backend/api-gateway
+            run_lint: "false"
+            run_typecheck: "true"
+            run_build: "true"
+          - name: User Service
+            working_directory: backend/services/user-service
+            run_lint: "false"
+            run_typecheck: "true"
+            run_build: "true"
+          - name: Chat Service
+            working_directory: backend/services/chat-service
+            run_lint: "false"
+            run_typecheck: "true"
+            run_build: "true"
+          - name: Chatbot Service
+            working_directory: backend/services/chatbot-service
+            run_lint: "false"
+            run_typecheck: "false"
+            run_build: "true"
+          - name: Post Service
+            working_directory: backend/services/post-service
+            run_lint: "false"
+            run_typecheck: "true"
+            run_build: "true"
+          - name: Web Frontend
+            working_directory: frontend/web
+            run_lint: "true"
+            run_typecheck: "false"
+            run_build: "true"
+          - name: Mobile Frontend
+            working_directory: frontend/mobile
+            run_lint: "true"
+            run_typecheck: "false"
+            run_build: "false"
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.working_directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.working_directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        if: matrix.run_lint == 'true'
+        run: npm run lint
+
+      - name: Typecheck
+        if: matrix.run_typecheck == 'true'
+        run: npm run typecheck
+
+      - name: Build
+        if: matrix.run_build == 'true'
+        run: npm run build
