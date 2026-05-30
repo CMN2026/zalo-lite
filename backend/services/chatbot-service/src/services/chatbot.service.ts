@@ -102,13 +102,13 @@ export class ChatbotService {
       // Fetch conversation history to provide context
       let historyText = "";
       try {
-        const historyMsgs = await conversationRepository.getMessages(convId, 8);
+        const historyMsgs = await conversationRepository.getHistory(convId, 8);
         if (historyMsgs && historyMsgs.length > 0) {
           // Sort ascending for chronological order
-          const sorted = historyMsgs.sort((a, b) => a.createdAt - b.createdAt);
+          const sorted = historyMsgs.sort((a: any, b: any) => a.createdAt - b.createdAt);
           historyText = sorted
-            .filter((m) => m.id !== userMessage.id) // Exclude current message
-            .map((msg) => `${msg.type === "user" ? "User" : "Trợ lý Zalo-Lite"}: ${msg.content}`)
+            .filter((m: any) => m.id !== userMessage.id) // Exclude current message
+            .map((msg: any) => `${msg.type === "user" ? "User" : "Trợ lý Zalo-Lite"}: ${msg.content}`)
             .join("\n");
         }
       } catch (err) {

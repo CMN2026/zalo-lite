@@ -1,6 +1,7 @@
 import { AIProvider } from "./ai-provider.interface.js";
 import { OllamaProvider } from "./ollama.provider.js";
 import { GeminiProvider } from "./gemini.provider.js";
+import { GroqProvider } from "./groq.provider.js";
 import {
   markProviderFailure,
   recordProviderLatency,
@@ -8,7 +9,7 @@ import {
 
 type ProviderEntry = { instance: AIProvider; priority: number };
 
-const DEFAULT_PRIORITY = ["ollama", "gemini"];
+const DEFAULT_PRIORITY = ["groq", "ollama", "gemini"];
 
 export class ProviderFactory {
   private readonly providers: ProviderEntry[] = [];
@@ -24,6 +25,11 @@ export class ProviderFactory {
       if (name === "ollama")
         this.providers.push({
           instance: new OllamaProvider(process.env.OLLAMA_MODEL),
+          priority: this.providers.length,
+        });
+      if (name === "groq")
+        this.providers.push({
+          instance: new GroqProvider(process.env.GROQ_MODEL),
           priority: this.providers.length,
         });
       if (name === "gemini")

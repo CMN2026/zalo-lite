@@ -184,7 +184,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-AIzaSyAT_rd1_cJxwNUYSBUDiLCLU-AJU-CWVMY}
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
-      AI_PROVIDER_PRIORITY: ${AI_PROVIDER_PRIORITY:-ollama,gemini}
+      AI_PROVIDER_PRIORITY: ${AI_PROVIDER_PRIORITY:-groq,gemini}
     ports:
       - "3003:3003"
     healthcheck:
@@ -215,20 +215,6 @@ services:
       retries: 5
       start_period: 10s
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: zalo-ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_models:/root/.ollama
-    healthcheck:
-      test: [ "CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:11434/api/ping || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 
   ai-worker-service:
     build:
@@ -329,4 +315,3 @@ volumes:
   redis_data:
   chat_uploads:
   post_uploads:
-  ollama_models:
