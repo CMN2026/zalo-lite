@@ -1,6 +1,5 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
-/* eslint-disable sonarjs/no-nested-functions */
 
 import React, {
   useCallback,
