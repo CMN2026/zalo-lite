@@ -4,18 +4,67 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Search, Users, X } from "lucide-react";
 import { listFriends, type ProfileUser } from "../lib/users";
 import { createConversation } from "../lib/conversations";
+import type { AppLanguage } from "./SettingsView";
 
 interface CreateGroupModalProps {
   open: boolean;
   onClose: () => void;
   onCreated: (conversationId: string) => void;
+  language?: AppLanguage;
 }
 
 export default function CreateGroupModal({
   open,
   onClose,
   onCreated,
+  language = "vi",
 }: CreateGroupModalProps) {
+  const t =
+    language === "en"
+      ? {
+          loadFriendsFail: "Unable to load friend list.",
+          minMembers: "Group requires at least 2 members (excluding you).",
+          inputName: "Please enter group name.",
+          createGroup: "Create group",
+          subtitle: "Select friends to add into group",
+          groupName: "Group name",
+          groupNamePlaceholder: "Enter group name...",
+          selected: "selected",
+          searchFriends: "Search friends...",
+          loadingFriends: "Loading friend list...",
+          noFriends: "You don't have any friends yet.",
+          noMatchedFriends: "No matching friends found.",
+          noPhone: "No phone number",
+          selectedMembers: "members selected",
+          cancel: "Cancel",
+          creating: "Creating...",
+          loginAgain: "Please sign in again.",
+          sessionExpired: "Session expired.",
+          groupNeedThree: "Group requires at least 3 members (including you).",
+          unknownError: "Something went wrong. Please try again.",
+        }
+      : {
+          loadFriendsFail: "Không thể tải danh sách bạn bè.",
+          minMembers: "Nhóm cần ít nhất 2 thành viên (ngoài bạn).",
+          inputName: "Vui lòng nhập tên nhóm.",
+          createGroup: "Tạo nhóm chat",
+          subtitle: "Chọn bạn bè để thêm vào nhóm",
+          groupName: "Tên nhóm",
+          groupNamePlaceholder: "Nhập tên nhóm...",
+          selected: "đã chọn",
+          searchFriends: "Tìm kiếm bạn bè...",
+          loadingFriends: "Đang tải danh sách bạn bè...",
+          noFriends: "Bạn chưa có bạn bè nào.",
+          noMatchedFriends: "Không tìm thấy bạn bè phù hợp.",
+          noPhone: "Không có SĐT",
+          selectedMembers: "thành viên đã chọn",
+          cancel: "Hủy",
+          creating: "Đang tạo...",
+          loginAgain: "Vui lòng đăng nhập lại.",
+          sessionExpired: "Phiên đăng nhập đã hết hạn.",
+          groupNeedThree: "Nhóm cần ít nhất 3 thành viên (bao gồm bạn).",
+          unknownError: "Có lỗi xảy ra. Vui lòng thử lại.",
+        };
   const [groupName, setGroupName] = useState("");
   const [friends, setFriends] = useState<ProfileUser[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -41,7 +90,7 @@ export default function CreateGroupModal({
       const response = await listFriends();
       setFriends(response.data);
     } catch {
-      setError("Không thể tải danh sách bạn bè.");
+      setError(t.loadFriendsFail);
     } finally {
       setLoading(false);
     }
@@ -84,11 +133,11 @@ export default function CreateGroupModal({
 
   async function handleCreate() {
     if (selectedIds.size < 2) {
-      setError("Nhóm cần ít nhất 2 thành viên (ngoài bạn).");
+      setError(t.minMembers);
       return;
     }
     if (!groupName.trim()) {
-      setError("Vui lòng nhập tên nhóm.");
+      setError(t.inputName);
       return;
     }
 
@@ -107,11 +156,11 @@ export default function CreateGroupModal({
       const message = err instanceof Error ? err.message : "request_failed";
       const labels: Record<string, string> = {
         group_requires_at_least_three_members:
-          "Nhóm cần ít nhất 3 thành viên (bao gồm bạn).",
-        missing_local_session: "Vui lòng đăng nhập lại.",
-        invalid_or_expired_token: "Phiên đăng nhập đã hết hạn.",
+          t.groupNeedThree,
+        missing_local_session: t.loginAgain,
+        invalid_or_expired_token: t.sessionExpired,
       };
-      setError(labels[message] ?? "Có lỗi xảy ra. Vui lòng thử lại.");
+      setError(labels[message] ?? t.unknownError);
     } finally {
       setCreating(false);
     }
@@ -136,11 +185,9 @@ export default function CreateGroupModal({
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-800">
-                Tạo nhóm chat
+                {t.createGroup}
               </h2>
-              <p className="text-xs text-slate-500">
-                Chọn bạn bè để thêm vào nhóm
-              </p>
+              <p className="text-xs text-slate-500">{t.subtitle}</p>
             </div>
           </div>
           <button
@@ -154,12 +201,12 @@ export default function CreateGroupModal({
         {/* Group name */}
         <div className="px-6 pt-4">
           <label className="block mb-1 text-xs font-semibold uppercase text-slate-500">
-            Tên nhóm
+            {t.groupName}
           </label>
           <input
             value={groupName}
             onChange={(e) => setGroupName(e.target.value)}
-            placeholder="Nhập tên nhóm..."
+            placeholder={t.groupNamePlaceholder}
             maxLength={100}
             className="w-full bg-slate-50 border border-slate-200 text-sm rounded-lg py-2.5 px-3 outline-none focus:ring-2 focus:ring-blue-500"
           />
@@ -183,7 +230,7 @@ export default function CreateGroupModal({
               </span>
             ))}
             <span className="text-xs text-slate-400 self-center">
-              ({selectedFriends.length} đã chọn)
+              ({selectedFriends.length} {t.selected})
             </span>
           </div>
         )}
@@ -195,7 +242,7 @@ export default function CreateGroupModal({
             <input
               value={filterQuery}
               onChange={(e) => setFilterQuery(e.target.value)}
-              placeholder="Tìm kiếm bạn bè..."
+              placeholder={t.searchFriends}
               className="w-full bg-slate-50 border border-slate-200 text-sm rounded-lg py-2.5 pl-9 pr-4 outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -212,13 +259,13 @@ export default function CreateGroupModal({
         <div className="flex-1 overflow-y-auto mt-3 border-t border-slate-100 min-h-0">
           {loading ? (
             <div className="p-8 text-center text-sm text-slate-500">
-              Đang tải danh sách bạn bè...
+              {t.loadingFriends}
             </div>
           ) : filteredFriends.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">
               {friends.length === 0
-                ? "Bạn chưa có bạn bè nào."
-                : "Không tìm thấy bạn bè phù hợp."}
+                ? t.noFriends
+                : t.noMatchedFriends}
             </div>
           ) : (
             <div className="divide-y divide-slate-50">
@@ -260,7 +307,7 @@ export default function CreateGroupModal({
                         {friend.fullName}
                       </div>
                       <div className="text-xs text-slate-500 truncate mt-0.5">
-                        {friend.phone ?? "Không có SĐT"}
+                        {friend.phone ?? t.noPhone}
                       </div>
                     </div>
                   </label>
@@ -273,14 +320,14 @@ export default function CreateGroupModal({
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
           <span className="text-sm text-slate-500">
-            {selectedIds.size} thành viên đã chọn
+            {selectedIds.size} {t.selectedMembers}
           </span>
           <div className="flex gap-3">
             <button
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 border border-slate-200 bg-white hover:bg-slate-50 transition-colors"
             >
-              Hủy
+              {t.cancel}
             </button>
             <button
               onClick={handleCreate}
@@ -288,7 +335,7 @@ export default function CreateGroupModal({
               className="px-5 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
             >
               <Users className="w-4 h-4" />
-              {creating ? "Đang tạo..." : "Tạo nhóm"}
+              {creating ? t.creating : (language === "en" ? "Create group" : "Tạo nhóm")}
             </button>
           </div>
         </div>

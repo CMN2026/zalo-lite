@@ -1,9 +1,35 @@
 import { PostRepository, type Post } from "../repositories/post.repository.js";
+import { ReactionRepository, type ReactionType } from "../repositories/reaction.repository.js";
 import { getUserClientService } from "./user-client.service.js";
 import { HttpError } from "../utils/http-error.js";
 
+type PostWithViewerReaction = Post & {
+  my_reaction: ReactionType | null;
+};
+
 export class PostService {
   private readonly postRepository = new PostRepository();
+  private readonly reactionRepository = new ReactionRepository();
+
+  private async attachViewerReaction(
+    posts: Post[],
+    userId: string,
+  ): Promise<PostWithViewerReaction[]> {
+    const enriched = await Promise.all(
+      posts.map(async (post) => {
+        const userReaction = await this.reactionRepository.getByPostIdAndUserId(
+          post.id,
+          userId,
+        );
+        return {
+          ...post,
+          my_reaction: userReaction?.reaction ?? null,
+        };
+      }),
+    );
+
+    return enriched;
+  }
 
   async createPost(input: {
     user_id: string;
@@ -25,7 +51,11 @@ export class PostService {
     return post;
   }
 
-  async getPost(postId: string, viewerId: string, token?: string): Promise<Post> {
+  async getPost(
+    postId: string,
+    viewerId: string,
+    token?: string,
+  ): Promise<PostWithViewerReaction> {
     const post = await this.postRepository.getById(postId);
     if (!post) {
       throw new HttpError(404, "post_not_found");
@@ -40,23 +70,31 @@ export class PostService {
       }
     }
 
-    return post;
+    const userReaction = await this.reactionRepository.getByPostIdAndUserId(
+      post.id,
+      viewerId,
+    );
+    return {
+      ...post,
+      my_reaction: userReaction?.reaction ?? null,
+    };
   }
 
   async getFeed(
     userId: string,
     token?: string,
     limit = 50,
-  ): Promise<Post[]> {
+  ): Promise<PostWithViewerReaction[]> {
     const userClient = getUserClientService();
     const friendIds = await userClient.getFriendIds(userId, token);
 
     const posts = await this.postRepository.listFeed(friendIds, userId, limit);
-    return posts;
+    return this.attachViewerReaction(posts, userId);
   }
 
-  async getMyPosts(userId: string, limit = 50): Promise<Post[]> {
-    return this.postRepository.listByUserId(userId, limit);
+  async getMyPosts(userId: string, limit = 50): Promise<PostWithViewerReaction[]> {
+    const posts = await this.postRepository.listByUserId(userId, limit);
+    return this.attachViewerReaction(posts, userId);
   }
 
   async getUserPosts(
@@ -64,10 +102,11 @@ export class PostService {
     viewerId: string,
     token?: string,
     limit = 50,
-  ): Promise<Post[]> {
+  ): Promise<PostWithViewerReaction[]> {
     // If viewing own posts, no access check needed
     if (targetUserId === viewerId) {
-      return this.postRepository.listByUserId(targetUserId, limit);
+      const ownPosts = await this.postRepository.listByUserId(targetUserId, limit);
+      return this.attachViewerReaction(ownPosts, viewerId);
     }
 
     // Check if viewer is friend of target user
@@ -77,7 +116,8 @@ export class PostService {
       throw new HttpError(403, "not_authorized_to_view_posts");
     }
 
-    return this.postRepository.listByUserId(targetUserId, limit);
+    const posts = await this.postRepository.listByUserId(targetUserId, limit);
+    return this.attachViewerReaction(posts, viewerId);
   }
 
   async deletePost(postId: string, userId: string): Promise<void> {
