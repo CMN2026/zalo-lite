@@ -48,6 +48,70 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [language, setLanguage] = useState<"vi" | "en">("vi");
+  const t =
+    language === "en"
+      ? {
+          signIn: "Sign In",
+          idLabel: "Email Address Or Phone Number",
+          password: "Password",
+          forgot: "Forgot?",
+          remember: "Remember me",
+          signingIn: "Signing in...",
+          googleFail: "Google sign-in failed.",
+          noGoogleToken: "Google token was not received.",
+          googleConfigMissing:
+            "Missing `NEXT_PUBLIC_GOOGLE_CLIENT_ID` configuration to enable Google sign-in.",
+          noAccount: "Don't have an account?",
+          signUp: "Sign Up",
+          copyright: "© 2024 Zalo Lite. All rights reserved.",
+          showPassword: "Show password",
+          hidePassword: "Hide password",
+          loginFailed: "Sign-in failed. Please try again.",
+          invalidCredentials: "Incorrect account or password.",
+          accountInactive: "Account has been deactivated.",
+          invalidLoginData: "Invalid login data.",
+          invalidSession: "Invalid login session.",
+          serverConfigError: "Server connection error. Please check API configuration.",
+          googleInvalidToken: "Invalid Google token.",
+          googleEmailNotVerified: "Google email is not verified.",
+          googleNotConfigured: "Google OAuth is not configured on server.",
+          usePasswordLogin:
+            "This email already has an account. Please sign in with password.",
+        }
+      : {
+          signIn: "Đăng nhập",
+          idLabel: "Email hoặc số điện thoại",
+          password: "Mật khẩu",
+          forgot: "Quên mật khẩu?",
+          remember: "Ghi nhớ đăng nhập",
+          signingIn: "Đang đăng nhập...",
+          googleFail: "Đăng nhập Google thất bại.",
+          noGoogleToken: "Không nhận được Google token.",
+          googleConfigMissing:
+            "Thiếu cấu hình `NEXT_PUBLIC_GOOGLE_CLIENT_ID` để bật đăng nhập Google.",
+          noAccount: "Chưa có tài khoản?",
+          signUp: "Đăng ký",
+          copyright: "© 2024 Zalo Lite. All rights reserved.",
+          showPassword: "Hiện mật khẩu",
+          hidePassword: "Ẩn mật khẩu",
+          loginFailed: "Đăng nhập thất bại. Vui lòng thử lại.",
+          invalidCredentials: "Sai thông tin tài khoản hoặc mật khẩu.",
+          accountInactive: "Tài khoản đã bị vô hiệu hóa.",
+          invalidLoginData: "Dữ liệu đăng nhập không hợp lệ.",
+          invalidSession: "Phiên đăng nhập không hợp lệ.",
+          serverConfigError: "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
+          googleInvalidToken: "Google token không hợp lệ.",
+          googleEmailNotVerified: "Email Google chưa được xác minh.",
+          googleNotConfigured: "Máy chủ chưa cấu hình Google OAuth.",
+          usePasswordLogin:
+            "Email này đã đăng ký tài khoản. Vui lòng đăng nhập bằng mật khẩu.",
+        };
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    setLanguage(document.documentElement.lang === "en" ? "en" : "vi");
+  }, []);
 
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "";
 
@@ -64,19 +128,18 @@ export default function LoginPage() {
         const rawMessage =
           err instanceof Error && err.message
             ? err.message
-            : "Đăng nhập Google thất bại.";
+            : t.googleFail;
         const errorMap: Record<string, string> = {
-          invalid_google_token: "Google token không hợp lệ.",
-          google_email_not_verified: "Email Google chưa được xác minh.",
-          google_auth_not_configured: "Máy chủ chưa cấu hình Google OAuth.",
-          account_inactive: "Tài khoản đã bị vô hiệu hóa.",
-          validation_error: "Dữ liệu đăng nhập Google không hợp lệ.",
-          email_registered_use_password_login:
-            "Email này đã đăng ký tài khoản. Vui lòng đăng nhập bằng mật khẩu.",
+          invalid_google_token: t.googleInvalidToken,
+          google_email_not_verified: t.googleEmailNotVerified,
+          google_auth_not_configured: t.googleNotConfigured,
+          account_inactive: t.accountInactive,
+          validation_error: t.invalidLoginData,
+          email_registered_use_password_login: t.usePasswordLogin,
           api_response_is_not_json_check_api_base_url:
-            "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
+            t.serverConfigError,
         };
-        setError(errorMap[rawMessage] ?? "Đăng nhập Google thất bại.");
+        setError(errorMap[rawMessage] ?? t.googleFail);
       } finally {
         setGoogleLoading(false);
       }
@@ -95,7 +158,7 @@ export default function LoginPage() {
       callback: (response) => {
         const credential = response.credential?.trim();
         if (!credential) {
-          setError("Không nhận được Google token.");
+          setError(t.noGoogleToken);
           return;
         }
         void handleGoogleCredential(credential);
@@ -141,16 +204,16 @@ export default function LoginPage() {
       const rawMessage =
         err instanceof Error && err.message
           ? err.message
-          : "Đăng nhập thất bại. Vui lòng thử lại.";
+          : t.loginFailed;
       const errorMap: Record<string, string> = {
-        invalid_credentials: "Sai thông tin tài khoản hoặc mật khẩu.",
-        account_inactive: "Tài khoản đã bị vô hiệu hóa.",
-        validation_error: "Dữ liệu đăng nhập không hợp lệ.",
-        missing_local_session: "Phiên đăng nhập không hợp lệ.",
+        invalid_credentials: t.invalidCredentials,
+        account_inactive: t.accountInactive,
+        validation_error: t.invalidLoginData,
+        missing_local_session: t.invalidSession,
         api_response_is_not_json_check_api_base_url:
-          "Lỗi kết nối máy chủ. Vui lòng kiểm tra cấu hình API.",
+          t.serverConfigError,
       };
-      const message = errorMap[rawMessage] ?? "Đăng nhập thất bại. Vui lòng thử lại.";
+      const message = errorMap[rawMessage] ?? t.loginFailed;
       console.error("Login error:", err);
       setError(message);
     } finally {
@@ -166,7 +229,7 @@ export default function LoginPage() {
           +
         </div>
         <h1 className="text-3xl font-bold text-slate-800 mb-2">Zalo Lite</h1>
-        <p className="text-slate-500">Sign In</p>
+        <p className="text-slate-500">{t.signIn}</p>
       </div>
 
       {/* Card */}
@@ -175,7 +238,7 @@ export default function LoginPage() {
           {/* Email/Phone */}
           <div>
             <label className="text-xs font-bold text-slate-600 uppercase tracking-wide">
-              EMAIL ADDRESS OR PHONE NUMBER
+              {t.idLabel}
             </label>
             <input
               type="text"
@@ -191,10 +254,10 @@ export default function LoginPage() {
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="text-xs font-bold text-slate-600 uppercase tracking-wide">
-                PASSWORD
+                {t.password}
               </label>
               <a href="/forgot-password" className="text-xs text-blue-600 hover:text-blue-700">
-                Forgot?
+                {t.forgot}
               </a>
             </div>
             <div className="relative mt-2">
@@ -210,8 +273,8 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setShowPassword((prev) => !prev)}
                 className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
-                aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
-                title={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                aria-label={showPassword ? t.hidePassword : t.showPassword}
+                title={showPassword ? t.hidePassword : t.showPassword}
               >
                 {showPassword ? (
                   <EyeOff className="h-4 w-4" />
@@ -226,7 +289,7 @@ export default function LoginPage() {
           <div className="flex items-center">
             <input type="checkbox" id="remember" className="w-4 h-4 rounded" />
             <label htmlFor="remember" className="ml-2 text-sm text-slate-600">
-              Remember me
+              {t.remember}
             </label>
           </div>
 
@@ -243,7 +306,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition disabled:opacity-60 mt-6"
           >
-            {loading ? "SIGNING IN..." : "SIGN IN"}
+            {loading ? t.signingIn : t.signIn}
           </button>
         </form>
 
@@ -262,44 +325,27 @@ export default function LoginPage() {
             </div>
           ) : (
             <p className="text-sm text-amber-600 text-center">
-              Thiếu cấu hình `NEXT_PUBLIC_GOOGLE_CLIENT_ID` để bật đăng nhập Google.
+              {t.googleConfigMissing}
             </p>
           )}
         </div>
 
         {/* Footer */}
         <div className="text-center text-sm text-slate-600 mt-6">
-          Don&apos;t have an account?{" "}
+          {t.noAccount}{" "}
           <a
             href="/register"
             className="text-blue-600 font-semibold hover:text-blue-700"
           >
-            Sign Up
+            {t.signUp}
           </a>
         </div>
       </div>
 
       {/* Copyright */}
       <p className="text-xs text-slate-400 mt-8">
-        © 2024 Zalo Lite. All rights reserved.
+        {t.copyright}
       </p>
-
-      {/* Test Accounts Info */}
-      <div className="mt-10 max-w-md text-center text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-4">
-        <p className="font-semibold text-slate-700 mb-2">Test Accounts</p>
-        <p className="mb-2">
-          <strong>admin@example.com</strong>
-          <br />
-          <strong>usera@example.com</strong>
-          <br />
-          <strong>userb@example.com</strong>
-          <br />
-          <strong>userc@example.com</strong>
-        </p>
-        <p>
-          <strong>Password:</strong> test12345
-        </p>
-      </div>
 
       <Script
         src="https://accounts.google.com/gsi/client"
