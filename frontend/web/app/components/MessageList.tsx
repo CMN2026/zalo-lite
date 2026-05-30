@@ -1,4 +1,3 @@
-/* eslint-disable sonarjs/cognitive-complexity */
 "use client";
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from "react";

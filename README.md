@@ -465,6 +465,41 @@ curl -X POST http://localhost:3001/auth/login
 
 ---
 
+## GitHub Actions CI/CD
+
+Project đã được chuẩn bị sẵn 3 workflow:
+
+- `.github/workflows/ci.yml`: chạy `lint`, `typecheck`, `build` cho các service chính khi push/PR.
+- `.github/workflows/cd-images.yml`: khi push `main` sẽ build và push Docker images lên GHCR (`ghcr.io/<owner>/zalo-lite-<service>`).
+- `.github/workflows/deploy-manual.yml`: deploy thủ công qua SSH từ tab Actions (`workflow_dispatch`).
+
+### Required Repository Secrets
+
+Để dùng đầy đủ CI/CD, tạo các secrets trong GitHub repository:
+
+- `DEPLOY_HOST`
+- `DEPLOY_PORT` (optional, default 22)
+- `DEPLOY_USER`
+- `DEPLOY_SSH_KEY`
+- `DEPLOY_PROJECT_DIR`
+- `DEPLOY_COMMAND`
+
+Ví dụ `DEPLOY_COMMAND`:
+
+```bash
+git pull origin main
+docker compose -f infrastructure/docker/docker-compose.yml up -d --build
+docker image prune -f
+```
+
+### Suggested Branch Protection
+
+- Bật branch protection cho `main`
+- Bắt buộc pass workflow `CI` trước khi merge
+- Chỉ cho phép merge qua Pull Request
+
+---
+
 ## Contributing
 
 1. Create feature branch: `git checkout -b feat/your-feature`
