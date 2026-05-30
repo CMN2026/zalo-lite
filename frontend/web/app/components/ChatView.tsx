@@ -4082,6 +4082,7 @@ export default function ChatView({
         <GroupDetailPanel
           conversationId={activeChat.id}
           conversationType={activeChat.type ?? "direct"}
+          language={language}
           messages={activeChat.messages}
           userLookup={userLookup}
           isMuted={Boolean(mutedByConversation[activeChat.id])}
@@ -4183,6 +4184,7 @@ export default function ChatView({
 
       <CreateGroupModal
         open={showCreateGroup}
+        language={language}
         onClose={() => setShowCreateGroup(false)}
         onCreated={(conversationId: string) => {
           setShowCreateGroup(false);

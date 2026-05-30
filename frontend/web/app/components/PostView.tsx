@@ -66,7 +66,7 @@ function CreatePostCard({
   t,
 }: {
   onPostCreated: () => void;
-  t: { thinking: string; post: string };
+  t: { thinking: string; post: string; image: string };
 }) {
   const { user } = useAuth();
   const [content, setContent] = useState("");
@@ -170,7 +170,7 @@ function CreatePostCard({
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-500 hover:bg-slate-50 hover:text-blue-600 transition-colors"
               >
                 <ImageIcon className="w-5 h-5" />
-                <span className="hidden sm:inline">Ảnh</span>
+                <span className="hidden sm:inline">{t.image}</span>
               </button>
               <input
                 ref={fileInputRef}
@@ -363,6 +363,7 @@ function ReactionBar({
   reactionSummary,
   onReactionSummaryChange,
   labels,
+  initialReaction,
 }: {
   postId: string;
   reactionSummary: ReactionSummary;
@@ -373,6 +374,7 @@ function ReactionBar({
     sad: string;
     angry: string;
   };
+  initialReaction?: ReactionType | null;
 }) {
   const reactionConfig = [
     { key: "like" as const, emoji: "👍", label: labels.like, color: "#2563eb" },
@@ -381,10 +383,16 @@ function ReactionBar({
     { key: "sad" as const, emoji: "😢", label: labels.sad, color: "#f59e0b" },
     { key: "angry" as const, emoji: "😡", label: labels.angry, color: "#ef4444" },
   ];
-  const [myReaction, setMyReaction] = useState<ReactionType | null>(null);
+  const [myReaction, setMyReaction] = useState<ReactionType | null>(
+    initialReaction ?? null,
+  );
   const [showPicker, setShowPicker] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const pickerTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setMyReaction(initialReaction ?? null);
+  }, [initialReaction, postId]);
 
   const handleReaction = async (reaction: ReactionType) => {
     const token = getAuthToken();
@@ -654,6 +662,7 @@ function PostCard({
               reactionSummary={reactionSummary}
               onReactionSummaryChange={setReactionSummary}
               labels={t}
+              initialReaction={post.my_reaction ?? null}
             />
           <button
             onClick={() => setShowComments(!showComments)}
@@ -700,6 +709,7 @@ export default function PostView({
           empty: "No posts yet",
           emptyHint: "Create your first post or add friends to see posts!",
           post: "Post",
+          image: "Image",
           thinking: "What's on your mind?",
           comment: "Comment",
           writeComment: "Write a comment...",
@@ -721,6 +731,7 @@ export default function PostView({
           empty: "Chưa có bài đăng nào",
           emptyHint: "Hãy đăng bài đầu tiên hoặc kết bạn để xem bài viết!",
           post: "Đăng bài",
+          image: "Ảnh",
           thinking: "Bạn đang nghĩ gì?",
           comment: "Bình luận",
           writeComment: "Viết bình luận...",

@@ -19,6 +19,7 @@ export type Post = {
   images: string[];
   visibility: "friends" | "public";
   reaction_summary: ReactionSummary;
+  my_reaction?: ReactionType | null;
   comment_count: number;
   created_at: string;
   updated_at: string;

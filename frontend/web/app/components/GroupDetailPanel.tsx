@@ -45,6 +45,7 @@ import {
 import { getAuthToken, getSavedAuthUser } from "../lib/auth";
 import { WEB_GATEWAY_BASE_URL } from "../lib/runtime-base-url";
 import type { Message } from "./MessageList";
+import type { AppLanguage } from "./SettingsView";
 
 type BlockState = {
   isBlocked: boolean;
@@ -69,6 +70,7 @@ interface GroupDetailPanelProps {
   readonly onBlockStateChange?: (state: BlockState) => void;
   readonly onConversationUpdated: () => void;
   readonly onConversationDeleted: () => void;
+  readonly language?: AppLanguage;
 }
 
 type ParsedFilePayload = {
@@ -153,7 +155,86 @@ export default function GroupDetailPanel({
   onBlockStateChange,
   onConversationUpdated,
   onConversationDeleted,
+  language = "vi",
 }: Readonly<GroupDetailPanelProps>) {
+  const t =
+    language === "en"
+      ? {
+          loading: "Loading...",
+          notFound: "Conversation not found.",
+          members: "members",
+          conversationInfo: "Conversation info",
+          notifyOn: "Enable conversation notifications",
+          notifyOff: "Notifications muted",
+          block: "Block messages",
+          unblock: "Unblock messages",
+          blockedByPeer: "You are blocked",
+          membersTitle: "Members",
+          addMember: "Add member",
+          addFriends: "Add friends",
+          noFriends: "No friends to add.",
+          add: "Add",
+          owner: "Owner",
+          admin: "Admin",
+          member: "Member",
+          you: "(You)",
+          media: "Photos/Videos",
+          files: "Files",
+          noMedia: "No photos/videos yet.",
+          noFiles: "No files yet.",
+          leave: "Leave group",
+          dissolving: "Dissolving...",
+          dissolve: "Dissolve group",
+          leaving: "Leaving...",
+          unknownSize: "Unknown size",
+          roleAdmin: "Set admin",
+          roleMember: "Set member",
+          transferOwner: "Transfer owner",
+          removeMember: "Remove member",
+          openOptions: "Open options",
+          save: "Save",
+          saveNameSuccess: "Group name updated.",
+          saveNameFail: "Unable to update group name.",
+          loadFail: "Unable to load conversation details.",
+        }
+      : {
+          loading: "Đang tải...",
+          notFound: "Không tìm thấy hội thoại.",
+          members: "thành viên",
+          conversationInfo: "Thông tin hội thoại",
+          notifyOn: "Bật thông báo hội thoại",
+          notifyOff: "Đang tắt thông báo",
+          block: "Chặn tin nhắn",
+          unblock: "Mở chặn tin nhắn",
+          blockedByPeer: "Bạn đang bị chặn",
+          membersTitle: "Thành viên",
+          addMember: "Thêm thành viên",
+          addFriends: "Thêm bạn bè",
+          noFriends: "Không có bạn bè nào để thêm.",
+          add: "Thêm",
+          owner: "Chủ nhóm",
+          admin: "Phó nhóm",
+          member: "Thành viên",
+          you: "(Bạn)",
+          media: "Ảnh/Video",
+          files: "File",
+          noMedia: "Chưa có ảnh/video.",
+          noFiles: "Chưa có file được gửi.",
+          leave: "Rời nhóm",
+          dissolving: "Đang giải tán...",
+          dissolve: "Giải tán nhóm",
+          leaving: "Đang rời...",
+          unknownSize: "Không rõ dung lượng",
+          roleAdmin: "Gán phó nhóm",
+          roleMember: "Gán thành viên",
+          transferOwner: "Chuyển chủ nhóm",
+          removeMember: "Xóa thành viên",
+          openOptions: "Mở tùy chọn",
+          save: "Lưu",
+          saveNameSuccess: "Đã cập nhật tên nhóm.",
+          saveNameFail: "Không thể cập nhật tên nhóm.",
+          loadFail: "Không thể tải thông tin hội thoại.",
+        };
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -294,7 +375,7 @@ export default function GroupDetailPanel({
       const response = await getConversation(conversationId);
       setConversation(response.data);
     } catch {
-      setError("Không thể tải thông tin hội thoại.");
+      setError(t.loadFail);
     } finally {
       setLoading(false);
     }
@@ -436,11 +517,11 @@ export default function GroupDetailPanel({
     try {
       await updateConversation(conversationId, { name: newName.trim() });
       setEditingName(false);
-      setNotice("Đã cập nhật tên nhóm.");
+      setNotice(t.saveNameSuccess);
       void loadDetail();
       onConversationUpdated();
     } catch {
-      setError("Không thể cập nhật tên nhóm.");
+      setError(t.saveNameFail);
     } finally {
       setSaving(false);
     }
@@ -634,7 +715,7 @@ export default function GroupDetailPanel({
   if (loading) {
     return (
       <div className="w-80 border-l border-slate-200 bg-white flex items-center justify-center">
-        <p className="text-sm text-slate-500">Đang tải...</p>
+        <p className="text-sm text-slate-500">{t.loading}</p>
       </div>
     );
   }
@@ -642,7 +723,7 @@ export default function GroupDetailPanel({
   if (!conversation) {
     return (
       <div className="w-80 border-l border-slate-200 bg-white flex items-center justify-center">
-        <p className="text-sm text-slate-500">Không tìm thấy hội thoại.</p>
+        <p className="text-sm text-slate-500">{t.notFound}</p>
       </div>
     );
   }
@@ -691,7 +772,7 @@ export default function GroupDetailPanel({
               disabled={saving}
               className="text-blue-600 text-sm font-medium hover:underline disabled:opacity-50"
             >
-              Lưu
+              {t.save}
             </button>
             <button
               onClick={() => setEditingName(false)}
@@ -719,8 +800,8 @@ export default function GroupDetailPanel({
 
         <p className="text-xs text-slate-500 mt-1">
           {conversationType === "group"
-            ? `${members.length} thành viên`
-            : "Thông tin hội thoại"}
+            ? `${members.length} ${t.members}`
+            : t.conversationInfo}
         </p>
       </div>
 
@@ -747,7 +828,7 @@ export default function GroupDetailPanel({
             <Bell className="w-4 h-4 text-blue-600" />
           )}
           <span>
-            {isMuted ? "Đang tắt thông báo" : "Bật thông báo hội thoại"}
+            {isMuted ? t.notifyOff : t.notifyOn}
           </span>
         </button>
 
@@ -774,10 +855,10 @@ export default function GroupDetailPanel({
             )}
             <span>
               {isBlocked && blockedByCurrentUser
-                ? "Mở chặn tin nhắn"
+                ? t.unblock
                 : isBlocked
-                  ? "Bạn đang bị chặn"
-                  : "Chặn tin nhắn"}
+                  ? t.blockedByPeer
+                  : t.block}
             </span>
           </button>
         )}
@@ -786,12 +867,12 @@ export default function GroupDetailPanel({
       {conversationType === "group" && (
         <div className="p-4 border-b border-slate-100">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-slate-700">Thành viên</h3>
+            <h3 className="text-sm font-bold text-slate-700">{t.membersTitle}</h3>
             {canManageMembers && (
               <button
                 onClick={openAddMember}
                 className="text-blue-600 hover:text-blue-700 p-1 rounded hover:bg-blue-50 transition-colors"
-                title="Thêm thành viên"
+                title={t.addMember}
               >
                 <UserPlus className="w-4 h-4" />
               </button>
@@ -802,7 +883,7 @@ export default function GroupDetailPanel({
             <div className="mb-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold text-slate-600">
-                  Thêm bạn bè
+                  {t.addFriends}
                 </span>
                 <button onClick={() => setShowAddMember(false)}>
                   <X className="w-3.5 h-3.5 text-slate-400" />
@@ -810,7 +891,7 @@ export default function GroupDetailPanel({
               </div>
               {friends.length === 0 ? (
                 <p className="text-xs text-slate-500">
-                  Không có bạn bè nào để thêm.
+                  {t.noFriends}
                 </p>
               ) : (
                 <>
@@ -843,8 +924,8 @@ export default function GroupDetailPanel({
                     className="mt-2 w-full bg-blue-600 text-white text-xs py-1.5 rounded-lg disabled:opacity-50"
                   >
                     {busyAction === "add"
-                      ? "Đang thêm..."
-                      : `Thêm (${addingIds.size})`}
+                      ? (language === "en" ? "Adding..." : "Đang thêm...")
+                      : `${t.add} (${addingIds.size})`}
                   </button>
                 </>
               )}
@@ -895,7 +976,7 @@ export default function GroupDetailPanel({
                       {name}
                       {isSelf && (
                         <span className="text-[10px] text-slate-400">
-                          (Bạn)
+                          {t.you}
                         </span>
                       )}
                     </div>
@@ -903,15 +984,15 @@ export default function GroupDetailPanel({
                       {isOwnerMember ? (
                         <>
                           <Crown className="w-3 h-3 text-amber-500" />
-                          <span>Chủ nhóm</span>
+                          <span>{t.owner}</span>
                         </>
                       ) : member.role === "admin" ? (
                         <>
                           <ShieldCheck className="w-3 h-3 text-blue-500" />
-                          <span>Phó nhóm</span>
+                          <span>{t.admin}</span>
                         </>
                       ) : (
-                        <span>Thành viên</span>
+                        <span>{t.member}</span>
                       )}
                     </div>
                   </div>
@@ -928,7 +1009,7 @@ export default function GroupDetailPanel({
                           )
                         }
                         className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-                        title="Mở tùy chọn"
+                        title={t.openOptions}
                         aria-expanded={Boolean(isMenuOpen)}
                         aria-haspopup="menu"
                       >
@@ -950,7 +1031,7 @@ export default function GroupDetailPanel({
                                 }
                                 className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-blue-700 transition-colors hover:bg-blue-50 disabled:opacity-50"
                               >
-                                Gán phó nhóm
+                                {t.roleAdmin}
                               </button>
                             ) : (
                               <button
@@ -965,7 +1046,7 @@ export default function GroupDetailPanel({
                                 }
                                 className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50"
                               >
-                                Gán thành viên
+                                {t.roleMember}
                               </button>
                             )}
                             <button
@@ -975,7 +1056,7 @@ export default function GroupDetailPanel({
                               disabled={busyAction === `role-${memberId}-owner`}
                               className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
                             >
-                              Chuyển chủ nhóm
+                              {t.transferOwner}
                             </button>
                           </>
                         )}
@@ -986,7 +1067,7 @@ export default function GroupDetailPanel({
                             disabled={busyAction === `remove-${memberId}`}
                             className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-50"
                           >
-                            Xóa thành viên
+                            {t.removeMember}
                           </button>
                         )}
                       </div>
@@ -1001,12 +1082,12 @@ export default function GroupDetailPanel({
 
       <div className="p-4 border-t border-slate-100">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-bold text-slate-700">Ảnh/Video</h3>
+          <h3 className="text-sm font-bold text-slate-700">{t.media}</h3>
           <ImageIcon className="w-4 h-4 text-slate-400" />
         </div>
 
         {imageItems.length === 0 ? (
-          <p className="text-xs text-slate-500">Chưa có ảnh/video.</p>
+          <p className="text-xs text-slate-500">{t.noMedia}</p>
         ) : (
           <div className="grid grid-cols-3 gap-2">
             {imageItems.slice(0, 9).map((item) => (
@@ -1030,12 +1111,12 @@ export default function GroupDetailPanel({
 
       <div className="px-4 pb-4">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-bold text-slate-700">File</h3>
+          <h3 className="text-sm font-bold text-slate-700">{t.files}</h3>
           <Link2 className="w-4 h-4 text-slate-400" />
         </div>
 
         {fileItems.length === 0 ? (
-          <p className="text-xs text-slate-500">Chưa có file được gửi.</p>
+          <p className="text-xs text-slate-500">{t.noFiles}</p>
         ) : (
           <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
             {fileItems.slice(0, 20).map((item) => (
@@ -1054,7 +1135,7 @@ export default function GroupDetailPanel({
                   <p className="text-[11px] text-slate-500">
                     {item.fileSize > 0
                       ? `${(item.fileSize / 1024).toFixed(2)} KB`
-                      : "Không rõ dung lượng"}
+                      : t.unknownSize}
                   </p>
                 </div>
               </a>
@@ -1071,7 +1152,7 @@ export default function GroupDetailPanel({
             className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-medium text-orange-600 bg-orange-50 hover:bg-orange-100 transition-colors disabled:opacity-50"
           >
             <LogOut className="w-4 h-4" />
-            {busyAction === "leave" ? "Đang rời..." : "Rời nhóm"}
+            {busyAction === "leave" ? t.leaving : t.leave}
           </button>
 
           {isOwner && (
@@ -1081,7 +1162,7 @@ export default function GroupDetailPanel({
               className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-50"
             >
               <Trash2 className="w-4 h-4" />
-              {busyAction === "delete" ? "Đang giải tán..." : "Giải tán nhóm"}
+              {busyAction === "delete" ? t.dissolving : t.dissolve}
             </button>
           )}
         </div>
