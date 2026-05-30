@@ -3,6 +3,7 @@ type Env = {
   PORT: number;
   DATABASE_URL: string;
   GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_IDS: string[];
   ADMIN_EMAILS: string[];
   JWT_SECRET: string;
   JWT_EXPIRES_IN: string;
@@ -47,6 +48,11 @@ export const env: Env = {
   PORT: Number(getEnv("PORT", "3001")),
   DATABASE_URL: getEnv("DATABASE_URL"),
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID?.trim() ?? "",
+  GOOGLE_CLIENT_IDS: parseList(
+    process.env.GOOGLE_CLIENT_IDS?.trim() ??
+      process.env.GOOGLE_CLIENT_ID?.trim() ??
+      "",
+  ),
   ADMIN_EMAILS: parseList(process.env.ADMIN_EMAILS?.trim() ?? ""),
   JWT_SECRET: getEnv("JWT_SECRET"),
   JWT_EXPIRES_IN: getEnv("JWT_EXPIRES_IN", "7d"),
