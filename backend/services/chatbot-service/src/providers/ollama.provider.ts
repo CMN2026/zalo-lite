@@ -20,8 +20,13 @@ export class OllamaProvider implements AIProvider {
     input: GenerateInput,
     opts?: { timeoutMs?: number; signal?: AbortSignal },
   ): Promise<ProviderResponse> {
-    const url = `${OLLAMA_URL}/api/generate`;
-    const body = { model: this.model, prompt: input.prompt, max_tokens: 1024 };
+    const url = `${OLLAMA_URL}/api/chat`;
+    const body = {
+      model: this.model,
+      messages: [{ role: "user", content: input.prompt }],
+      max_tokens: 1024,
+      stream: false,
+    };
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -36,9 +41,8 @@ export class OllamaProvider implements AIProvider {
     }
 
     const json = await res.json();
-    // Ollama returns { choices: [{ text }] }
     const text =
-      json?.response || json?.choices?.map((c: any) => c.text).join("\n") || String(json);
+      json?.message?.content || json?.response || json?.choices?.map((c: any) => c.text).join("\n") || String(json);
     return { text, raw: json };
   }
 
@@ -46,8 +50,17 @@ export class OllamaProvider implements AIProvider {
     input: GenerateInput,
     opts?: { timeoutMs?: number; signal?: AbortSignal },
   ): AsyncGenerator<string, void, unknown> {
-    const url = `${OLLAMA_URL}/api/generate`;
-    const body = { model: this.model, prompt: input.prompt, max_tokens: 2048, stream: true };
+    const url = `${OLLAMA_URL}/api/chat`;
+    // Split the prompt into system and user based on BizMa structure
+    // We pass the entire orchestrated prompt as the user role, but chat endpoint
+    // properly templates it for Qwen-Instruct, whereas generate does not.
+    const body = {
+      model: this.model,
+      messages: [{ role: "user", content: input.prompt }],
+      max_tokens: 2048,
+      stream: true,
+    };
+
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -68,7 +81,6 @@ export class OllamaProvider implements AIProvider {
       done = !!rdone;
       if (value) {
         buffer += decoder.decode(value, { stream: true });
-        // yield by newlines or every 256 chars
         let idx: number;
         while ((idx = buffer.indexOf("\n")) !== -1) {
           const part = buffer.slice(0, idx + 1);
@@ -76,17 +88,17 @@ export class OllamaProvider implements AIProvider {
           if (part.trim()) {
             try {
               const parsed = JSON.parse(part);
-              if (parsed.response) {
-                yield parsed.response;
+              if (parsed.message?.content) {
+                yield parsed.message.content;
               }
             } catch (e) {
-              // ignore parse errors for incomplete chunks if any
+              // ignore parse errors for incomplete chunks
             }
           }
         }
         if (buffer.length > 256) {
-          yield buffer.slice(0, 256);
-          buffer = buffer.slice(256);
+          // If buffer gets too large without a newline, something is wrong, yield it.
+          // Note: for chat endpoint, it usually sends complete JSON lines.
         }
       }
     }
@@ -94,7 +106,7 @@ export class OllamaProvider implements AIProvider {
     if (buffer.trim()) {
       try {
         const parsed = JSON.parse(buffer);
-        if (parsed.response) yield parsed.response;
+        if (parsed.message?.content) yield parsed.message.content;
       } catch (e) {}
     }
   }

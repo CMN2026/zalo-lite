@@ -99,8 +99,28 @@ export class ChatbotService {
     // Generate using orchestrator and stream into an assembled response
     const assembled: string[] = [];
     try {
+      // Fetch conversation history to provide context
+      let historyText = "";
+      try {
+        const historyMsgs = await conversationRepository.getMessages(convId, 8);
+        if (historyMsgs && historyMsgs.length > 0) {
+          // Sort ascending for chronological order
+          const sorted = historyMsgs.sort((a, b) => a.createdAt - b.createdAt);
+          historyText = sorted
+            .filter((m) => m.id !== userMessage.id) // Exclude current message
+            .map((msg) => `${msg.type === "user" ? "User" : "Trợ lý Zalo-Lite"}: ${msg.content}`)
+            .join("\n");
+        }
+      } catch (err) {
+        console.warn("Failed to fetch history for orchestrator context");
+      }
+
       await chatbotOrchestrator.handleMessageStreaming(
-        { prompt: message, conversationId: convId },
+        { 
+          prompt: message, 
+          conversationId: convId,
+          metadata: { history: historyText }
+        },
         (chunk: string) => assembled.push(chunk),
         { timeoutMs: 30_000 },
       );

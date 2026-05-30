@@ -169,8 +169,8 @@ export default function ChatbotView() {
     }
   }, []);
 
-  const fetchMessages = useCallback(async (convId: string) => {
-    setLoadingMsgs(true);
+  const fetchMessages = useCallback(async (convId: string, showLoading = true) => {
+    if (showLoading) setLoadingMsgs(true);
     try {
       const res = await fetch(
         `${API_BASE_URL}/api/chatbot/conversations/${convId}/history`,
@@ -182,7 +182,7 @@ export default function ChatbotView() {
     } catch {
       /* ignore */
     } finally {
-      setLoadingMsgs(false);
+      if (showLoading) setLoadingMsgs(false);
     }
   }, []);
 
@@ -295,7 +295,7 @@ export default function ChatbotView() {
       }
 
       if (resolvedConversationId) {
-        void fetchMessages(resolvedConversationId);
+        void fetchMessages(resolvedConversationId, false);
       }
       void fetchConversations().then((fresh) => {
         if (fresh) setConversations(fresh);
@@ -605,7 +605,9 @@ export default function ChatbotView() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({
+      behavior: isStreamingRef.current ? "auto" : "smooth",
+    });
   }, [messages, botTyping]);
 
   const activeConv = conversations.find((c) => c.conversationId === activeId);
@@ -632,57 +634,49 @@ export default function ChatbotView() {
           return (
             <div
               key={conv.conversationId}
-              className={`group flex items-start gap-2 p-3 rounded-xl transition-all ${
-                isActive ? "bg-blue-600" : "hover:bg-white"
+              className={`group flex items-start gap-2 p-3 transition-all cursor-pointer border-l-2 ${
+                isActive ? "bg-blue-50 border-blue-600" : "border-transparent hover:bg-slate-50"
               }`}
+              onClick={() => handleSelectConv(conv.conversationId)}
             >
-              <button
-                type="button"
-                className="flex-1 min-w-0 text-left"
-                onClick={() => handleSelectConv(conv.conversationId)}
-              >
+              <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-baseline justify-between gap-1">
                   <p
-                    className={`text-xs font-semibold truncate ${
-                      isActive ? "text-white" : "text-slate-900"
+                    className={`text-sm font-medium truncate ${
+                      isActive ? "text-blue-700" : "text-slate-800"
                     }`}
                   >
                     {getConversationTitle(conv)}
                   </p>
-                  <span
-                    className={`text-[10px] shrink-0 ${
-                      isActive ? "text-blue-200" : "text-slate-400"
-                    }`}
-                  >
+                  <span className="text-[10px] shrink-0 text-slate-400 font-medium">
                     {formatTime(conv.lastMessageAt)}
                   </span>
                 </div>
-                <p
-                  className={`text-[11px] truncate mt-0.5 ${
-                    isActive ? "text-blue-200" : "text-slate-400"
-                  }`}
-                >
+                <p className="text-xs text-slate-500 truncate mt-1">
                   {getLastPreview(conv)}
                 </p>
-                <span
-                  className={`inline-flex mt-1.5 items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                    isActive
-                      ? "bg-blue-500 text-white"
-                      : statusBadgeClass(conv.status)
-                  }`}
-                >
-                  {statusLabel(conv.status)}
-                </span>
-              </button>
+                <div className="mt-2 flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full ${statusBadgeClass(
+                      conv.status,
+                    )}`}
+                  >
+                    {statusLabel(conv.status)}
+                  </span>
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={(e) => handleDeleteConv(conv.conversationId, e)}
-                className={`opacity-0 group-hover:opacity-100 shrink-0 text-[11px] px-1.5 py-0.5 rounded transition-all ${
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteConv(conv.conversationId, e);
+                }}
+                className={`opacity-0 group-hover:opacity-100 shrink-0 text-xs p-1.5 rounded-md transition-all ${
                   isActive
-                    ? "text-blue-200 hover:text-white"
-                    : "text-slate-400 hover:text-slate-600"
+                    ? "text-blue-400 hover:text-blue-600 hover:bg-blue-100"
+                    : "text-slate-400 hover:text-red-500 hover:bg-red-50"
                 }`}
-                title="Xóa"
+                title="Xóa cuộc trò chuyện"
               >
                 ✕
               </button>
@@ -745,57 +739,46 @@ export default function ChatbotView() {
           return (
             <div
               key={msg.id}
-              className={`flex items-end gap-2 ${isUser ? "justify-end" : "justify-start"}`}
+              className={`flex items-end gap-3 ${isUser ? "justify-end" : "justify-start"}`}
             >
               {!isUser && (
-                <div className="w-7 h-7 rounded-full shrink-0 bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
+                <div className="w-8 h-8 rounded-full shrink-0 bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-[10px] font-bold shadow-sm mb-1">
                   {isBot ? "AI" : "NV"}
                 </div>
               )}
 
               <div
-                className={`max-w-sm flex flex-col ${isUser ? "items-end" : "items-start"}`}
+                className={`flex flex-col max-w-[85%] sm:max-w-[75%] ${isUser ? "items-end" : "items-start"}`}
               >
-                {!isUser && (
-                  <span className="text-[10px] text-slate-400 mb-0.5 ml-1">
-                    {isBot ? "Trợ lý AI" : (msg.senderName ?? "Nhân viên")}
-                  </span>
-                )}
                 <div
-                  className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed wrap-break-word ${
+                  className={`px-4 py-3 rounded-2xl text-[15px] leading-relaxed break-words shadow-sm ${
                     isUser
                       ? "bg-blue-600 text-white rounded-br-sm"
-                      : "bg-slate-100 text-slate-800 rounded-bl-sm"
+                      : "bg-white border border-slate-200 text-slate-800 rounded-bl-sm"
                   }`}
                   style={{ whiteSpace: "pre-line" }}
                 >
                   {msg.content}
                 </div>
                 {msg.isStreaming && !isUser && (
-                  <span className="mt-1 text-[10px] text-blue-500 font-medium">
+                  <span className="mt-1.5 text-xs text-blue-500 font-medium animate-pulse">
                     Đang tạo phản hồi...
                   </span>
                 )}
-                <span className="text-[10px] text-slate-400 mt-0.5">
+                <span className="text-[11px] text-slate-400 mt-1">
                   {formatTime(msg.createdAt)}
                 </span>
               </div>
-
-              {isUser && (
-                <div className="w-7 h-7 rounded-full shrink-0 bg-slate-200 flex items-center justify-center text-slate-500 text-xs font-bold">
-                  TÔI
-                </div>
-              )}
             </div>
           );
         })}
 
         {botTyping && (
-          <div className="flex items-end gap-2 justify-start">
-            <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
+          <div className="flex items-end gap-3 justify-start">
+            <div className="w-8 h-8 rounded-full shrink-0 bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-[10px] font-bold shadow-sm mb-1">
               AI
             </div>
-            <div className="bg-slate-100 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
+            <div className="bg-white border border-slate-200 shadow-sm rounded-2xl rounded-bl-sm px-4 py-3.5 flex items-center gap-1.5 mb-5">
               <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0ms]" />
               <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:150ms]" />
               <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:300ms]" />
@@ -839,28 +822,21 @@ export default function ChatbotView() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Chat header */}
         {activeConv && (
-          <div className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white">
+          <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
             <div>
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-[15px] font-bold text-slate-800">
                 {getConversationTitle(activeConv)}
               </p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span
-                  className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${statusBadgeClass(activeConv.status)}`}
-                >
-                  {statusLabel(activeConv.status)}
-                </span>
-                <span className="text-[11px] text-slate-400">
-                  {messages.length} tin nhắn
-                </span>
-              </div>
+              <p className="text-xs text-slate-400 mt-1 font-medium">
+                {messages.length} tin nhắn trong cuộc hội thoại này
+              </p>
             </div>
             {!isResolved && (
               <button
                 onClick={handleCloseConv}
-                className="text-xs text-slate-500 hover:text-slate-800 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors"
               >
-                Đóng hội thoại
+                Kết thúc hỗ trợ
               </button>
             )}
           </div>
@@ -868,33 +844,42 @@ export default function ChatbotView() {
 
         {/* Escalation notice */}
         {needsStaff && (
-          <div className="shrink-0 mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-            <p className="text-xs font-semibold text-amber-800">
-              Đang chuyển đến nhân viên hỗ trợ
-            </p>
-            <p className="text-[11px] text-amber-600 mt-0.5">
-              Nhân viên sẽ phản hồi sớm nhất có thể. Bạn vẫn có thể tiếp tục
-              nhắn tin.
-            </p>
+          <div className="shrink-0 bg-amber-50 px-6 py-3 flex items-center gap-4 border-b border-amber-100">
+            <div className="w-8 h-8 rounded-full bg-amber-200/50 flex items-center justify-center text-amber-600 text-sm">
+              ⏳
+            </div>
+            <div>
+              <p className="text-sm font-bold text-amber-800">
+                Đang chờ nhân viên hỗ trợ
+              </p>
+              <p className="text-xs text-amber-600/80 mt-0.5 font-medium">
+                Nhân viên sẽ phản hồi bạn trong chốc lát. Bạn vẫn có thể tiếp tục nhắn tin.
+              </p>
+            </div>
           </div>
         )}
 
         {/* Resolved notice */}
         {isResolved && (
-          <div className="shrink-0 mx-4 mt-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-emerald-800">
-                Cuộc trò chuyện đã được xử lý
-              </p>
-              <p className="text-[11px] text-emerald-600">
-                Cảm ơn bạn đã liên hệ.
-              </p>
+          <div className="shrink-0 bg-emerald-50 px-6 py-4 flex items-center justify-between border-b border-emerald-100">
+            <div className="flex items-center gap-4">
+              <div className="w-8 h-8 rounded-full bg-emerald-200/50 flex items-center justify-center text-emerald-600 text-sm">
+                ✓
+              </div>
+              <div>
+                <p className="text-sm font-bold text-emerald-800">
+                  Vấn đề đã được giải quyết
+                </p>
+                <p className="text-xs text-emerald-600/80 mt-0.5 font-medium">
+                  Cảm ơn bạn đã liên hệ với đội ngũ hỗ trợ.
+                </p>
+              </div>
             </div>
             <button
               onClick={handleNewConv}
-              className="text-xs font-medium text-emerald-700 hover:text-emerald-900 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors"
+              className="text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 px-4 py-2 rounded-lg transition-colors shadow-sm"
             >
-              Cuộc trò chuyện mới
+              Hội thoại mới
             </button>
           </div>
         )}
