@@ -3,13 +3,14 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package*.json ./
-RUN npm ci
+RUN npm install --no-package-lock
 
 FROM deps AS build
 COPY tsconfig.json ./
 COPY prisma.config.ts ./
 COPY prisma ./prisma
 COPY src ./src
+COPY scripts ./scripts
 RUN npm run prisma:generate
 RUN npm run build
 # Copy proto files to dist for runtime
@@ -19,7 +20,7 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --no-package-lock --omit=dev
 COPY prisma.config.ts ./
 COPY prisma ./prisma
 RUN npx prisma generate

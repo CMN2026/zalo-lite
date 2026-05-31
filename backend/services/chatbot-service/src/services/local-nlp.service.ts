@@ -42,77 +42,73 @@ export class LocalNLPService {
     {
       intent: "PASSWORD_RESET",
       keywords: [
-        "forget",
-        "forgot password",
-        "reset",
-        "password",
-        "change password",
-        "recover password",
-        "cannot login",
-        "login error",
-        "lost password",
+        "quen mat khau",
+        "quen pass",
+        "doi mat khau",
+        "lay lai mat khau",
+        "khong dang nhap duoc",
+        "loi dang nhap",
+        "mat mat khau",
+        "reset pass",
+        "mat khau",
       ],
       response:
-        'To reset your password:\n1. Click "Forgot Password?" on the login screen\n2. Enter your registered email address\n3. Check your inbox (including Spam)\n4. Click the link in the email and create a new password\n\nYour new password must be at least 8 characters long. Do you need further assistance?',
+        'Để đặt lại mật khẩu của bạn:\n1. Bấm vào "Quên mật khẩu?" ở màn hình đăng nhập\n2. Nhập số điện thoại hoặc email đã đăng ký\n3. Kiểm tra tin nhắn SMS hoặc hộp thư đến (kể cả thư rác)\n4. Nhập mã OTP và tạo mật khẩu mới\n\nMật khẩu mới phải có ít nhất 8 ký tự. Bạn có cần hỗ trợ thêm không?',
     },
 
     // ── Social: add/find friends ──────────────────────────────────────────────
     {
       intent: "HOW_TO_ADD_FRIEND",
       keywords: [
+        "ket ban",
+        "them ban",
+        "tim ban",
+        "loi moi ket ban",
+        "chap nhan ket ban",
+        "danh sach ban be",
+        "xoa ban",
+        "huy ket ban",
         "add friend",
-        "make friends",
-        "find friend",
-        "invite",
-        "search friend",
-        "friend request",
-        "accept request",
-        "friends",
-        "friend list",
-        "unfriend",
-        "remove friend",
       ],
       response:
-        'To add friends on Zalo-Lite:\n1. Open the "Friends" tab\n2. Tap "Search" and enter a phone number\n3. Tap "Add Friend" to send an invitation\n4. Wait for them to accept in the "Requests" tab\n\nCan I help you with anything else?',
+        'Để kết bạn trên Zalo-Lite:\n1. Mở tab "Danh bạ"\n2. Bấm vào biểu tượng Thêm bạn (hoặc Tìm kiếm) và nhập số điện thoại\n3. Bấm "Kết bạn" để gửi lời mời\n4. Chờ người đó chấp nhận\n\nTôi có thể giúp gì thêm cho bạn?',
     },
 
     // ── Group chat ────────────────────────────────────────────────────────────
     {
       intent: "HOW_TO_CREATE_GROUP",
       keywords: [
-        "create group",
+        "tao nhom",
+        "lap nhom",
+        "nhom chat",
+        "chat nhom",
+        "loi tao nhom",
+        "them thanh vien",
+        "xoa thanh vien",
+        "roi nhom",
+        "thoat nhom",
         "group",
-        "new group",
-        "group chat",
-        "team chat",
-        "conversation",
-        "cannot create group",
-        "add member",
-        "remove member",
-        "leave group",
-        "exit group",
       ],
       response:
-        'To create a group chat:\n1. Go to the "Messages" tab → tap the "+" icon (top right)\n2. Enter a group name\n3. Select at least 2 friends\n4. Tap "Create Group"\n\nNote: You need at least 2 friends in your list. Let me know if you need help!',
+        'Để tạo nhóm chat:\n1. Vào tab "Tin nhắn" → bấm biểu tượng "+" ở góc phải\n2. Đặt tên nhóm\n3. Chọn ít nhất 2 người bạn\n4. Bấm "Tạo nhóm"\n\nLưu ý: Bạn cần có ít nhất 2 bạn bè trong danh bạ để tạo nhóm.',
     },
 
     // ── Account issues ───────────────────────────────────────────────────────
     {
       intent: "ACCOUNT_ISSUES",
       keywords: [
-        "account",
-        "locked",
-        "blocked",
-        "cannot access",
-        "login",
-        "register",
-        "delete account",
-        "activate account",
-        "banned",
-        "deactivated",
+        "tai khoan",
+        "bi khoa",
+        "bi chan",
+        "khong vao duoc",
+        "dang nhap",
+        "dang ky",
+        "xoa tai khoan",
+        "kich hoat",
+        "vo hieu hoa",
       ],
       response:
-        "Account issues require manual review from our team.\n\nPlease provide:\n• Registered email or phone number\n• Detailed description of the issue\n• When the issue started occurring\n\nWe will review and respond within 24 hours.",
+        "Vấn đề về tài khoản cần được đội ngũ của chúng tôi kiểm tra thủ công.\n\nVui lòng cung cấp:\n• Số điện thoại hoặc email đăng ký\n• Mô tả chi tiết vấn đề bạn đang gặp phải\n• Thời điểm bắt đầu xảy ra lỗi\n\nChúng tôi sẽ kiểm tra và phản hồi trong vòng 24 giờ.",
       action: "escalate",
     },
 
@@ -120,22 +116,20 @@ export class LocalNLPService {
     {
       intent: "CONTACT_SUPPORT",
       keywords: [
-        "contact",
-        "support",
-        "need help",
-        "assist",
-        "error",
-        "report bug",
-        "policy",
-        "complain",
-        "staff",
-        "consult",
-        "question",
-        "help",
-        "feedback",
+        "lien he",
+        "ho tro",
+        "can giup",
+        "tro giup",
+        "loi",
+        "bao loi",
+        "khieu nai",
+        "nhan vien",
+        "tu van",
+        "cau hoi",
+        "gop y",
       ],
       response:
-        "Contact Zalo-Lite support:\n• Email: support@zalo-lite.com\n• Hotline: 1800-1234 (Mon-Sat, 8:00 AM–8:00 PM)\n• Live Chat: reply here and an agent will assist you soon.\n\nPlease provide specific details so we can help faster.",
+        "Liên hệ hỗ trợ Zalo-Lite:\n• Email: support@zalo-lite.com\n• Hotline: 1800-1234 (Thứ 2 - Thứ 7, 8:00 - 20:00)\n• Chat trực tiếp: Bạn có thể nhắn chi tiết tại đây, nhân viên sẽ hỗ trợ bạn sớm nhất.\n\nVui lòng cung cấp chi tiết vấn đề để chúng tôi xử lý nhanh hơn.",
       action: "escalate",
     },
 
@@ -143,43 +137,37 @@ export class LocalNLPService {
     {
       intent: "FEATURE_INQUIRY",
       keywords: [
-        "feature",
-        "how to",
-        "way",
-        "why",
-        "cannot",
-        "where",
-        "guide",
-        "use",
-        "setting",
-        "setup",
-        "start",
-        "tutorial",
+        "tinh nang",
+        "cach lam",
+        "cach nao",
+        "tai sao",
+        "khong the",
+        "o dau",
+        "huong dan",
+        "su dung",
+        "cai dat",
+        "bat dau",
       ],
       response:
-        "Which Zalo-Lite feature do you need help with?\n\nKey features:\n✓ 1-on-1 and Group Chat (up to 3+ people)\n✓ Send photos, videos, and files\n✓ Add friends via phone number\n✓ Online/Offline status\n✓ End-to-end encryption\n\nPlease describe what you're trying to do!",
+        "Bạn cần hỗ trợ về tính năng nào của Zalo-Lite?\n\nCác tính năng chính:\n✓ Chat 1-1 và Nhóm\n✓ Gửi ảnh, video và tệp tin\n✓ Kết bạn qua số điện thoại\n✓ Mã hóa đầu cuối an toàn\n\nVui lòng mô tả rõ hơn điều bạn muốn làm nhé!",
     },
 
     // ── Billing ───────────────────────────────────────────────────────────────
     {
       intent: "BILLING_ISSUES",
       keywords: [
-        "payment",
-        "cost",
-        "finance",
-        "invoice",
-        "money",
-        "price",
-        "fee",
-        "free",
-        "premium",
-        "upgrade",
-        "plan",
-        "charged",
-        "refund",
+        "thanh toan",
+        "phi",
+        "tien",
+        "hoa don",
+        "gia tien",
+        "mien phi",
+        "nang cap",
+        "bi tru tien",
+        "hoan tien",
       ],
       response:
-        "Zalo-Lite Billing Info:\n\nZalo-Lite is completely FREE!\n✓ No account maintenance fees\n✓ Unlimited messaging\n✓ No forced advertisements\n\nIf you were inexplicably charged, please contact us immediately for an investigation.",
+        "Thông tin cước phí Zalo-Lite:\n\nZalo-Lite hoàn toàn MIỄN PHÍ!\n✓ Không phí duy trì tài khoản\n✓ Nhắn tin, gọi điện không giới hạn\n✓ Không quảng cáo\n\nNếu bạn bị trừ tiền hoặc yêu cầu trả phí, đó có thể là lừa đảo. Vui lòng báo cáo lại cho chúng tôi.",
       action: "escalate",
     },
 
@@ -187,103 +175,101 @@ export class LocalNLPService {
     {
       intent: "PRIVACY_SECURITY",
       keywords: [
-        "security",
-        "privacy",
-        "safe",
-        "hacked",
-        "compromised",
-        "change phone number",
-        "2fa",
-        "otp",
+        "bao mat",
+        "an toan",
+        "bi hack",
+        "mat tai khoan",
+        "doi so dien thoai",
+        "ma otp",
+        "quyen rieng tu",
         "spam",
-        "block",
-        "report spam",
+        "chan",
+        "bao xau",
       ],
       response:
-        "Privacy & Security on Zalo-Lite:\n✓ End-to-end encryption for all messages\n✓ We do not share your personal data\n✓ Block users: Go to their profile → Block\n✓ Report spam: Long press a message → Report\n\nIf you suspect an account breach, change your password immediately and contact support.",
+        "Bảo mật trên Zalo-Lite:\n✓ Tin nhắn được mã hóa đầu cuối\n✓ Chặn người dùng: Vào trang cá nhân của họ → Chọn Chặn\n✓ Báo xấu: Nhấn giữ tin nhắn → Chọn Báo cáo\n\nNếu nghi ngờ tài khoản bị xâm nhập, hãy đổi mật khẩu ngay và liên hệ bộ phận hỗ trợ.",
     },
 
     // ── App crash / not opening ───────────────────────────────────────────────
     {
       intent: "APP_CRASH",
       keywords: [
-        "app crash",
-        "crashing",
-        "not opening",
-        "stuck",
-        "frozen",
-        "force close",
-        "restart",
-        "update",
-        "white screen",
-        "black screen",
-        "loading issue",
+        "văng app",
+        "vang app",
+        "dung ung dung",
+        "khong mo duoc",
+        "bi do",
+        "treo may",
+        "khoi dong lai",
+        "man hinh trang",
+        "man hinh den",
+        "loi ung dung",
       ],
       response:
-        "App Troubleshooting:\n1. Force close the app and reopen it\n2. Check your internet connection\n3. Clear the app cache (Settings → Apps → Zalo-Lite → Clear Cache)\n4. Update to the latest version via App Store/Google Play\n5. Restart your device\n\nStill experiencing issues? Please tell us your OS model.",
+        "Khắc phục sự cố ứng dụng:\n1. Đóng hẳn ứng dụng và mở lại\n2. Kiểm tra kết nối mạng\n3. Xóa bộ nhớ đệm (Cài đặt máy → Ứng dụng → Zalo-Lite → Xóa Cache)\n4. Cập nhật phiên bản mới nhất\n5. Khởi động lại thiết bị\n\nNếu vẫn bị lỗi, vui lòng cho chúng tôi biết bạn đang dùng điện thoại gì nhé.",
     },
 
     // ── Notifications ─────────────────────────────────────────────────────────
     {
       intent: "NOTIFICATION_ISSUES",
       keywords: [
-        "notification",
-        "no notification",
-        "push",
-        "sound",
-        "vibrate",
-        "alerts",
-        "silent",
-        "not ringing",
-        "dnd",
-        "do not disturb",
+        "thong bao",
+        "khong co thong bao",
+        "am thanh",
+        "rung",
+        "im lang",
+        "khong do chuong",
+        "khong keu",
+        "lam phien",
       ],
       response:
-        'Notification Settings:\n1. System: Settings → Notifications → Zalo-Lite → Turn on\n2. In-App: Settings → Notifications → Enable sound and vibration\n3. Check if "Do Not Disturb" mode is active on your phone\n4. Ensure a stable internet connection\n\nAre you using iOS or Android?',
+        'Cài đặt thông báo:\n1. Hệ thống: Cài đặt máy → Thông báo → Zalo-Lite → Bật\n2. Trong App: Cài đặt → Thông báo → Bật âm thanh và rung\n3. Đảm bảo máy không bật chế độ "Không làm phiền" (Do Not Disturb)\n4. Kiểm tra mạng\n\nBạn đang dùng iOS hay Android?',
     },
 
     // ── Media sharing ─────────────────────────────────────────────────────────
     {
       intent: "MEDIA_SHARING",
       keywords: [
-        "send photo",
-        "send video",
-        "send file",
-        "attachment",
-        "picture",
-        "image",
-        "upload",
-        "cannot send",
-        "not showing",
-        "save file",
-        "download",
+        "gui anh",
+        "gui video",
+        "gui file",
+        "dinh kem",
+        "hinh anh",
+        "khong gui duoc",
+        "loi hinh",
+        "luu file",
+        "tai xuong",
       ],
       response:
-        "Media & Files:\n• Open a chat → tap the attachment icon (📎)\n• Choose an image from your gallery or snap a new one\n• Max sizes: Image 10MB, Video 50MB, File 100MB\n\nIf it fails:\n1. Check your network\n2. Check file size limits\n3. Grant Storage permissions in device settings",
+        "Chia sẻ File & Media:\n• Mở khung chat → bấm biểu tượng đính kèm (📎)\n• Chọn ảnh từ thư viện hoặc chụp mới\n• Giới hạn kích thước: Ảnh 10MB, Video 50MB, File 100MB\n\nNếu bị lỗi:\n1. Kiểm tra mạng internet\n2. Đảm bảo file không quá dung lượng\n3. Cấp quyền truy cập Bộ nhớ cho ứng dụng",
     },
 
     // ── Voice / video call ────────────────────────────────────────────────────
     {
       intent: "VOICE_VIDEO_CALL",
       keywords: [
+        "goi dien",
+        "goi video",
         "call",
-        "video call",
-        "voice call",
-        "cannot hear",
-        "cannot see",
-        "call error",
-        "microphone",
+        "khong nghe duoc",
+        "khong thay hinh",
+        "loi cuoc goi",
+        "micro",
         "mic",
         "camera",
-        "disconnected",
+        "mat ket noi",
       ],
       response:
-        "Voice & Video calls:\n• Open chat → tap the phone (voice) or camera (video) icon\n\nTroubleshooting:\n1. Allow Microphone & Camera permissions\n2. Maintain at least a 1Mbps connection\n3. Verify the other user is online\n4. Toggle wifi to refresh network\n\nDoes the issue persist? Detail the error to get assistance.",
+        "Gọi thoại & Gọi Video:\n• Mở khung chat → bấm biểu tượng điện thoại (gọi thoại) hoặc máy quay (gọi video)\n\nKhắc phục lỗi:\n1. Cấp quyền Micro và Camera cho ứng dụng\n2. Đảm bảo mạng wifi/4G ổn định\n3. Thử tắt bật lại wifi\n\nLỗi vẫn tiếp diễn? Vui lòng mô tả chi tiết để nhân viên hỗ trợ bạn.",
     },
   ];
 
   private transliterate(text: string): string {
     return text
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9\s]/g, " ")
@@ -336,20 +322,30 @@ export class LocalNLPService {
         intent: "GENERAL_INQUIRY",
         confidence: 0.3,
         suggestedResponse:
-          "I'm sorry, I couldn't fully understand your request. Could you provide more details?\n\nAlternatively, select a common topic:\n• Password Recovery\n• Add Friends\n• Create Group Chat\n• Account Issues\n• Contact Support Staff",
+          "Xin lỗi, tôi chưa hiểu rõ vấn đề của bạn. Bạn có thể cung cấp thêm chi tiết không?\n\nHoặc chọn một trong các chủ đề phổ biến:\n• Khôi phục mật khẩu\n• Kết bạn mới\n• Tạo nhóm chat\n• Lỗi tài khoản\n• Gặp nhân viên hỗ trợ",
         action: undefined,
         isLearned: false,
       };
     }
 
-    // Confidence = (matched / total_in_pattern) scaled by message length
-    const patternCoverage = bestMatchCount / bestMatch.keywords.length;
-    const lengthFactor = Math.min(normalizedMsg.length / 40, 1.0);
-    const learnBoost = isLearned ? 1.1 : 1.0;
-    const confidence = Math.min(
-      patternCoverage * (0.5 + lengthFactor * 0.5) * learnBoost,
-      0.99,
-    );
+    let confidence;
+    const hasExactKeywordMatch = bestMatchCount > 0;
+
+    // TRƯỜNG HỢP 1: Khớp từ khóa tuyệt đối (Short-circuit) mang lại độ tin cậy cao lập tức
+    if (hasExactKeywordMatch) {
+      confidence = isLearned ? 0.98 : 0.95;
+    } 
+    // TRƯỜNG HỢP 2: Tính toán dựa trên độ phủ và độ dài câu
+    else {
+      const patternCoverage = bestMatchCount / bestMatch.keywords.length;
+      const lengthFactor = Math.min(normalizedMsg.length / 40, 1.0);
+      const learnBoost = isLearned ? 1.1 : 1.0;
+
+      confidence = patternCoverage * (0.5 + lengthFactor * 0.5) * learnBoost;
+      
+      // Giới hạn trần tối đa để không vượt quá 0.99
+      confidence = Math.min(confidence, 0.99);
+    }
 
     const result = {
       intent: bestMatch.intent,

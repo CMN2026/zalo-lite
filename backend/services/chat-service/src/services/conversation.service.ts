@@ -301,7 +301,7 @@ export class ConversationService {
 
     await this.conversationRepository.addMembers(conversationId, newMemberIds);
 
-    return { added_count: newMemberIds.length };
+    return { addedCount: newMemberIds.length };
   }
 
   async removeMemberFromGroup(

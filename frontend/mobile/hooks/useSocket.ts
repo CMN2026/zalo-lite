@@ -44,14 +44,13 @@ export const useSocket = () => {
           reconnectionDelayMax: 5000,
           reconnectionAttempts: Infinity,
           transports: ["polling", "websocket"],
-          upgrade: true,
-          rememberUpgrade: false,
+
           timeout: 6000,
         });
 
       const replaceSocket = (baseUrl: string) => {
         if (sharedSocket) {
-          sharedSocket.removeAllListeners();
+          (sharedSocket as any).removeAllListeners();
           sharedSocket.disconnect();
         }
         sharedSocket = createSocket(baseUrl);
@@ -72,10 +71,10 @@ export const useSocket = () => {
         socket.on("disconnect", async (reason) => {
           if (reason === "io server disconnect") {
             const latestToken = await getAuthToken();
-            if (latestToken && socket.auth) {
-              socket.auth = { token: latestToken };
+            if (latestToken && (socket as any).auth) {
+              (socket as any).auth = { token: latestToken };
             }
-            socket.connect();
+            (socket as any).connect();
           }
         });
 
@@ -160,7 +159,7 @@ export const useSocket = () => {
       setTimeout(() => {
         subscribersCount = Math.max(0, subscribersCount - 1);
         if (subscribersCount === 0 && sharedSocket) {
-          sharedSocket.removeAllListeners();
+          (sharedSocket as any).removeAllListeners();
           sharedSocket.disconnect();
           sharedSocket = null;
           globalConnectErrorCount = 0;

@@ -1,0 +1,309 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: zalo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: zalo_user
+      POSTGRES_USER: zalo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zalo}
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../backend/services/user-service/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U zalo -d zalo_user" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: zalo-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: [ "redis-server", "--appendonly", "yes" ]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  user-service:
+    build:
+      context: ../../backend/services/user-service
+      dockerfile: Dockerfile
+    container_name: zalo-user-service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgres://zalo:${POSTGRES_PASSWORD:-zalo}@postgres:5432/zalo_user
+      GOOGLE_CLIENT_ID: ""
+      ADMIN_EMAILS: ""
+      JWT_SECRET: ${JWT_SECRET:-super-strong-jwt-secret}
+      JWT_EXPIRES_IN: 7d
+      JWT_ISSUER: zalo-lite-user-service
+      JWT_AUDIENCE: zalo-lite-clients
+      BCRYPT_ROUNDS: 10
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 200
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://32.236.47.127:3000,http://32.236.47.127:3004}
+    ports:
+      - "3001:3001"
+      - "50051:50051"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3001/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  chat-service:
+    build:
+      context: ../../backend/services/chat-service
+      dockerfile: Dockerfile
+    container_name: zalo-chat-service
+    restart: unless-stopped
+    depends_on:
+      user-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+    env_file:
+      - ../../backend/services/chat-service/.env
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      REDIS_URL: redis://redis:6379
+      # DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      # DYNAMODB_ENDPOINT: removed — using AWS DynamoDB Cloud
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      USE_S3: ${USE_S3:-true}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-zalo-lite-uploads-nhom10}
+      USER_SERVICE_BASE_URL: http://user-service:3001
+      JWT_SECRET: ${JWT_SECRET:-super-strong-jwt-secret}
+      JWT_ISSUER: zalo-lite-user-service
+      JWT_AUDIENCE: zalo-lite-clients
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 300
+      REDIS_MESSAGE_CHANNEL: chat:messages
+      REDIS_CALL_SIGNAL_CHANNEL: chat:calls:signaling
+      TABLE_CONVERSATIONS: conversations
+      TABLE_CONVERSATION_MEMBERS: conversation_members
+      TABLE_MESSAGES: messages
+      TABLE_FRIEND_REQUESTS: friend_requests
+      TABLE_FRIENDSHIPS: friendships
+      TABLE_CALL_SESSIONS: call_sessions
+      TABLE_CALL_HISTORY: call_history
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_PUBLIC_URL: ws://32.236.47.127:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-dev-livekit-api-key-zalo-lite-2026}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-dev-livekit-api-secret-zalo-lite-2026-production-ready}
+      CALL_INVITE_TIMEOUT_SECONDS: 30
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://32.236.47.127:3000,http://32.236.47.127:3004}
+    ports:
+      - "3002:3002"
+    volumes:
+      - chat_uploads:/app/uploads
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3002/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  chatbot-service:
+    build:
+      context: ../../backend/services/chatbot-service
+      dockerfile: Dockerfile
+    container_name: zalo-chatbot-service
+    restart: unless-stopped
+    depends_on:
+      user-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ../../backend/services/chatbot-service/.env
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://zalo:${POSTGRES_PASSWORD:-zalo}@postgres:5432/zalo_user
+      RAG_DATABASE_URL: postgresql://zalo:${POSTGRES_PASSWORD:-zalo}@postgres:5432/zalo_user
+      RAG_TOP_K: 4
+      RAG_MIN_SCORE: 0.72
+      RAG_MIN_GROUND_SCORE: 0.76
+      RAG_MAX_CONTEXT_CHARS: 4000
+      EMBEDDING_DIMENSIONS: 1536
+      EMBEDDING_API_URL: ${EMBEDDING_API_URL:-}
+      # DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      USER_SERVICE_BASE_URL: http://user-service:3001
+      CHAT_SERVICE_BASE_URL: http://chat-service:3002
+      JWT_SECRET: ${JWT_SECRET:-super-strong-jwt-secret}
+      JWT_ISSUER: zalo-lite-user-service
+      JWT_AUDIENCE: zalo-lite-clients
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 200
+      TABLE_CONVERSATIONS: chatbot_conversations
+      TABLE_FAQ: chatbot_faq
+      TABLE_NOTIFICATIONS: chatbot_notifications
+      TABLE_ANALYTICS: chatbot_analytics
+      AUTO_CLOSE_INACTIVE_HOURS: 24
+      REDIS_NOTIFICATION_CHANNEL: notifications:broadcast
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://32.236.47.127:3000,http://32.236.47.127:3004}
+      ENABLE_AI_ENGINE: "true"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-AIzaSyAT_rd1_cJxwNUYSBUDiLCLU-AJU-CWVMY}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
+      AI_PROVIDER_PRIORITY: ${AI_PROVIDER_PRIORITY:-groq,gemini}
+    ports:
+      - "3003:3003"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3003/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: zalo-livekit
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      # WebSocket / HTTP API
+      - "7880:7880"
+      # ICE/TCP fallback for WebRTC
+      - "7881:7881"
+      # WebRTC media UDP range
+      - "20000-20100:20000-20100/udp"
+    healthcheck:
+      test: [ "CMD-SHELL", "livekit-server --help > /dev/null 2>&1 || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+
+
+  ai-worker-service:
+    build:
+      context: ../../backend/services/ai-worker-service
+      dockerfile: Dockerfile
+    container_name: zalo-ai-worker
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://zalo:${POSTGRES_PASSWORD:-zalo}@postgres:5432/zalo_user
+      CHATBOT_SERVICE_URL: http://chatbot-service:3003/chatbot/faq
+      FAQ_INGEST_INTERVAL_MS: 21600000
+      ENQUEUE_EMBED_FAQ_ON_STARTUP: "true"
+      EMBEDDING_API_URL: ${EMBEDDING_API_URL:-}
+    # worker runs background jobs; no HTTP healthcheck
+
+  post-service:
+    build:
+      context: ../../backend/services/post-service
+      dockerfile: Dockerfile
+    container_name: zalo-post-service
+    restart: unless-stopped
+    depends_on:
+      user-service:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      USE_S3: ${USE_S3:-true}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-zalo-lite-uploads-nhom10}
+      USER_SERVICE_BASE_URL: http://user-service:3001
+      JWT_SECRET: ${JWT_SECRET:-super-strong-jwt-secret}
+      JWT_ISSUER: zalo-lite-user-service
+      JWT_AUDIENCE: zalo-lite-clients
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 300
+      TABLE_POSTS: posts
+      TABLE_POST_COMMENTS: post_comments
+      TABLE_POST_REACTIONS: post_reactions
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://32.236.47.127:3000,http://32.236.47.127:3004}
+    ports:
+      - "3005:3005"
+    volumes:
+      - post_uploads:/app/uploads
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3005/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  api-gateway:
+    build:
+      context: ../../backend/api-gateway
+      dockerfile: Dockerfile
+    container_name: zalo-api-gateway
+    restart: unless-stopped
+    depends_on:
+      user-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+      chatbot-service:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      USER_SERVICE_URL: http://user-service:3001
+      CHAT_SERVICE_URL: http://chat-service:3002
+      CHATBOT_SERVICE_URL: http://chatbot-service:3003
+      POST_SERVICE_URL: http://post-service:3005
+      JWT_SECRET: ${JWT_SECRET:-super-strong-jwt-secret}
+      JWT_ISSUER: zalo-lite-user-service
+      JWT_AUDIENCE: zalo-lite-clients
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://32.236.47.127:3000,http://32.236.47.127:3004}
+    ports:
+      - "3004:3004"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3004/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  postgres_data:
+  redis_data:
+  chat_uploads:
+  post_uploads:
+

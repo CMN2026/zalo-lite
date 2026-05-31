@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "./tracing.js";
 import express, {
   type NextFunction,
   type Request,

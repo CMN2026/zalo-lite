@@ -41,27 +41,27 @@ export function getRuntimeBaseUrl(
   return buildUrlFromHost(currentHost, defaultPort, currentProtocol);
 }
 
-export const WEB_GATEWAY_BASE_URL = getRuntimeBaseUrl(
-  process.env.NEXT_PUBLIC_API_BASE_URL,
+export const MOBILE_GATEWAY_BASE_URL = getRuntimeBaseUrl(
+  process.env.EXPO_PUBLIC_API_BASE_URL,
   DEFAULT_GATEWAY_PORT,
 );
 
-export const WEB_USER_SERVICE_BASE_URL = getRuntimeBaseUrl(
-  process.env.NEXT_PUBLIC_USER_SERVICE_URL,
+export const MOBILE_USER_SERVICE_BASE_URL = getRuntimeBaseUrl(
+  process.env.EXPO_PUBLIC_USER_SERVICE_URL,
   DEFAULT_USER_SERVICE_PORT,
 );
 
-export const WEB_CHAT_SERVICE_BASE_URL = getRuntimeBaseUrl(
-  process.env.NEXT_PUBLIC_CHAT_SERVICE_URL,
+export const MOBILE_CHAT_SERVICE_BASE_URL = getRuntimeBaseUrl(
+  process.env.EXPO_PUBLIC_CHAT_SERVICE_URL,
   DEFAULT_CHAT_SERVICE_PORT,
 );
 
-export const WEB_CHATBOT_SERVICE_BASE_URL = getRuntimeBaseUrl(
-  process.env.NEXT_PUBLIC_CHATBOT_SERVICE_URL,
+export const MOBILE_CHATBOT_SERVICE_BASE_URL = getRuntimeBaseUrl(
+  process.env.EXPO_PUBLIC_CHATBOT_SERVICE_URL,
   DEFAULT_CHATBOT_SERVICE_PORT,
 );
 
-export const WEB_POST_SERVICE_BASE_URL = getRuntimeBaseUrl(
-  process.env.NEXT_PUBLIC_POST_SERVICE_URL,
+export const MOBILE_POST_SERVICE_BASE_URL = getRuntimeBaseUrl(
+  process.env.EXPO_PUBLIC_POST_SERVICE_URL,
   DEFAULT_POST_SERVICE_PORT,
 );

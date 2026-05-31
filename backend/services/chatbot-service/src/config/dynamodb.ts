@@ -36,6 +36,7 @@ if (accessKeyId && secretAccessKey && accessKeyId !== "dummy") {
   };
 }
 
+console.log("DynamoDB clientConfig:", clientConfig);
 const client = new DynamoDBClient(clientConfig);
 
 export const dynamoDB = DynamoDBDocumentClient.from(client);

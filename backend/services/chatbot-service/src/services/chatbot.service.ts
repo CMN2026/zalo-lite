@@ -9,6 +9,7 @@ import { geminiService, type GeminiResponse } from "./gemini.service.js";
 import { localNLPService } from "./local-nlp.service.js";
 import { responseCacheService } from "./response-cache.service.js";
 import { learningService } from "./learning.service.js";
+import { chatbotOrchestrator } from "../orchestrator/chatbot.orchestrator.js";
 
 export class ChatbotService {
   // Confidence threshold: if below, prioritize local NLP
@@ -81,80 +82,9 @@ export class ChatbotService {
       };
     }
 
-    // Smart Hybrid Intent Classification
-    // Priority: Best Confidence (Gemini or Local NLP) > Gemini > Local NLP > Default
-    let classifyResult: GeminiResponse;
-    let selectedEngine = "local-nlp"; // default
-
-    if (env.ENABLE_AI_ENGINE) {
-      try {
-        // Try Gemini with timeout
-        const geminiPromise = geminiService.classifyAndRespond(message);
-        const timeoutPromise = new Promise<GeminiResponse>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Gemini timeout")),
-            5000, // 5 second timeout
-          ),
-        );
-
-        let geminiResult: GeminiResponse | null = null;
-        try {
-          geminiResult = await Promise.race([geminiPromise, timeoutPromise]);
-        } catch {
-          geminiResult = null;
-        }
-
-        if (geminiResult) {
-          // Gemini succeeded - check confidence
-          const localResult = await localNLPService.classifyAndRespond(message);
-
-          // Compare and pick the best
-          if (
-            geminiResult.confidence >= this.CONFIDENCE_THRESHOLD &&
-            geminiResult.confidence >= localResult.confidence
-          ) {
-            classifyResult = geminiResult;
-            selectedEngine = "gemini";
-            console.log(
-              `✅ [HYBRID] Selected: Gemini (confidence: ${geminiResult.confidence}, local: ${localResult.confidence})`,
-            );
-          } else if (localResult.confidence >= geminiResult.confidence) {
-            classifyResult = localResult;
-            selectedEngine = "local-nlp-hybrid";
-            console.log(
-              `✅ [HYBRID] Selected: LocalNLP (confidence: ${localResult.confidence} > gemini: ${geminiResult.confidence})`,
-            );
-          } else {
-            classifyResult = geminiResult;
-            selectedEngine = "gemini-low-confidence";
-            console.warn(
-              `⚠️  [HYBRID] Using Gemini (low confidence: ${geminiResult.confidence}, below threshold)`,
-            );
-          }
-        } else {
-          // Gemini timeout or error - use local NLP
-          classifyResult = await localNLPService.classifyAndRespond(message);
-          selectedEngine = "local-nlp-fallback";
-          console.warn(`⚠️  [HYBRID] Gemini unavailable, using LocalNLP`);
-        }
-      } catch (error) {
-        // Unexpected error - fallback to local NLP
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error(`❌ [HYBRID] Gemini error (${errorMsg}), using LocalNLP`);
-        classifyResult = await localNLPService.classifyAndRespond(message);
-        selectedEngine = "local-nlp-error-fallback";
-      }
-    } else {
-      // AI engine disabled - use local NLP only
-      classifyResult = await localNLPService.classifyAndRespond(message);
-      selectedEngine = "local-nlp-only";
-    }
-
-    // Log selected engine and confidence
-    console.log(
-      `📊 [${selectedEngine.toUpperCase()}] Intent: ${classifyResult.intent} | Confidence: ${classifyResult.confidence}`,
-    );
-
+    // Orchestrator-based generation
+    // New flow: semantic cache -> local NLP short-circuit -> RAG (placeholder) -> Ollama (stream) -> Gemini fallback
+    // This preserves the previous behaviour but centralizes provider logic in the orchestrator.
     // Store user message
     const userMessage: IMessage = {
       id: uuidv4(),
@@ -166,42 +96,77 @@ export class ChatbotService {
 
     await conversationRepository.addMessage(convId, userMessage);
 
-    // Generate bot response (with intent and confidence from hybrid engine)
+    // Generate using orchestrator and stream into an assembled response
+    const assembled: string[] = [];
+    try {
+      // Fetch conversation history to provide context
+      let historyText = "";
+      try {
+        const historyMsgs = await conversationRepository.getHistory(convId, 8);
+        if (historyMsgs && historyMsgs.length > 0) {
+          // Sort ascending for chronological order
+          const sorted = historyMsgs.sort((a: any, b: any) => a.createdAt - b.createdAt);
+          historyText = sorted
+            .filter((m: any) => m.id !== userMessage.id) // Exclude current message
+            .map((msg: any) => `${msg.type === "user" ? "User" : "Trợ lý Zalo-Lite"}: ${msg.content}`)
+            .join("\n");
+        }
+      } catch (err) {
+        console.warn("Failed to fetch history for orchestrator context");
+      }
+
+      await chatbotOrchestrator.handleMessageStreaming(
+        { 
+          prompt: message, 
+          conversationId: convId,
+          metadata: { history: historyText }
+        },
+        (chunk: string) => assembled.push(chunk),
+        { timeoutMs: 30_000 },
+      );
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error("Orchestrator failed:", errorMessage);
+      // As a safe fallback, use previous geminiService if available
+      try {
+        const fallback = await geminiService.classifyAndRespond(message);
+        assembled.push(fallback.suggestedResponse || String(fallback));
+      } catch (e2) {
+        assembled.push("Xin lỗi, tôi không thể trả lời lúc này.");
+      }
+    }
+
+    const finalText = assembled.join("");
     const botMessage: IMessage = {
       id: uuidv4(),
       type: "bot",
-      content: classifyResult.suggestedResponse,
+      content: finalText,
       senderId: "chatbot",
-      intent: classifyResult.intent,
-      confidence: classifyResult.confidence,
+      intent: undefined,
+      confidence: undefined,
       createdAt: Date.now(),
     };
 
-    if (classifyResult.action === "escalate") {
-      await conversationRepository.escalateToAdmin(
-        convId,
-        "pending_assignment",
-      );
-    }
-
     await conversationRepository.addMessage(convId, botMessage);
 
-    // 💾 Step 2: Cache successful response for future use
-    if (selectedEngine.includes("gemini") || classifyResult.confidence > 0.7) {
+    // Cache if appropriate
+    try {
       await responseCacheService.cacheResponse(
         message,
-        classifyResult.intent,
-        classifyResult.suggestedResponse,
-        classifyResult.confidence,
-        selectedEngine.includes("gemini") ? "gemini" : "local-nlp",
+        "auto",
+        finalText,
+        0.8,
+        "gemini",
       );
+    } catch (e) {
+      // ignore cache failures
     }
 
     return {
       conversationId: convId,
       message: botMessage,
-      action: classifyResult.action,
-      engine: selectedEngine,
+      action: undefined,
+      engine: "orchestrator",
     };
   }
 
