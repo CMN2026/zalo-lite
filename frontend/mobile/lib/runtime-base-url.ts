@@ -12,6 +12,10 @@ function buildUrlFromHost(hostname: string, port: number, protocol: string) {
   return `${protocol}//${hostname}:${port}`;
 }
 
+function buildOriginUrl(hostname: string, protocol: string) {
+  return `${protocol}//${hostname}`;
+}
+
 export function getRuntimeBaseUrl(
   envValue: string | undefined,
   defaultPort: number,
@@ -36,6 +40,10 @@ export function getRuntimeBaseUrl(
     } catch {
       return envValue;
     }
+  }
+
+  if (!isLoopbackHost(currentHost)) {
+    return buildOriginUrl(currentHost, currentProtocol);
   }
 
   return buildUrlFromHost(currentHost, defaultPort, currentProtocol);
