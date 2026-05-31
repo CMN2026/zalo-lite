@@ -1,5 +1,6 @@
 /// <reference path="./types/external.d.ts" />
 
+import "dotenv/config";
 import "./observability/tracing.js";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -15,20 +16,25 @@ import {
   renderMetrics,
 } from "./observability/metrics.js";
 
-const connection = new IORedis(process.env.REDIS_URL || "redis://redis:6379");
+const requiredEnvVars = ["REDIS_URL", "DATABASE_URL", "CHATBOT_FAQ_URL"] as const;
+for (const envKey of requiredEnvVars) {
+  if (!process.env[envKey]) {
+    throw new Error(`Missing required environment variable: ${envKey}`);
+  }
+}
+
+const connection = new IORedis(process.env.REDIS_URL || "");
 
 const queueName = "ai-tasks";
 const queue = new Queue(queueName, { connection });
 
 const pgPool = new Pool({
-  connectionString:
-    process.env.DATABASE_URL || "postgres://zalo:zalo@postgres:5432/zalo_user",
+  connectionString: process.env.DATABASE_URL || "",
 });
 const ingestIntervalMs = Number(
   process.env.FAQ_INGEST_INTERVAL_MS || "21600000",
 );
-const faqSourceUrl =
-  process.env.CHATBOT_FAQ_URL || "http://chatbot-service:3003/chatbot/faq";
+const faqSourceUrl = process.env.CHATBOT_FAQ_URL || "";
 
 async function ensureVectorTable() {
   const client = await pgPool.connect();
@@ -172,7 +178,7 @@ metricsServer.listen(metricsPort, () => {
 });
 
 logger.info("worker_started", {
-  redisUrl: process.env.REDIS_URL || "redis://redis:6379",
+  redisUrl: process.env.REDIS_URL || "",
 });
 
 async function scheduleFaqIngestion() {

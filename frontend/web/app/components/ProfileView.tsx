@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState, type FormEvent } from "react";
 import { LogOut, Pencil, RefreshCw, Save, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { clearAuthSession } from "../lib/auth";
+import type { AppLanguage } from "./SettingsView";
 import {
   getMe,
   updateAvatar,
@@ -12,8 +13,88 @@ import {
   type ProfileUser,
 } from "../lib/users";
 
-export default function ProfileView() {
+export default function ProfileView({
+  language = "vi",
+}: Readonly<{ language?: AppLanguage }>) {
   const router = useRouter();
+  const t =
+    language === "en"
+      ? {
+          user: "User",
+          title: "My Profile",
+          subtitle: "Keep your account details and contact information up to date.",
+          refresh: "Refresh",
+          signOut: "Sign Out",
+          loading: "Loading profile...",
+          coverAlt: "Cover",
+          updatingAvatar: "Updating avatar...",
+          updatingCover: "Updating cover...",
+          clickPencil: "Click the pencil icons to change avatar and cover photo.",
+          profileDetails: "Profile Details",
+          emailManaged: "Your email is managed by the account identity.",
+          fullName: "Full Name",
+          phoneNumber: "Phone Number",
+          email: "Email",
+          status: "Status",
+          active: "Active",
+          inactive: "Inactive",
+          bio: "Bio",
+          saving: "Saving...",
+          saveChanges: "Save Changes",
+          profileUpdated: "Profile updated successfully.",
+          avatarUpdated: "Avatar updated successfully.",
+          coverUpdated: "Cover photo updated successfully.",
+          errMissingSession: "Please sign in before managing your profile.",
+          errMissingBearer: "Please sign in before managing your profile.",
+          errExpired: "Your session has expired. Please sign in again.",
+          errPhoneUsed: "This phone number is already used by another account.",
+          errValidation: "Please check the fields and try again.",
+          errNotFound: "We could not find your user account.",
+          errAvatarType: "Please choose an image file for avatar.",
+          errCoverType: "Please choose an image file for cover photo.",
+          errAvatarSize: "Avatar image must be 2MB or smaller.",
+          errCoverSize: "Cover image must be 4MB or smaller.",
+          errReadImage: "Could not read the selected image.",
+          errUnknown: "Something went wrong. Please try again.",
+        }
+      : {
+          user: "Người dùng",
+          title: "Hồ sơ của tôi",
+          subtitle: "Cập nhật thông tin tài khoản và liên hệ của bạn.",
+          refresh: "Làm mới",
+          signOut: "Đăng xuất",
+          loading: "Đang tải hồ sơ...",
+          coverAlt: "Ảnh bìa",
+          updatingAvatar: "Đang cập nhật ảnh đại diện...",
+          updatingCover: "Đang cập nhật ảnh bìa...",
+          clickPencil: "Nhấn biểu tượng bút để đổi ảnh đại diện và ảnh bìa.",
+          profileDetails: "Chi tiết hồ sơ",
+          emailManaged: "Email được quản lý bởi định danh tài khoản.",
+          fullName: "Họ và tên",
+          phoneNumber: "Số điện thoại",
+          email: "Email",
+          status: "Trạng thái",
+          active: "Hoạt động",
+          inactive: "Không hoạt động",
+          bio: "Tiểu sử",
+          saving: "Đang lưu...",
+          saveChanges: "Lưu thay đổi",
+          profileUpdated: "Cập nhật hồ sơ thành công.",
+          avatarUpdated: "Cập nhật ảnh đại diện thành công.",
+          coverUpdated: "Cập nhật ảnh bìa thành công.",
+          errMissingSession: "Vui lòng đăng nhập trước khi quản lý hồ sơ.",
+          errMissingBearer: "Vui lòng đăng nhập trước khi quản lý hồ sơ.",
+          errExpired: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+          errPhoneUsed: "Số điện thoại này đã được tài khoản khác sử dụng.",
+          errValidation: "Vui lòng kiểm tra lại dữ liệu đã nhập.",
+          errNotFound: "Không tìm thấy tài khoản người dùng.",
+          errAvatarType: "Vui lòng chọn tệp ảnh cho ảnh đại diện.",
+          errCoverType: "Vui lòng chọn tệp ảnh cho ảnh bìa.",
+          errAvatarSize: "Ảnh đại diện phải nhỏ hơn hoặc bằng 2MB.",
+          errCoverSize: "Ảnh bìa phải nhỏ hơn hoặc bằng 4MB.",
+          errReadImage: "Không thể đọc tệp ảnh đã chọn.",
+          errUnknown: "Đã có lỗi xảy ra. Vui lòng thử lại.",
+        };
   const [user, setUser] = useState<ProfileUser | null>(null);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -26,7 +107,7 @@ export default function ProfileView() {
   const [error, setError] = useState("");
 
   const initials = useMemo(() => {
-    const source = user?.fullName || user?.email || "User";
+    const source = user?.fullName || user?.email || t.user;
     return source
       .split(" ")
       .map((part) => part[0])
@@ -50,7 +131,7 @@ export default function ProfileView() {
       setPhone(response.data.phone ?? "");
       setBio(response.data.bio ?? "");
     } catch (err) {
-      setError(getFriendlyError(err));
+      setError(getFriendlyError(err, t));
     } finally {
       setLoading(false);
     }
@@ -69,9 +150,9 @@ export default function ProfileView() {
         bio,
       });
       setUser(response.data);
-      setMessage("Profile updated successfully.");
+      setMessage(t.profileUpdated);
     } catch (err) {
-      setError(getFriendlyError(err));
+      setError(getFriendlyError(err, t));
     } finally {
       setSavingProfile(false);
     }
@@ -92,9 +173,9 @@ export default function ProfileView() {
       setUser((current) =>
         current ? { ...current, avatarUrl: response.data.avatarUrl } : current,
       );
-      setMessage("Avatar updated successfully.");
+      setMessage(t.avatarUpdated);
     } catch (err) {
-      setError(getFriendlyError(err));
+      setError(getFriendlyError(err, t));
     } finally {
       setSavingAvatar(false);
     }
@@ -115,9 +196,9 @@ export default function ProfileView() {
       setUser((current) =>
         current ? { ...current, coverUrl: response.data.coverUrl ?? null } : current,
       );
-      setMessage("Cover photo updated successfully.");
+      setMessage(t.coverUpdated);
     } catch (err) {
-      setError(getFriendlyError(err));
+      setError(getFriendlyError(err, t));
     } finally {
       setSavingCover(false);
     }
@@ -157,9 +238,9 @@ export default function ProfileView() {
     <div className="flex-1 overflow-y-auto bg-slate-50 p-8 h-full font-sans text-slate-800">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">My Profile</h1>
+          <h1 className="text-2xl font-bold">{t.title}</h1>
           <p className="text-slate-500 text-sm mt-1">
-            Keep your account details and contact information up to date.
+            {t.subtitle}
           </p>
         </div>
         <div className="flex gap-3">
@@ -168,14 +249,14 @@ export default function ProfileView() {
             className="bg-white border border-slate-200 text-slate-700 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
           >
             <RefreshCw className="w-4 h-4" />
-            Refresh
+            {t.refresh}
           </button>
           <button
             onClick={handleLogout}
             className="bg-red-600 text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
           >
             <LogOut className="w-4 h-4" />
-            Sign Out
+            {t.signOut}
           </button>
         </div>
       </div>
@@ -194,7 +275,7 @@ export default function ProfileView() {
 
       {loading ? (
         <div className="bg-white rounded-xl border border-slate-100 p-6 text-sm text-slate-500">
-          Loading profile...
+          {t.loading}
         </div>
       ) : (
         <div className="grid grid-cols-[320px_1fr] gap-6">
@@ -205,7 +286,7 @@ export default function ProfileView() {
                   {user?.coverUrl ? (
                     <img
                       src={user.coverUrl}
-                      alt="Cover"
+                      alt={t.coverAlt}
                       className="h-full w-full object-cover"
                     />
                   ) : null}
@@ -257,10 +338,10 @@ export default function ProfileView() {
             </div>
             <p className="mt-4 text-xs text-slate-500">
               {savingAvatar
-                ? "Updating avatar..."
+                ? t.updatingAvatar
                 : savingCover
-                  ? "Updating cover..."
-                  : "Click the pencil icons to change avatar and cover photo."}
+                  ? t.updatingCover
+                  : t.clickPencil}
             </p>
           </div>
 
@@ -273,38 +354,38 @@ export default function ProfileView() {
                 <UserRound className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold">Profile Details</h3>
+                <h3 className="font-bold">{t.profileDetails}</h3>
                 <p className="text-sm text-slate-500">
-                  Your email is managed by the account identity.
+                  {t.emailManaged}
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Full Name">
+              <Field label={t.fullName}>
                 <input
                   value={fullName}
                   onChange={(event) => setFullName(event.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 text-sm rounded-lg py-2.5 px-3 outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </Field>
-              <Field label="Phone Number">
+              <Field label={t.phoneNumber}>
                 <input
                   value={phone}
                   onChange={(event) => setPhone(event.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 text-sm rounded-lg py-2.5 px-3 outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </Field>
-              <Field label="Email">
+              <Field label={t.email}>
                 <input
                   value={user?.email ?? ""}
                   disabled
                   className="w-full bg-slate-100 border border-slate-200 text-sm rounded-lg py-2.5 px-3 text-slate-500"
                 />
               </Field>
-              <Field label="Status">
+              <Field label={t.status}>
                 <input
-                  value={user?.isActive === false ? "Inactive" : "Active"}
+                  value={user?.isActive === false ? t.inactive : t.active}
                   disabled
                   className="w-full bg-slate-100 border border-slate-200 text-sm rounded-lg py-2.5 px-3 text-slate-500"
                 />
@@ -312,7 +393,7 @@ export default function ProfileView() {
             </div>
 
             <div className="mt-4">
-              <Field label="Bio">
+              <Field label={t.bio}>
                 <textarea
                   value={bio}
                   onChange={(event) => setBio(event.target.value)}
@@ -328,7 +409,7 @@ export default function ProfileView() {
                 className="bg-blue-600 text-white flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium disabled:opacity-70"
               >
                 <Save className="w-4 h-4" />
-                {savingProfile ? "Saving..." : "Save Changes"}
+                {savingProfile ? t.saving : t.saveChanges}
               </button>
             </div>
           </form>
@@ -355,21 +436,37 @@ function Field({
   );
 }
 
-function getFriendlyError(error: unknown) {
+function getFriendlyError(
+  error: unknown,
+  t: {
+    errMissingSession: string;
+    errMissingBearer: string;
+    errExpired: string;
+    errPhoneUsed: string;
+    errValidation: string;
+    errNotFound: string;
+    errAvatarType: string;
+    errCoverType: string;
+    errAvatarSize: string;
+    errCoverSize: string;
+    errReadImage: string;
+    errUnknown: string;
+  },
+) {
   const message = error instanceof Error ? error.message : "request_failed";
   const labels: Record<string, string> = {
-    missing_local_session: "Please sign in before managing your profile.",
-    missing_bearer_token: "Please sign in before managing your profile.",
-    invalid_or_expired_token: "Your session has expired. Please sign in again.",
-    phone_already_used: "This phone number is already used by another account.",
-    validation_error: "Please check the fields and try again.",
-    user_not_found: "We could not find your user account.",
-    Avatar_image_must_be_image_file: "Please choose an image file for avatar.",
-    Cover_image_must_be_image_file: "Please choose an image file for cover photo.",
-    Avatar_image_must_be_2MB_or_smaller: "Avatar image must be 2MB or smaller.",
-    Cover_image_must_be_4MB_or_smaller: "Cover image must be 4MB or smaller.",
-    Could_not_read_the_selected_image: "Could not read the selected image.",
+    missing_local_session: t.errMissingSession,
+    missing_bearer_token: t.errMissingBearer,
+    invalid_or_expired_token: t.errExpired,
+    phone_already_used: t.errPhoneUsed,
+    validation_error: t.errValidation,
+    user_not_found: t.errNotFound,
+    Avatar_image_must_be_image_file: t.errAvatarType,
+    Cover_image_must_be_image_file: t.errCoverType,
+    Avatar_image_must_be_2MB_or_smaller: t.errAvatarSize,
+    Cover_image_must_be_4MB_or_smaller: t.errCoverSize,
+    Could_not_read_the_selected_image: t.errReadImage,
   };
 
-  return labels[message] ?? "Something went wrong. Please try again.";
+  return labels[message] ?? t.errUnknown;
 }

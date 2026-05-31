@@ -49,6 +49,18 @@ module.exports = {
       },
     },
     {
+      name: "ai-worker-service",
+      cwd: __dirname,
+      script: "/usr/bin/bash",
+      args: "-lc 'npm run start --prefix backend/services/ai-worker-service'",
+      interpreter: "none",
+      autorestart: true,
+      watch: false,
+      env: {
+        NODE_ENV: "production",
+      },
+    },
+    {
       name: "post-service",
       cwd: __dirname,
       script: "/usr/bin/bash",
