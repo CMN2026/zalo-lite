@@ -17,17 +17,9 @@ import { useSettings } from "../../contexts/settings";
 import { changePassword } from "../../lib/auth";
 import { getMe, updateAvatar, updateCover, updateMe, type ProfileUser } from "../../lib/users";
 
-function getFriendlyError(error: unknown) {
+function getFriendlyError(error: unknown, labels: Record<string, string>, fallback: string) {
   const message = error instanceof Error ? error.message : "request_failed";
-  const labels: Record<string, string> = {
-    missing_local_session: "Vui lòng đăng nhập lại.",
-    invalid_or_expired_token: "Phiên đăng nhập hết hạn.",
-    phone_already_used: "Số điện thoại này đã được sử dụng bởi tài khoản khác.",
-    validation_error: "Kiểm tra lại thông tin đã nhập.",
-    user_not_found: "Không tìm thấy tài khoản.",
-    image_must_be_valid_url_or_image_data: "Ảnh không hợp lệ, vui lòng chọn lại.",
-  };
-  return labels[message] ?? "Đã xảy ra lỗi. Vui lòng thử lại.";
+  return labels[message] ?? fallback;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -83,6 +75,35 @@ export default function ProfileScreen() {
           reloginIn: "You will be signed out in",
           seconds: "seconds",
           reloginHint: "Please sign in again to use a new token.",
+          fullName: "Full name",
+          phoneNumber: "Phone number",
+          email: "Email",
+          bio: "Bio",
+          vietnamese: "Vietnamese",
+          english: "English",
+          light: "Light",
+          dark: "Dark",
+          successProfileUpdated: "Profile updated successfully.",
+          successAvatarUpdated: "Avatar updated successfully.",
+          successCoverUpdated: "Cover photo updated successfully.",
+          loadingProfile: "Loading profile...",
+          grantPhotoPermission: "Please allow photo library access.",
+          cannotReadImage: "Could not read the selected image.",
+          avatarTooLarge: "Avatar image must be <= 2MB.",
+          coverTooLarge: "Cover image must be <= 4MB.",
+          fillPasswordFields: "Please fill all password fields.",
+          minPasswordLength: "New password must be at least 8 characters.",
+          passwordMismatch: "Password confirmation does not match.",
+          changePasswordFailed: "Unable to change password.",
+          errorFallback: "Something went wrong. Please try again.",
+          errorMap: {
+            missing_local_session: "Please sign in again.",
+            invalid_or_expired_token: "Session expired.",
+            phone_already_used: "This phone number is already used by another account.",
+            validation_error: "Please check your input.",
+            user_not_found: "User account not found.",
+            image_must_be_valid_url_or_image_data: "Invalid image. Please choose another image.",
+          } satisfies Record<string, string>,
         }
       : {
           profile: "Cá nhân",
@@ -105,6 +126,35 @@ export default function ProfileScreen() {
           reloginIn: "Bạn sẽ được đăng xuất sau",
           seconds: "giây",
           reloginHint: "Vui lòng đăng nhập lại để dùng token mới.",
+          fullName: "Họ và tên",
+          phoneNumber: "Số điện thoại",
+          email: "Email",
+          bio: "Giới thiệu bản thân",
+          vietnamese: "Tiếng Việt",
+          english: "English",
+          light: "Sáng",
+          dark: "Tối",
+          successProfileUpdated: "Cập nhật hồ sơ thành công.",
+          successAvatarUpdated: "Đã cập nhật ảnh đại diện.",
+          successCoverUpdated: "Đã cập nhật ảnh bìa.",
+          loadingProfile: "Đang tải hồ sơ...",
+          grantPhotoPermission: "Vui lòng cấp quyền truy cập thư viện ảnh.",
+          cannotReadImage: "Không thể đọc ảnh đã chọn.",
+          avatarTooLarge: "Ảnh đại diện phải <= 2MB.",
+          coverTooLarge: "Ảnh bìa phải <= 4MB.",
+          fillPasswordFields: "Vui lòng nhập đầy đủ thông tin.",
+          minPasswordLength: "Mật khẩu mới cần tối thiểu 8 ký tự.",
+          passwordMismatch: "Mật khẩu xác nhận không khớp.",
+          changePasswordFailed: "Không thể đổi mật khẩu.",
+          errorFallback: "Đã xảy ra lỗi. Vui lòng thử lại.",
+          errorMap: {
+            missing_local_session: "Vui lòng đăng nhập lại.",
+            invalid_or_expired_token: "Phiên đăng nhập hết hạn.",
+            phone_already_used: "Số điện thoại này đã được sử dụng bởi tài khoản khác.",
+            validation_error: "Kiểm tra lại thông tin đã nhập.",
+            user_not_found: "Không tìm thấy tài khoản.",
+            image_must_be_valid_url_or_image_data: "Ảnh không hợp lệ, vui lòng chọn lại.",
+          } satisfies Record<string, string>,
         };
 
   const initials = useMemo(() => {
@@ -126,7 +176,7 @@ export default function ProfileScreen() {
       setPhone(res.data.phone ?? "");
       setBio(res.data.bio ?? "");
     } catch (err) {
-      setError(getFriendlyError(err));
+      setError(getFriendlyError(err, t.errorMap, t.errorFallback));
     } finally {
       setLoading(false);
     }
@@ -139,9 +189,9 @@ export default function ProfileScreen() {
     try {
       const res = await updateMe({ fullName, phone, bio });
       setProfile(res.data);
-      setMessage("Cập nhật hồ sơ thành công.");
+      setMessage(t.successProfileUpdated);
     } catch (err) {
-      setError(getFriendlyError(err));
+      setError(getFriendlyError(err, t.errorMap, t.errorFallback));
     } finally {
       setSaving(false);
     }
@@ -150,7 +200,7 @@ export default function ProfileScreen() {
   async function pickAndUploadImage(kind: "avatar" | "cover") {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      setError("Vui lòng cấp quyền truy cập thư viện ảnh.");
+      setError(t.grantPhotoPermission);
       return;
     }
 
@@ -167,7 +217,7 @@ export default function ProfileScreen() {
 
     const asset = result.assets[0];
     if (!asset.base64 || !asset.mimeType) {
-      setError("Không thể đọc ảnh đã chọn.");
+      setError(t.cannotReadImage);
       return;
     }
 
@@ -175,8 +225,8 @@ export default function ProfileScreen() {
     if (typeof asset.fileSize === "number" && asset.fileSize > limitBytes) {
       setError(
         kind === "avatar"
-          ? "Ảnh đại diện phải <= 2MB."
-          : "Ảnh bìa phải <= 4MB.",
+          ? t.avatarTooLarge
+          : t.coverTooLarge,
       );
       return;
     }
@@ -191,17 +241,17 @@ export default function ProfileScreen() {
         setProfile((current) =>
           current ? { ...current, avatarUrl: res.data.avatarUrl ?? null } : current,
         );
-        setMessage("Đã cập nhật ảnh đại diện.");
+        setMessage(t.successAvatarUpdated);
       } else {
         setSavingCover(true);
         const res = await updateCover(imageDataUrl);
         setProfile((current) =>
           current ? { ...current, coverUrl: res.data.coverUrl ?? null } : current,
         );
-        setMessage("Đã cập nhật ảnh bìa.");
+        setMessage(t.successCoverUpdated);
       }
     } catch (err) {
-      setError(getFriendlyError(err));
+      setError(getFriendlyError(err, t.errorMap, t.errorFallback));
     } finally {
       setSavingAvatar(false);
       setSavingCover(false);
@@ -219,15 +269,15 @@ export default function ProfileScreen() {
     setError("");
     setMessage("");
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setError(language === "en" ? "Please fill all password fields." : "Vui lòng nhập đầy đủ thông tin.");
+      setError(t.fillPasswordFields);
       return;
     }
     if (newPassword.length < 8) {
-      setError(language === "en" ? "New password must be at least 8 characters." : "Mật khẩu mới cần tối thiểu 8 ký tự.");
+      setError(t.minPasswordLength);
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError(language === "en" ? "Password confirmation does not match." : "Mật khẩu xác nhận không khớp.");
+      setError(t.passwordMismatch);
       return;
     }
     setChangingPassword(true);
@@ -263,7 +313,7 @@ export default function ProfileScreen() {
             invalid_or_expired_token: "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.",
             validation_error: "Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.",
           };
-      setError(map[code] ?? (language === "en" ? "Unable to change password." : "Không thể đổi mật khẩu."));
+      setError(map[code] ?? t.changePasswordFailed);
     } finally {
       setChangingPassword(false);
     }
@@ -349,10 +399,13 @@ export default function ProfileScreen() {
           <Text className="font-bold text-slate-800 mb-4">{t.personalInfo}</Text>
 
           {loading ? (
-            <ActivityIndicator size="large" color="#2563EB" className="py-8" />
+            <View className="py-8 items-center">
+              <ActivityIndicator size="large" color="#2563EB" />
+              <Text className="text-slate-500 mt-3 text-sm">{t.loadingProfile}</Text>
+            </View>
           ) : (
             <>
-              <Field label="Họ và tên">
+              <Field label={t.fullName}>
                 <TextInput
                   value={fullName}
                   onChangeText={setFullName}
@@ -360,7 +413,7 @@ export default function ProfileScreen() {
                 />
               </Field>
 
-              <Field label="Số điện thoại">
+              <Field label={t.phoneNumber}>
                 <TextInput
                   value={phone}
                   onChangeText={setPhone}
@@ -369,7 +422,7 @@ export default function ProfileScreen() {
                 />
               </Field>
 
-              <Field label="Email">
+              <Field label={t.email}>
                 <TextInput
                   value={profile?.email ?? ""}
                   editable={false}
@@ -377,7 +430,7 @@ export default function ProfileScreen() {
                 />
               </Field>
 
-              <Field label="Giới thiệu bản thân">
+              <Field label={t.bio}>
                 <TextInput
                   value={bio}
                   onChangeText={setBio}
@@ -411,13 +464,13 @@ export default function ProfileScreen() {
                 onPress={() => setLanguage("vi")}
                 className={`px-3 py-2 rounded-lg ${language === "vi" ? "bg-blue-600" : "bg-slate-100"}`}
               >
-                <Text className={`${language === "vi" ? "text-white" : "text-slate-700"}`}>Tiếng Việt</Text>
+                <Text className={`${language === "vi" ? "text-white" : "text-slate-700"}`}>{t.vietnamese}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setLanguage("en")}
                 className={`px-3 py-2 rounded-lg ${language === "en" ? "bg-blue-600" : "bg-slate-100"}`}
               >
-                <Text className={`${language === "en" ? "text-white" : "text-slate-700"}`}>English</Text>
+                <Text className={`${language === "en" ? "text-white" : "text-slate-700"}`}>{t.english}</Text>
               </TouchableOpacity>
             </View>
           </Field>
@@ -427,13 +480,13 @@ export default function ProfileScreen() {
                 onPress={() => setTheme("light")}
                 className={`px-3 py-2 rounded-lg ${theme === "light" ? "bg-blue-600" : "bg-slate-100"}`}
               >
-                <Text className={`${theme === "light" ? "text-white" : "text-slate-700"}`}>{language === "en" ? "Light" : "Sáng"}</Text>
+                <Text className={`${theme === "light" ? "text-white" : "text-slate-700"}`}>{t.light}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setTheme("dark")}
                 className={`px-3 py-2 rounded-lg ${theme === "dark" ? "bg-blue-600" : "bg-slate-100"}`}
               >
-                <Text className={`${theme === "dark" ? "text-white" : "text-slate-700"}`}>{language === "en" ? "Dark" : "Tối"}</Text>
+                <Text className={`${theme === "dark" ? "text-white" : "text-slate-700"}`}>{t.dark}</Text>
               </TouchableOpacity>
             </View>
           </Field>

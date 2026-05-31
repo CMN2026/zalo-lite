@@ -678,7 +678,7 @@ export default function DashboardLayout() {
             offRealtimeEvent={off}
           />
         )}
-        {currentView === "profile" && <ProfileView />}
+        {currentView === "profile" && <ProfileView language={language} />}
         {currentView === "settings" && (
           <SettingsView
             language={language}

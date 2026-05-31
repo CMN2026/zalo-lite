@@ -18,11 +18,19 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const googleAndroidClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ?? "";
+  const googleIosClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ?? "";
+  const googleWebClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? "";
+  const isGoogleConfigured = Boolean(googleAndroidClientId);
 
   const [request, , promptAsync] = Google.useIdTokenAuthRequest({
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    // Prevent runtime crash when env vars are missing in production builds.
+    androidClientId: googleAndroidClientId || "missing-android-client-id",
+    iosClientId: googleIosClientId || undefined,
+    webClientId: googleWebClientId || undefined,
   });
 
   const handleLogin = async () => {
@@ -45,6 +53,10 @@ export default function LoginPage() {
 
   const handleGoogleLogin = async () => {
     setError("");
+    if (!isGoogleConfigured) {
+      setError("Ứng dụng chưa cấu hình Google Sign-In trên Android.");
+      return;
+    }
     if (!request) {
       setError("Google Sign-In chưa sẵn sàng. Vui lòng thử lại.");
       return;
@@ -152,8 +164,8 @@ export default function LoginPage() {
           <View className="flex-row gap-3">
             <TouchableOpacity
               onPress={handleGoogleLogin}
-              disabled={googleLoading || !request}
-              className={`flex-1 border border-slate-300 rounded-lg py-2 items-center justify-center flex-row gap-2 ${googleLoading || !request ? "opacity-60" : ""}`}
+              disabled={googleLoading || !request || !isGoogleConfigured}
+              className={`flex-1 border border-slate-300 rounded-lg py-2 items-center justify-center flex-row gap-2 ${googleLoading || !request || !isGoogleConfigured ? "opacity-60" : ""}`}
             >
               {googleLoading ? <ActivityIndicator size="small" color="#EA4335" /> : null}
               <FontAwesome name="google" size={14} color="#EA4335" />

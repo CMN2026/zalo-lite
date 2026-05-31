@@ -7,17 +7,24 @@
     "build:user": "npm run build --prefix backend/services/user-service",
     "build:chat": "npm run build --prefix backend/services/chat-service",
     "build:chatbot": "npm run build --prefix backend/services/chatbot-service",
+    "build:ai-worker": "npm run build --prefix backend/services/ai-worker-service",
     "build:frontend": "npm run build --prefix frontend/web",
     "build:post": "npm run build --prefix backend/services/post-service",
-    "build:all": "npm run build:gateway && npm run build:user && npm run build:chat && npm run build:chatbot && npm run build:frontend && npm run build:post",
+    "build:all": "npm run build:gateway && npm run build:user && npm run build:chat && npm run build:chatbot && npm run build:ai-worker && npm run build:frontend && npm run build:post",
     "start:gateway": "npm run dev --prefix backend/api-gateway",
     "start:user": "npm run dev --prefix backend/services/user-service",
     "start:chat": "npm run dev --prefix backend/services/chat-service",
     "start:chatbot": "npm run dev --prefix backend/services/chatbot-service",
+    "start:ai-worker": "npm run dev --prefix backend/services/ai-worker-service",
     "start:frontend": "npm run dev --prefix frontend/web",
     "start:post": "npm run dev --prefix backend/services/post-service",
-    "install:all": "cd backend/api-gateway && npm install && cd ../../backend/services/user-service && npm install && cd ../../../backend/services/chat-service && npm install && cd ../../../backend/services/chatbot-service && npm install && cd ../../../frontend/web && npm install && cd ../../../backend/services/post-service && npm install",
-    "start:all": "concurrently \"npm run start:gateway\" \"npm run start:user\" \"npm run start:chat\" \"npm run start:chatbot\" \"npm run start:frontend\" \"npm run start:post\""
+    "install:ai-worker": "npm install --prefix backend/services/ai-worker-service",
+    "install:all": "npm install --prefix backend/api-gateway && npm install --prefix backend/services/user-service && npm install --prefix backend/services/chat-service && npm install --prefix backend/services/chatbot-service && npm install --prefix backend/services/ai-worker-service && npm install --prefix frontend/web && npm install --prefix backend/services/post-service",
+    "start:all": "concurrently \"npm run start:gateway\" \"npm run start:user\" \"npm run start:chat\" \"npm run start:chatbot\" \"npm run start:ai-worker\" \"npm run start:frontend\" \"npm run start:post\"",
+    "pm2:start": "npm run build:all && pm2 start ecosystem.config.js",
+    "pm2:restart": "npm run build:all && pm2 restart ecosystem.config.js",
+    "pm2:logs": "pm2 logs",
+    "pm2:stop": "pm2 stop ecosystem.config.js && pm2 delete ecosystem.config.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

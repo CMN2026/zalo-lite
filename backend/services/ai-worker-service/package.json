@@ -4,7 +4,9 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "start": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
@@ -13,9 +15,11 @@
     "@opentelemetry/instrumentation-http": "^0.218.0",
     "@opentelemetry/sdk-node": "^0.218.0",
     "bullmq": "^1.75.0",
+    "dotenv": "^16.6.1",
     "ioredis": "^5.3.2",
     "pg": "^8.10.0",
-    "tsx": "^4.22.0"
+    "tsx": "^4.22.0",
+    "zalo-lite-root": "file:../../.."
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
