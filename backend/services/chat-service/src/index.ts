@@ -220,6 +220,7 @@ io.use((socket, next) => {
 
   try {
     socket.data.auth = verifyToken(token);
+    socket.data.authToken = token;
     return next();
   } catch {
     return next(new Error("unauthorized"));
@@ -230,6 +231,8 @@ io.on("connection", async (socket) => {
   const authData = socket.data.auth as
     | { user_id?: string; userId?: string }
     | undefined;
+  const currentAuthToken =
+    typeof socket.data.authToken === "string" ? socket.data.authToken : "";
   let userId = authData?.user_id ?? authData?.userId;
   if (!userId) {
     console.error("❌ Connection failed: No user_id in auth data");
@@ -241,10 +244,18 @@ io.on("connection", async (socket) => {
     clearDisconnectTimersForUser(userId);
     socket.join(`user_${userId}`);
 
-    // Force disconnect other sockets of the same user (Single Device Login)
+    // Force disconnect other sockets of the same user only when they use a different token.
+    // This allows multiple tabs on the same device/session without triggering false "logged in elsewhere".
     const userSockets = await io.in(`user_${userId}`).fetchSockets();
     for (const userSocket of userSockets) {
       if (userSocket.id !== socket.id) {
+        const existingAuthToken =
+          typeof userSocket.data.authToken === "string"
+            ? userSocket.data.authToken
+            : "";
+        if (existingAuthToken === currentAuthToken) {
+          continue;
+        }
         userSocket.emit("force_logout", {
           reason: "logged_in_elsewhere",
           message: "Tài khoản của bạn đã được đăng nhập ở nơi khác.",
