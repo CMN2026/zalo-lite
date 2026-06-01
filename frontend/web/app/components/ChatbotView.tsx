@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import io, { Socket } from "socket.io-client";
 import { useAuth } from "../contexts/auth";
 import { API_BASE_URL } from "../lib/api";
+import { getAuthToken } from "../lib/auth";
 import { WEB_CHATBOT_SERVICE_BASE_URL } from "../lib/runtime-base-url";
 
 // ============================================================================
@@ -79,7 +80,7 @@ const QUICK_SUGGESTIONS = [
 
 function getToken(): string {
   if (globalThis.window === undefined) return "";
-  return localStorage.getItem("token") ?? "";
+  return getAuthToken() ?? "";
 }
 
 function authHeaders() {
@@ -132,6 +133,8 @@ function getLastPreview(conv: Conversation): string {
 // ============================================================================
 
 export default function ChatbotView({ language }: { language?: any }) {
+  const streamingEnabled =
+    process.env.NEXT_PUBLIC_CHATBOT_STREAMING === "true";
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -345,9 +348,9 @@ export default function ChatbotView({ language }: { language?: any }) {
       setMessages((prev) => [...prev, optMsg]);
       setInputValue("");
 
-      const canStream = Boolean(
-        socketConnected && chatbotSocketRef.current?.connected && user,
-      );
+      const canStream =
+        streamingEnabled &&
+        Boolean(socketConnected && chatbotSocketRef.current?.connected && user);
       if (canStream) {
         const streamMessageId = `stream-${Date.now()}`;
         streamingMessageIdRef.current = streamMessageId;
@@ -493,6 +496,13 @@ export default function ChatbotView({ language }: { language?: any }) {
   }, [activeId, fetchConversations, fetchMessages]);
 
   useEffect(() => {
+    if (!streamingEnabled) {
+      chatbotSocketRef.current?.disconnect();
+      chatbotSocketRef.current = null;
+      setSocketConnected(false);
+      return;
+    }
+
     if (!user) {
       chatbotSocketRef.current?.disconnect();
       chatbotSocketRef.current = null;
@@ -579,6 +589,7 @@ export default function ChatbotView({ language }: { language?: any }) {
     appendStreamingChunk,
     finalizeStreamingMessage,
     markStreamingError,
+    streamingEnabled,
     user,
   ]);
 
