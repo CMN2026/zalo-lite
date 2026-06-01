@@ -47,6 +47,15 @@ interface Conversation {
   peerId?: string;
 }
 
+type MessageSearchResult = {
+  id: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  createdAt: string;
+  createdAtMs: number;
+};
+
 interface UserSummary {
   id: string;
   fullName: string;
@@ -452,6 +461,16 @@ export default function ChatView({
           friendAuto: "Accepted friends will automatically appear in your chat list.",
           joinGroupCall: "Group call in progress - Join",
           close: "Close",
+          searchInConversation: "Search in conversation",
+          searchKeyword: "Search keyword",
+          filter: "Filter",
+          sender: "Sender",
+          date: "Date",
+          allSenders: "All senders",
+          noMatchedMessages: "No messages match.",
+          clear: "Clear",
+          clearFilters: "Clear filters",
+          message: "Message",
         }
       : {
           loading: "Đang tải...",
@@ -476,6 +495,16 @@ export default function ChatView({
           friendAuto: "Bạn bè đã kết bạn sẽ tự động hiện trong danh sách chat.",
           joinGroupCall: "Cuộc gọi nhóm đang diễn ra - Tham gia",
           close: "Đóng",
+          searchInConversation: "Tìm kiếm trong trò chuyện",
+          searchKeyword: "Từ khóa tìm kiếm",
+          filter: "Lọc theo",
+          sender: "Người gửi",
+          date: "Ngày gửi",
+          allSenders: "Tất cả người gửi",
+          noMatchedMessages: "Không có tin nhắn phù hợp.",
+          clear: "Xóa",
+          clearFilters: "Xóa bộ lọc",
+          message: "Tin nhắn",
         };
   const { user } = useAuth();
   const { isConnected, on, off, emit, join, leave } = useSocket();
@@ -540,6 +569,13 @@ export default function ChatView({
   const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(
     null,
   );
+  const [isMessageSearchPanelOpen, setIsMessageSearchPanelOpen] =
+    useState(false);
+  const [messageSearchKeyword, setMessageSearchKeyword] = useState("");
+  const [debouncedMessageSearchKeyword, setDebouncedMessageSearchKeyword] =
+    useState("");
+  const [searchSenderId, setSearchSenderId] = useState("all");
+  const [searchDate, setSearchDate] = useState("");
   const [lastReadAtByConversation, setLastReadAtByConversation] = useState<
     Record<string, string>
   >({});
@@ -592,6 +628,157 @@ export default function ChatView({
         ? `${CONVERSATION_CACHE_KEY_PREFIX}${currentUserId}`
         : CONVERSATION_CACHE_KEY_PREFIX,
     [currentUserId],
+  );
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedMessageSearchKeyword(messageSearchKeyword.trim().toLowerCase());
+    }, 1000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [messageSearchKeyword]);
+
+  useEffect(() => {
+    setSearchSenderId("all");
+    setSearchDate("");
+    setMessageSearchKeyword("");
+    setDebouncedMessageSearchKeyword("");
+  }, [activeChatId]);
+
+  const userLookup = useMemo(() => {
+    return allUsers.reduce<
+      Record<
+        string,
+        {
+          fullName: string;
+          email?: string;
+          phone?: string;
+          avatarUrl?: string | null;
+        }
+      >
+    >((acc, userEntry) => {
+      acc[userEntry.id] = {
+        fullName: userEntry.fullName,
+        email: userEntry.email,
+        phone: userEntry.phone,
+        avatarUrl: userEntry.avatarUrl,
+      };
+      return acc;
+    }, {});
+  }, [allUsers]);
+
+  const messageSearchSenderOptions = useMemo(() => {
+    if (!activeChat) {
+      return [];
+    }
+
+    const senderMap = new Map<string, string>();
+    activeChat.messages.forEach((message) => {
+      const senderId = message.sender_id;
+      if (senderMap.has(senderId)) {
+        return;
+      }
+
+      if (senderId === currentUserId) {
+        senderMap.set(senderId, user?.fullName || "Bạn");
+        return;
+      }
+
+      const nameFromMessage = message.sender_name?.trim();
+      if (nameFromMessage) {
+        senderMap.set(senderId, nameFromMessage);
+        return;
+      }
+
+      const userEntry = userLookup[senderId];
+      if (userEntry?.fullName) {
+        senderMap.set(senderId, userEntry.fullName);
+      } else {
+        senderMap.set(senderId, senderId);
+      }
+    });
+
+    return Array.from(senderMap.entries()).map(([id, name]) => ({ id, name }));
+  }, [activeChat, currentUserId, user?.fullName, userLookup]);
+
+  const filteredMessageResults = useMemo<MessageSearchResult[]>(() => {
+    if (!activeChat) {
+      return [];
+    }
+
+    return activeChat.messages
+      .filter((message) => !message.deleted_at)
+      .filter((message) => {
+        if (!debouncedMessageSearchKeyword) {
+          return true;
+        }
+
+        return message.content.toLowerCase().includes(debouncedMessageSearchKeyword);
+      })
+      .filter((message) =>
+        searchSenderId === "all" ? true : message.sender_id === searchSenderId,
+      )
+      .filter((message) => {
+        if (!searchDate) {
+          return true;
+        }
+        const sentDate = new Date(message.created_at);
+        if (Number.isNaN(sentDate.getTime())) {
+          return false;
+        }
+        return sentDate.toISOString().slice(0, 10) === searchDate;
+      })
+      .map((message) => {
+        const createdAtMs = new Date(message.created_at).getTime();
+        const senderName =
+          message.sender_name?.trim() ||
+          userLookup[message.sender_id]?.fullName ||
+          (message.sender_id === currentUserId ? user?.fullName || "Bạn" : message.sender_id);
+
+        return {
+          id: message.id,
+          senderId: message.sender_id,
+          senderName,
+          content: message.type === "file" ? "[Tệp đính kèm]" : message.content,
+          createdAt: message.created_at,
+          createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : 0,
+        };
+      })
+      .sort((a, b) => a.createdAtMs - b.createdAtMs);
+  }, [
+    activeChat,
+    currentUserId,
+    debouncedMessageSearchKeyword,
+    searchDate,
+    searchSenderId,
+    user?.fullName,
+    userLookup,
+  ]);
+  const highlightMatchedKeyword = useCallback(
+    (content: string) => {
+      if (!debouncedMessageSearchKeyword) {
+        return content;
+      }
+
+      const normalizedContent = content.toLowerCase();
+      const matchIndex = normalizedContent.indexOf(debouncedMessageSearchKeyword);
+      if (matchIndex < 0) {
+        return content;
+      }
+
+      const matchEnd = matchIndex + debouncedMessageSearchKeyword.length;
+      return (
+        <>
+          {content.slice(0, matchIndex)}
+          <span className="bg-amber-200 text-slate-800 font-semibold rounded-sm px-0.5">
+            {content.slice(matchIndex, matchEnd)}
+          </span>
+          {content.slice(matchEnd)}
+        </>
+      );
+    },
+    [debouncedMessageSearchKeyword],
   );
 
   const markMessageRecalled = useCallback(
@@ -987,28 +1174,6 @@ export default function ChatView({
       // Ignore cache write failures (private mode/quota).
     }
   }, [allUsers, currentUserId, userSummaryCacheKey]);
-
-  const userLookup = useMemo(() => {
-    return allUsers.reduce<
-      Record<
-        string,
-        {
-          fullName: string;
-          email?: string;
-          phone?: string;
-          avatarUrl?: string | null;
-        }
-      >
-    >((acc, userEntry) => {
-      acc[userEntry.id] = {
-        fullName: userEntry.fullName,
-        email: userEntry.email,
-        phone: userEntry.phone,
-        avatarUrl: userEntry.avatarUrl,
-      };
-      return acc;
-    }, {});
-  }, [allUsers]);
 
   const callParticipantDirectory = useMemo(() => {
     const map: Record<string, { name?: string; avatarUrl?: string | null }> = {};
@@ -3860,6 +4025,21 @@ export default function ChatView({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() =>
+                    setIsMessageSearchPanelOpen((current) => !current)
+                  }
+                  className={`rounded-full p-2 transition-colors ${
+                    isMessageSearchPanelOpen
+                      ? "bg-blue-100 text-blue-700"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                  aria-label={t.searchInConversation}
+                  title={t.searchInConversation}
+                >
+                  <Search className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
                   onClick={() => {
                     if (activeCall?.conversationId === activeChat.id) {
                       handleEndCall();
@@ -4077,7 +4257,108 @@ export default function ChatView({
         )}
       </div>
 
-      {activeChat ? (
+      {activeChat && isMessageSearchPanelOpen ? (
+        <div className="w-[380px] border-l border-slate-200 bg-[#f5f7fb] flex flex-col">
+          <div className="p-5 border-b border-slate-200/80 flex items-center justify-between gap-3">
+            <h3 className="text-[32px] leading-none font-bold tracking-tight">
+              {t.searchInConversation}
+            </h3>
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-sm text-slate-500 hover:bg-slate-200/70"
+              onClick={() => setIsMessageSearchPanelOpen(false)}
+            >
+              {t.close}
+            </button>
+          </div>
+
+          <div className="p-4 border-b border-slate-200/70 space-y-3">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder={t.searchKeyword}
+                value={messageSearchKeyword}
+                onChange={(event) => setMessageSearchKeyword(event.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-14 text-sm outline-none focus:border-blue-300"
+              />
+              <button
+                type="button"
+                onClick={() => setMessageSearchKeyword("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500 hover:text-slate-700"
+              >
+                {t.clear}
+              </button>
+            </div>
+
+            <div className="text-sm text-slate-600">{t.filter}:</div>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={searchSenderId}
+                onChange={(event) => setSearchSenderId(event.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-300"
+              >
+                <option value="all">{t.allSenders}</option>
+                {messageSearchSenderOptions.map((sender) => (
+                  <option key={sender.id} value={sender.id}>
+                    {sender.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="date"
+                value={searchDate}
+                onChange={(event) => setSearchDate(event.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-300"
+                aria-label={t.date}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMessageSearchKeyword("");
+                setSearchSenderId("all");
+                setSearchDate("");
+              }}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              {t.clearFilters}
+            </button>
+          </div>
+
+          <div className="px-4 pt-4 pb-2 text-sm font-semibold text-slate-700">
+            {t.message}
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {filteredMessageResults.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-slate-500">
+                {t.noMatchedMessages}
+              </div>
+            ) : (
+              filteredMessageResults.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setScrollToMessageId(item.id)}
+                  className="w-full border-t border-slate-200 px-4 py-3 text-left hover:bg-[#ebeff5] transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-semibold text-slate-800">
+                      {item.senderName}
+                    </p>
+                    <span className="shrink-0 text-xs text-slate-500">
+                      {new Date(item.createdAt).toLocaleDateString("vi-VN")}
+                    </span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-sm text-slate-600">
+                    {highlightMatchedKeyword(item.content)}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      ) : activeChat ? (
         <GroupDetailPanel
           conversationId={activeChat.id}
           conversationType={activeChat.type ?? "direct"}

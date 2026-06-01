@@ -209,6 +209,7 @@ function CommentSection({
   language,
   writeCommentPlaceholder,
   timeLabels,
+  onOpenProfile,
 }: {
   postId: string;
   onCommentCountChange: (delta: number) => void;
@@ -220,9 +221,13 @@ function CommentSection({
     hoursAgo: string;
     daysAgo: string;
   };
+  onOpenProfile: (userId: string) => void;
 }) {
   const { user } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
+  const [commenterProfiles, setCommenterProfiles] = useState<
+    Record<string, { fullName: string; avatarUrl: string | null }>
+  >({});
   const [newComment, setNewComment] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -242,6 +247,58 @@ function CommentSection({
       .catch(console.error)
       .finally(() => setIsLoading(false));
   }, [postId, loaded]);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token || comments.length === 0) return;
+
+    const userIds = Array.from(new Set(comments.map((comment) => comment.user_id)));
+    const missingUserIds = userIds.filter(
+      (userId) => userId && !commenterProfiles[userId],
+    );
+
+    if (missingUserIds.length === 0) {
+      return;
+    }
+
+    void Promise.all(
+      missingUserIds.map(async (userId) => {
+        try {
+          const response = await fetch(`${WEB_GATEWAY_BASE_URL}/api/users/${userId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!response.ok) return null;
+          const payload = (await response.json()) as {
+            data?: { fullName?: string; email?: string; avatarUrl?: string | null };
+          };
+          return [
+            userId,
+            {
+              fullName: payload.data?.fullName?.trim() || payload.data?.email?.trim() || userId,
+              avatarUrl: payload.data?.avatarUrl ?? null,
+            },
+          ] as const;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((entries) => {
+      const validEntries = entries.filter(
+        (entry): entry is readonly [string, { fullName: string; avatarUrl: string | null }] =>
+          Boolean(entry),
+      );
+
+      if (validEntries.length === 0) return;
+
+      setCommenterProfiles((prev) => {
+        const next = { ...prev };
+        validEntries.forEach(([userId, profile]) => {
+          next[userId] = profile;
+        });
+        return next;
+      });
+    });
+  }, [commenterProfiles, comments]);
 
   const handleSubmit = async () => {
     if (!newComment.trim()) return;
@@ -289,14 +346,32 @@ function CommentSection({
 
       {comments.map((comment) => (
         <div key={comment.id} className="flex items-start gap-2.5 mb-3 group">
-          <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500 shrink-0">
-            {(comment.user_id ?? "U").slice(0, 2).toUpperCase()}
-          </div>
+          <button
+            type="button"
+            onClick={() => onOpenProfile(comment.user_id)}
+            className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500 shrink-0 overflow-hidden"
+          >
+            {commenterProfiles[comment.user_id]?.avatarUrl ? (
+              <img
+                src={commenterProfiles[comment.user_id]?.avatarUrl ?? ""}
+                alt={commenterProfiles[comment.user_id]?.fullName ?? "Avatar"}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              (commenterProfiles[comment.user_id]?.fullName ?? comment.user_id ?? "U")
+                .slice(0, 2)
+                .toUpperCase()
+            )}
+          </button>
           <div className="flex-1 min-w-0">
             <div className="bg-slate-50 rounded-2xl px-3.5 py-2.5 inline-block max-w-full">
-              <p className="text-xs font-semibold text-slate-600 mb-0.5">
-                {comment.user_id?.slice(0, 8)}...
-              </p>
+              <button
+                type="button"
+                onClick={() => onOpenProfile(comment.user_id)}
+                className="text-xs font-semibold text-slate-600 mb-0.5 hover:text-blue-600 transition-colors"
+              >
+                {commenterProfiles[comment.user_id]?.fullName ?? comment.user_id}
+              </button>
               <p className="text-sm text-slate-800 whitespace-pre-wrap break-words">
                 {comment.content}
               </p>
@@ -685,6 +760,7 @@ function PostCard({
             language={language}
             writeCommentPlaceholder={t.writeComment}
             timeLabels={t}
+            onOpenProfile={onOpenProfile}
             onCommentCountChange={(delta) =>
               setCommentCount((prev) => Math.max(0, prev + delta))
             }

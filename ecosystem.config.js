@@ -46,6 +46,8 @@ module.exports = {
       watch: false,
       env: {
         NODE_ENV: "production",
+        REDIS_URL: process.env.REDIS_URL || "redis://127.0.0.1:6379",
+        TRUST_PROXY: process.env.TRUST_PROXY || "true",
       },
     },
     {
@@ -58,6 +60,7 @@ module.exports = {
       watch: false,
       env: {
         NODE_ENV: "production",
+        REDIS_URL: process.env.REDIS_URL || "redis://127.0.0.1:6379",
       },
     },
     {
