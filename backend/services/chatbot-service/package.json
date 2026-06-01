@@ -4,6 +4,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "build": "tsc && node scripts/copy-grpc-proto.mjs",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",

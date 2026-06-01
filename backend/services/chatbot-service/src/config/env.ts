@@ -1,6 +1,6 @@
 type Env = {
   PORT: number;
-  TRUST_PROXY: boolean;
+  TRUST_PROXY: number | false;
   USER_SERVICE_BASE_URL: string;
   CHAT_SERVICE_BASE_URL: string;
   AWS_REGION: string;
@@ -35,9 +35,25 @@ function parseCorsOrigins(value: string): string[] {
     .filter(Boolean);
 }
 
+function parseTrustProxy(value: string | undefined): number | false {
+  if (!value) return 1;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "false" || normalized === "0" || normalized === "off") {
+    return false;
+  }
+  if (normalized === "true" || normalized === "on") {
+    return 1;
+  }
+  const numeric = Number(normalized);
+  if (Number.isFinite(numeric) && numeric >= 0) {
+    return numeric;
+  }
+  return 1;
+}
+
 export const env: Env = {
   PORT: Number(getEnv("PORT", "3003")),
-  TRUST_PROXY: getEnv("TRUST_PROXY", "true") === "true",
+  TRUST_PROXY: parseTrustProxy(process.env.TRUST_PROXY),
   USER_SERVICE_BASE_URL: getEnv(
     "USER_SERVICE_BASE_URL",
     "http://localhost:3001",

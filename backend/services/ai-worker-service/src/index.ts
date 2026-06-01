@@ -23,7 +23,9 @@ for (const envKey of requiredEnvVars) {
   }
 }
 
-const connection = new IORedis(process.env.REDIS_URL || "");
+const connection = new IORedis(process.env.REDIS_URL || "", {
+  maxRetriesPerRequest: null,
+});
 
 const queueName = "ai-tasks";
 const queue = new Queue(queueName, { connection });
@@ -55,12 +57,20 @@ async function ensureVectorTable() {
 }
 
 async function loadFaqs() {
-  const res = await fetch(faqSourceUrl);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch FAQ source: ${res.status}`);
+  try {
+    const res = await fetch(faqSourceUrl);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch FAQ source: ${res.status}`);
+    }
+    const json = await res.json();
+    return Array.isArray(json?.data) ? json.data : [];
+  } catch (error) {
+    throw new Error(
+      `Failed to load FAQ source from ${faqSourceUrl}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
-  const json = await res.json();
-  return Array.isArray(json?.data) ? json.data : [];
 }
 
 async function ingestFaqEmbeddings() {
