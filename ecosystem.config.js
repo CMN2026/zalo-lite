@@ -1,3 +1,5 @@
+const { join } = require("path");
+
 module.exports = {
   apps: [
     {
@@ -38,9 +40,9 @@ module.exports = {
     },
     {
       name: "chatbot-service",
-      cwd: __dirname,
+      cwd: join(__dirname, "backend/services/chatbot-service"),
       script: "/usr/bin/bash",
-      args: "-lc 'npm run start --prefix backend/services/chatbot-service'",
+      args: "-lc 'npm run start'",
       interpreter: "none",
       autorestart: true,
       watch: false,
@@ -52,9 +54,9 @@ module.exports = {
     },
     {
       name: "ai-worker-service",
-      cwd: __dirname,
+      cwd: join(__dirname, "backend/services/ai-worker-service"),
       script: "/usr/bin/bash",
-      args: "-lc 'npm run start --prefix backend/services/ai-worker-service'",
+      args: "-lc 'npm run start'",
       interpreter: "none",
       autorestart: true,
       watch: false,
