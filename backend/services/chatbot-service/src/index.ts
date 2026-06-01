@@ -32,6 +32,7 @@ const io = new SocketIOServer(httpServer, {
 });
 
 app.disable("x-powered-by");
+app.set("trust proxy", env.TRUST_PROXY);
 app.use(helmet());
 app.use(
   cors({

@@ -81,6 +81,15 @@ interface Message {
   reply_to_message_id?: string;
 }
 
+type MessageSearchResult = {
+  id: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  createdAt: string;
+  createdAtMs: number;
+};
+
 type ComposerAttachment = {
   uri: string;
   name: string;
@@ -431,6 +440,15 @@ export default function ChatsScreen() {
   >(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [showChatDetails, setShowChatDetails] = useState(false);
+  const [showMessageSearch, setShowMessageSearch] = useState(false);
+  const [messageSearchKeyword, setMessageSearchKeyword] = useState("");
+  const [debouncedMessageSearchKeyword, setDebouncedMessageSearchKeyword] =
+    useState("");
+  const [searchSenderId, setSearchSenderId] = useState("all");
+  const [searchDate, setSearchDate] = useState("");
+  const [highlightedMessageId, setHighlightedMessageId] = useState<
+    string | null
+  >(null);
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockedByCurrentUser, setBlockedByCurrentUser] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -466,6 +484,7 @@ export default function ChatsScreen() {
   const localTypingHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localTypingHasTextRef = useRef(false);
   const localTypingActiveRef = useRef(false);
   const activeConv = conversations.find((c) => c.id === activeChatId);
@@ -514,6 +533,126 @@ export default function ChatsScreen() {
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedMessageSearchKeyword(messageSearchKeyword.trim().toLowerCase());
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [messageSearchKeyword]);
+
+  useEffect(() => {
+    setShowMessageSearch(false);
+    setMessageSearchKeyword("");
+    setDebouncedMessageSearchKeyword("");
+    setSearchSenderId("all");
+    setSearchDate("");
+  }, [activeChatId]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const jumpToMessage = useCallback(
+    (messageId: string) => {
+      const index = messages.findIndex((message) => message.id === messageId);
+      if (index < 0) {
+        return;
+      }
+
+      const approxY = Math.max(0, index * 82 - 140);
+      scrollRef.current?.scrollTo({ y: approxY, animated: true });
+      setHighlightedMessageId(messageId);
+
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+      highlightTimeoutRef.current = setTimeout(() => {
+        setHighlightedMessageId((current) =>
+          current === messageId ? null : current,
+        );
+        highlightTimeoutRef.current = null;
+      }, 2000);
+    },
+    [messages],
+  );
+
+  const searchSenderOptions = useMemo(() => {
+    const senderMap = new Map<string, string>();
+    messages.forEach((message) => {
+      const senderId = message.sender_id;
+      if (senderMap.has(senderId)) {
+        return;
+      }
+
+      if (senderId === currentUserId) {
+        senderMap.set(senderId, "Bạn");
+        return;
+      }
+
+      const senderName =
+        userCache[senderId]?.fullName || message.sender_name || senderId;
+      senderMap.set(senderId, senderName);
+    });
+
+    return Array.from(senderMap.entries()).map(([id, name]) => ({ id, name }));
+  }, [currentUserId, messages, userCache]);
+
+  const filteredMessageResults = useMemo<MessageSearchResult[]>(() => {
+    return messages
+      .filter((message) => !message.recalled_at)
+      .filter((message) =>
+        searchSenderId === "all" ? true : message.sender_id === searchSenderId,
+      )
+      .filter((message) => {
+        if (!searchDate) {
+          return true;
+        }
+        const sentDate = new Date(message.created_at);
+        if (Number.isNaN(sentDate.getTime())) {
+          return false;
+        }
+        return sentDate.toISOString().slice(0, 10) === searchDate;
+      })
+      .filter((message) => {
+        if (!debouncedMessageSearchKeyword) {
+          return true;
+        }
+        return message.content
+          .toLowerCase()
+          .includes(debouncedMessageSearchKeyword);
+      })
+      .map((message) => {
+        const { text, file } = parseMessageContent(message.content);
+        const content =
+          text || (file ? file.originalName || file.filename || "[Tệp đính kèm]" : "");
+        const createdAtMs = new Date(message.created_at).getTime();
+
+        return {
+          id: message.id,
+          senderId: message.sender_id,
+          senderName:
+            userCache[message.sender_id]?.fullName ||
+            message.sender_name ||
+            (message.sender_id === currentUserId ? "Bạn" : message.sender_id),
+          content,
+          createdAt: message.created_at,
+          createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : 0,
+        };
+      })
+      .sort((a, b) => a.createdAtMs - b.createdAtMs);
+  }, [
+    currentUserId,
+    debouncedMessageSearchKeyword,
+    messages,
+    searchDate,
+    searchSenderId,
+    userCache,
+  ]);
 
   const handleBlockToggle = useCallback(async () => {
     if (!directPeerId) return;
@@ -1980,6 +2119,13 @@ export default function ChatsScreen() {
               </Text>
             </View>
             <TouchableOpacity
+              onPress={() => setShowMessageSearch(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              className="px-2 py-2 rounded-full active:bg-blue-600 mr-1"
+            >
+              <Feather name="search" size={20} color="#ffffff" />
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={openVideoCall}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               className="px-2 py-2 rounded-full active:bg-blue-600 mr-1"
@@ -2054,6 +2200,15 @@ export default function ChatsScreen() {
                 return (
                   <View
                     key={msg.id}
+                    style={{
+                      backgroundColor:
+                        highlightedMessageId === msg.id ? "rgba(254,243,199,0.9)" : "transparent",
+                      borderColor: highlightedMessageId === msg.id ? "#f59e0b" : "transparent",
+                      borderWidth: highlightedMessageId === msg.id ? 1 : 0,
+                      borderRadius: 12,
+                      paddingHorizontal: 4,
+                      paddingVertical: 4,
+                    }}
                     className={`flex-row items-end mb-3 ${isMe ? "justify-end" : "justify-start"}`}
                   >
                     {!isMe && (
@@ -2106,13 +2261,7 @@ export default function ChatsScreen() {
                         >
                           {repliedMessage && (
                             <Pressable
-                              onPress={() => {
-                                const index = messages.findIndex((m) => m.id === repliedMessage.id);
-                                if (index >= 0) {
-                                  const approxY = Math.max(0, index * 82 - 140);
-                                  scrollRef.current?.scrollTo({ y: approxY, animated: true });
-                                }
-                              }}
+                              onPress={() => jumpToMessage(repliedMessage.id)}
                               style={{
                                 borderLeftWidth: 2,
                                 borderLeftColor: isMe ? "rgba(255,255,255,0.85)" : "#3b82f6",
@@ -2382,6 +2531,120 @@ export default function ChatsScreen() {
               )}
             </TouchableOpacity>
           </View>
+
+          <Modal
+            visible={showMessageSearch}
+            animationType="slide"
+            onRequestClose={() => setShowMessageSearch(false)}
+          >
+            <SafeAreaView className="flex-1 bg-slate-50">
+              <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
+                <Text className="text-lg font-bold text-slate-800">
+                  Tìm kiếm trong trò chuyện
+                </Text>
+                <TouchableOpacity onPress={() => setShowMessageSearch(false)}>
+                  <Text className="text-sm text-slate-600">Đóng</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View className="p-4 border-b border-slate-200 bg-white">
+                <View className="flex-row items-center rounded-xl border border-slate-200 px-3 py-2">
+                  <Feather name="search" size={16} color="#64748b" />
+                  <TextInput
+                    value={messageSearchKeyword}
+                    onChangeText={setMessageSearchKeyword}
+                    placeholder="Từ khóa tìm kiếm"
+                    className="flex-1 ml-2 text-sm text-slate-800"
+                  />
+                  <TouchableOpacity onPress={() => setMessageSearchKeyword("")}>
+                    <Text className="text-sm text-slate-500">Xóa</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View className="mt-3 flex-row items-center gap-2">
+                  <Text className="text-sm text-slate-600">Lọc theo:</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View className="flex-row items-center gap-2">
+                      <TouchableOpacity
+                        onPress={() => setSearchSenderId("all")}
+                        className={`rounded-full px-3 py-1.5 border ${searchSenderId === "all" ? "bg-blue-100 border-blue-300" : "bg-white border-slate-200"}`}
+                      >
+                        <Text className={`text-xs ${searchSenderId === "all" ? "text-blue-700" : "text-slate-600"}`}>
+                          Tất cả người gửi
+                        </Text>
+                      </TouchableOpacity>
+                      {searchSenderOptions.map((sender) => (
+                        <TouchableOpacity
+                          key={sender.id}
+                          onPress={() => setSearchSenderId(sender.id)}
+                          className={`rounded-full px-3 py-1.5 border ${searchSenderId === sender.id ? "bg-blue-100 border-blue-300" : "bg-white border-slate-200"}`}
+                        >
+                          <Text className={`text-xs ${searchSenderId === sender.id ? "text-blue-700" : "text-slate-600"}`}>
+                            {sender.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+
+                <View className="mt-3">
+                  <Text className="text-xs text-slate-600 mb-1">Ngày gửi (YYYY-MM-DD)</Text>
+                  <TextInput
+                    value={searchDate}
+                    onChangeText={setSearchDate}
+                    placeholder="2026-06-01"
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white"
+                  />
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    setMessageSearchKeyword("");
+                    setSearchSenderId("all");
+                    setSearchDate("");
+                  }}
+                  className="mt-3 rounded-xl border border-slate-200 py-2 items-center bg-slate-100"
+                >
+                  <Text className="text-sm text-slate-600">Xóa bộ lọc</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView className="flex-1">
+                <Text className="px-4 pt-4 pb-2 text-sm font-semibold text-slate-700">
+                  Tin nhắn
+                </Text>
+                {filteredMessageResults.length === 0 ? (
+                  <Text className="px-4 py-2 text-sm text-slate-500">
+                    Không có tin nhắn phù hợp.
+                  </Text>
+                ) : (
+                  filteredMessageResults.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => {
+                        setShowMessageSearch(false);
+                        jumpToMessage(item.id);
+                      }}
+                      className="px-4 py-3 border-t border-slate-200 bg-white"
+                    >
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-sm font-semibold text-slate-800">
+                          {item.senderName}
+                        </Text>
+                        <Text className="text-xs text-slate-500">
+                          {new Date(item.createdAt).toLocaleDateString("vi-VN")}
+                        </Text>
+                      </View>
+                      <Text className="text-sm text-slate-600 mt-1" numberOfLines={2}>
+                        {item.content}
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+            </SafeAreaView>
+          </Modal>
 
           <Modal
             visible={showChatDetails}

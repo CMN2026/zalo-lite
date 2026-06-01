@@ -1,5 +1,6 @@
 type Env = {
   PORT: number;
+  TRUST_PROXY: boolean;
   USER_SERVICE_BASE_URL: string;
   CHAT_SERVICE_BASE_URL: string;
   AWS_REGION: string;
@@ -36,6 +37,7 @@ function parseCorsOrigins(value: string): string[] {
 
 export const env: Env = {
   PORT: Number(getEnv("PORT", "3003")),
+  TRUST_PROXY: getEnv("TRUST_PROXY", "true") === "true",
   USER_SERVICE_BASE_URL: getEnv(
     "USER_SERVICE_BASE_URL",
     "http://localhost:3001",
