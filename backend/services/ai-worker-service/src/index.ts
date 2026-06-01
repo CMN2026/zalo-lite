@@ -229,10 +229,13 @@ scheduleFaqIngestion().catch((err) =>
 
 async function shutdown(signal: string) {
   logger.info("shutdown_signal", { signal });
+  // Close BullMQ components before quitting Redis connection to avoid
+  // "Connection is closed" noise during graceful shutdown.
+  await Promise.allSettled([worker.close(), queue.close()]);
   await Promise.allSettled([
-    worker.close(),
-    queue.close(),
-    metricsServer.close(),
+    new Promise<void>((resolve) => {
+      metricsServer.close(() => resolve());
+    }),
     connection.quit(),
     pgPool.end(),
   ]);
