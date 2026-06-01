@@ -38,6 +38,11 @@ jobs:
             run_lint: "false"
             run_typecheck: "false"
             run_build: "true"
+          - name: AI Worker Service
+            working_directory: backend/services/ai-worker-service
+            run_lint: "false"
+            run_typecheck: "true"
+            run_build: "true"
           - name: Post Service
             working_directory: backend/services/post-service
             run_lint: "false"

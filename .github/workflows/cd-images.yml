@@ -32,6 +32,9 @@ jobs:
           - service: chatbot-service
             context: ./backend/services/chatbot-service
             dockerfile: ./backend/services/chatbot-service/Dockerfile
+          - service: ai-worker-service
+            context: ./backend/services/ai-worker-service
+            dockerfile: ./backend/services/ai-worker-service/Dockerfile
           - service: post-service
             context: ./backend/services/post-service
             dockerfile: ./backend/services/post-service/Dockerfile
