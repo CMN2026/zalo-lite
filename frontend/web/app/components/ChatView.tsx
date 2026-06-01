@@ -646,6 +646,28 @@ export default function ChatView({
     setDebouncedMessageSearchKeyword("");
   }, [activeChatId]);
 
+  const userLookup = useMemo(() => {
+    return allUsers.reduce<
+      Record<
+        string,
+        {
+          fullName: string;
+          email?: string;
+          phone?: string;
+          avatarUrl?: string | null;
+        }
+      >
+    >((acc, userEntry) => {
+      acc[userEntry.id] = {
+        fullName: userEntry.fullName,
+        email: userEntry.email,
+        phone: userEntry.phone,
+        avatarUrl: userEntry.avatarUrl,
+      };
+      return acc;
+    }, {});
+  }, [allUsers]);
+
   const messageSearchSenderOptions = useMemo(() => {
     if (!activeChat) {
       return [];
@@ -1152,28 +1174,6 @@ export default function ChatView({
       // Ignore cache write failures (private mode/quota).
     }
   }, [allUsers, currentUserId, userSummaryCacheKey]);
-
-  const userLookup = useMemo(() => {
-    return allUsers.reduce<
-      Record<
-        string,
-        {
-          fullName: string;
-          email?: string;
-          phone?: string;
-          avatarUrl?: string | null;
-        }
-      >
-    >((acc, userEntry) => {
-      acc[userEntry.id] = {
-        fullName: userEntry.fullName,
-        email: userEntry.email,
-        phone: userEntry.phone,
-        avatarUrl: userEntry.avatarUrl,
-      };
-      return acc;
-    }, {});
-  }, [allUsers]);
 
   const callParticipantDirectory = useMemo(() => {
     const map: Record<string, { name?: string; avatarUrl?: string | null }> = {};
