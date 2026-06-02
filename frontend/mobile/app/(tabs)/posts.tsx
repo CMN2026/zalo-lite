@@ -20,6 +20,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 
 import { useAuth } from "../../contexts/auth";
+import { useSettings } from "../../contexts/settings";
 import { getAuthToken } from "../../lib/auth";
 import { getMe, listFriends, type ProfileUser } from "../../lib/users";
 import { API_BASE_URL } from "../../lib/api";
@@ -612,6 +613,73 @@ function PostCard({
 
 export default function PostsScreen() {
   const { user: authUser } = useAuth();
+  const { language } = useSettings();
+  const t =
+    language === "en"
+      ? {
+          feed: "Posts",
+          whatsOnMind: "What's on your mind?",
+          loadingFeed: "Loading posts...",
+          noPosts: "No posts yet",
+          noPostsHint: "Create your first post or add friends to see their posts here.",
+          cancelDraft: "Discard post",
+          discardPrompt: "Discard the post you are drafting?",
+          keepEditing: "Keep editing",
+          discard: "Discard",
+          cancel: "Cancel",
+          createPost: "Create post",
+          publish: "Post",
+          friendsOnly: "Friends",
+          selectedImages: (count: number) => `Selected images (${count}/10)`,
+          addImage: "Add image",
+          friendsOnlyHint: "Visible to friends only",
+          permissionTitle: "Access required",
+          permissionBody: "Please allow access to your photo library.",
+          publishFailed: "Unable to publish the post. Please try again.",
+          profileLoading: "Loading...",
+          userFallback: "User",
+          notice: "Notice",
+          friendRequired: "You need to become friends before calling or messaging.",
+          callUnsupported: "Calling directly from this modal is not supported yet.",
+          chatUnsupported: "Direct messaging from this modal is not supported yet.",
+          call: "Call",
+          message: "Message",
+          personalInfo: "Personal information",
+          phone: "Phone",
+          notUpdated: "Not updated",
+        }
+      : {
+          feed: "Bảng tin",
+          whatsOnMind: "Bạn đang nghĩ gì?",
+          loadingFeed: "Đang tải bảng tin...",
+          noPosts: "Chưa có bài viết nào",
+          noPostsHint: "Hãy đăng bài viết đầu tiên hoặc kết bạn để xem bài viết của nhau!",
+          cancelDraft: "Huỷ bài viết",
+          discardPrompt: "Bỏ bài viết đang soạn thảo?",
+          keepEditing: "Tiếp tục soạn",
+          discard: "Bỏ",
+          cancel: "Huỷ",
+          createPost: "Tạo bài viết",
+          publish: "Đăng",
+          friendsOnly: "Bạn bè",
+          selectedImages: (count: number) => `Ảnh đã chọn (${count}/10)`,
+          addImage: "Thêm ảnh",
+          friendsOnlyHint: "Chỉ chia sẻ với bạn bè",
+          permissionTitle: "Quyền truy cập",
+          permissionBody: "Vui lòng cấp quyền truy cập thư viện ảnh.",
+          publishFailed: "Không thể đăng bài viết. Vui lòng thử lại.",
+          profileLoading: "Đang tải...",
+          userFallback: "Người dùng",
+          notice: "Thông báo",
+          friendRequired: "Bạn cần kết bạn trước khi gọi điện hoặc nhắn tin.",
+          callUnsupported: "Hiện tại chưa hỗ trợ gọi điện trực tiếp từ modal này.",
+          chatUnsupported: "Hiện tại chưa hỗ trợ nhắn tin trực tiếp từ modal này.",
+          call: "Gọi điện",
+          message: "Nhắn tin",
+          personalInfo: "Thông tin cá nhân",
+          phone: "Điện thoại",
+          notUpdated: "Chưa cập nhật",
+        };
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [usersMap, setUsersMap] = useState<
@@ -739,7 +807,7 @@ export default function PostsScreen() {
       } catch {
         setSelectedProfile({
           id: selectedProfileUserId,
-          fullName: usersMap[selectedProfileUserId]?.fullName ?? "Người dùng",
+          fullName: usersMap[selectedProfileUserId]?.fullName ?? t.userFallback,
           avatarUrl: usersMap[selectedProfileUserId]?.avatarUrl ?? null,
           coverUrl: null,
           bio: null,
@@ -775,7 +843,7 @@ export default function PostsScreen() {
   const handleImagePick = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Quyền truy cập", "Vui lòng cấp quyền truy cập thư viện ảnh.");
+      Alert.alert(t.permissionTitle, t.permissionBody);
       return;
     }
 
@@ -801,7 +869,7 @@ export default function PostsScreen() {
       setComposerVisible(false);
       handleRefresh();
     } catch (err) {
-      Alert.alert("Lỗi", "Không thể đăng bài viết. Vui lòng thử lại.");
+      Alert.alert("Error", t.publishFailed);
     } finally {
       setPublishing(false);
     }
@@ -815,7 +883,7 @@ export default function PostsScreen() {
     <SafeAreaView className="flex-1 bg-slate-50">
       {/* Header */}
       <View className="bg-zalo-blue px-4 py-3 flex-row items-center justify-between border-b border-zalo-blue">
-        <Text className="text-xl font-bold text-white">Bảng tin</Text>
+        <Text className="text-xl font-bold text-white">{t.feed}</Text>
         <TouchableOpacity
           onPress={() => setComposerVisible(true)}
           className="bg-white/10 w-9 h-9 rounded-full items-center justify-center"
@@ -831,7 +899,7 @@ export default function PostsScreen() {
           onPress={() => setComposerVisible(true)}
           className="flex-1 bg-slate-50 border border-slate-100 rounded-full px-4 py-2.5 justify-center"
         >
-          <Text className="text-slate-400 text-sm">Bạn đang nghĩ gì?</Text>
+          <Text className="text-slate-400 text-sm">{t.whatsOnMind}</Text>
         </TouchableOpacity>
       </View>
 
@@ -839,7 +907,7 @@ export default function PostsScreen() {
       {loading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#0068FF" />
-          <Text className="text-xs text-slate-400 mt-2">Đang tải bảng tin...</Text>
+          <Text className="text-xs text-slate-400 mt-2">{t.loadingFeed}</Text>
         </View>
       ) : posts.length === 0 ? (
         <FlatList
@@ -854,10 +922,10 @@ export default function PostsScreen() {
                 <MaterialIcons name="newspaper" size={28} color="#CBD5E1" />
               </View>
               <Text className="text-[15px] font-semibold text-slate-500 mb-1">
-                Chưa có bài viết nào
+                {t.noPosts}
               </Text>
               <Text className="text-xs text-slate-400 text-center">
-                Hãy đăng bài viết đầu tiên hoặc kết bạn để xem bài viết của nhau!
+                {t.noPostsHint}
               </Text>
             </View>
           }
@@ -900,12 +968,12 @@ export default function PostsScreen() {
                 onPress={() => {
                   if (newPostContent.trim() || pickedImages.length > 0) {
                     Alert.alert(
-                      "Huỷ bài viết",
-                      "Bỏ bài viết đang soạn thảo?",
+                      t.cancelDraft,
+                      t.discardPrompt,
                       [
-                        { text: "Tiếp tục soạn", style: "cancel" },
+                        { text: t.keepEditing, style: "cancel" },
                         {
-                          text: "Bỏ",
+                          text: t.discard,
                           style: "destructive",
                           onPress: () => setComposerVisible(false),
                         },
@@ -917,10 +985,10 @@ export default function PostsScreen() {
                 }}
                 className="py-1"
               >
-                <Text className="text-slate-500 text-sm font-semibold">Huỷ</Text>
+                <Text className="text-slate-500 text-sm font-semibold">{t.cancel}</Text>
               </TouchableOpacity>
 
-              <Text className="text-base font-bold text-slate-800">Tạo bài viết</Text>
+              <Text className="text-base font-bold text-slate-800">{t.createPost}</Text>
 
               <TouchableOpacity
                 onPress={handlePublishPost}
@@ -934,7 +1002,7 @@ export default function PostsScreen() {
                 {publishing ? (
                   <ActivityIndicator size="small" color="white" />
                 ) : (
-                  <Text className="text-white text-xs font-bold">Đăng</Text>
+                  <Text className="text-white text-xs font-bold">{t.publish}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -954,7 +1022,7 @@ export default function PostsScreen() {
                   <View className="flex-row items-center bg-slate-100 rounded-full px-2 py-0.5 mt-1 border border-slate-200 self-start">
                     <MaterialIcons name="people" size={12} color="#64748B" />
                     <Text className="text-[10px] text-slate-500 font-medium ml-1">
-                      Bạn bè
+                      {t.friendsOnly}
                     </Text>
                   </View>
                 </View>
@@ -964,7 +1032,7 @@ export default function PostsScreen() {
               <TextInput
                 value={newPostContent}
                 onChangeText={setNewPostContent}
-                placeholder="Bạn đang nghĩ gì?"
+                placeholder={t.whatsOnMind}
                 placeholderTextColor="#94A3B8"
                 className="text-base text-slate-800 min-h-[120px] p-0"
                 style={{ textAlignVertical: "top" }}
@@ -976,7 +1044,7 @@ export default function PostsScreen() {
               {pickedImages.length > 0 ? (
                 <View className="mt-4">
                   <Text className="text-xs font-bold text-slate-500 mb-2 uppercase">
-                    Ảnh đã chọn ({pickedImages.length}/10)
+                    {t.selectedImages(pickedImages.length)}
                   </Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {pickedImages.map((uri, index) => (
@@ -1010,11 +1078,11 @@ export default function PostsScreen() {
                 className="flex-row items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200"
               >
                 <MaterialIcons name="photo-library" size={20} color="#10B981" />
-                <Text className="text-slate-600 text-xs font-semibold">Thêm ảnh</Text>
+                <Text className="text-slate-600 text-xs font-semibold">{t.addImage}</Text>
               </TouchableOpacity>
 
               <Text className="text-[10px] text-slate-400 italic">
-                Chỉ chia sẻ với bạn bè
+                {t.friendsOnlyHint}
               </Text>
             </View>
           </KeyboardAvoidingView>
@@ -1068,48 +1136,48 @@ export default function PostsScreen() {
               </View>
 
               <Text className="text-white text-3xl font-bold mb-4">
-                {loadingProfile ? "Đang tải..." : selectedProfile?.fullName ?? "Người dùng"}
+                {loadingProfile ? t.profileLoading : selectedProfile?.fullName ?? t.userFallback}
               </Text>
 
               <View className="flex-row gap-3 mb-6">
                 <TouchableOpacity
                   onPress={() => {
                     if (!selectedProfileUserId || !friendIds.has(selectedProfileUserId)) {
-                      Alert.alert("Thông báo", "Bạn cần kết bạn trước khi gọi điện hoặc nhắn tin.");
+                      Alert.alert(t.notice, t.friendRequired);
                       return;
                     }
-                    Alert.alert("Thông báo", "Hiện tại chưa hỗ trợ gọi điện trực tiếp từ modal này.");
+                    Alert.alert(t.notice, t.callUnsupported);
                   }}
                   className="flex-1 bg-[#1D2A44] rounded-xl py-3 items-center justify-center flex-row gap-2"
                 >
                   <MaterialIcons name="call" size={18} color="#fff" />
-                  <Text className="text-white font-semibold">Gọi điện</Text>
+                  <Text className="text-white font-semibold">{t.call}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
                     if (!selectedProfileUserId || !friendIds.has(selectedProfileUserId)) {
-                      Alert.alert("Thông báo", "Bạn cần kết bạn trước khi gọi điện hoặc nhắn tin.");
+                      Alert.alert(t.notice, t.friendRequired);
                       return;
                     }
-                    Alert.alert("Thông báo", "Hiện tại chưa hỗ trợ nhắn tin trực tiếp từ modal này.");
+                    Alert.alert(t.notice, t.chatUnsupported);
                   }}
                   className="flex-1 bg-[#2563EB] rounded-xl py-3 items-center justify-center flex-row gap-2"
                 >
                   <MaterialIcons name="chat-bubble-outline" size={18} color="#fff" />
-                  <Text className="text-white font-semibold">Nhắn tin</Text>
+                  <Text className="text-white font-semibold">{t.message}</Text>
                 </TouchableOpacity>
               </View>
 
-              <Text className="text-white text-xl font-semibold mb-3">Thông tin cá nhân</Text>
+              <Text className="text-white text-xl font-semibold mb-3">{t.personalInfo}</Text>
               <View className="border-t border-slate-700 pt-3 gap-2">
                 <View className="flex-row">
                   <Text className="text-slate-400 w-20">Bio</Text>
-                  <Text className="text-slate-100 flex-1">{selectedProfile?.bio || "Chưa cập nhật"}</Text>
+                  <Text className="text-slate-100 flex-1">{selectedProfile?.bio || t.notUpdated}</Text>
                 </View>
                 <View className="flex-row">
-                  <Text className="text-slate-400 w-20">Điện thoại</Text>
+                  <Text className="text-slate-400 w-20">{t.phone}</Text>
                   <Text className="text-slate-100 flex-1">
-                    {selectedProfile?.phone ? `******${selectedProfile.phone.slice(-3)}` : "Chưa cập nhật"}
+                    {selectedProfile?.phone ? `******${selectedProfile.phone.slice(-3)}` : t.notUpdated}
                   </Text>
                 </View>
               </View>

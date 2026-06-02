@@ -16,12 +16,14 @@ import {
   verifyRegisterCode,
 } from "../lib/auth";
 import { useAuth } from "../contexts/auth";
+import { useSettings } from "../contexts/settings";
 
 const MAX_ATTEMPTS = 3;
 const RESEND_SECONDS = 60;
 
 export default function RegisterVerifyPage() {
   const router = useRouter();
+  const { language } = useSettings();
   const params = useLocalSearchParams<{
     session?: string;
     email?: string;
@@ -32,6 +34,44 @@ export default function RegisterVerifyPage() {
   const sessionId = typeof params.session === "string" ? params.session : "";
   const email = typeof params.email === "string" ? params.email : "";
   const expiresAtParam = typeof params.expiresAt === "string" ? params.expiresAt : "";
+  const t =
+    language === "en"
+      ? {
+          title: "Verify email",
+          sentTo: (targetEmail: string) => `An OTP was sent to ${targetEmail}`,
+          validFor: "Code valid for:",
+          otpLabel: "OTP CODE (6 DIGITS)",
+          invalidOtp: "Please enter a 6-digit OTP code",
+          expired: "Verification code expired. Please register again.",
+          locked: "You entered the wrong OTP 3 times. Please register again.",
+          attemptsLeft: (count: number) => `Incorrect OTP. You have ${count} attempts left.`,
+          inactive: "Verification session is no longer valid. Please register again.",
+          verifyLoading: "VERIFYING...",
+          verify: "VERIFY CODE",
+          resendLoading: "SENDING AGAIN...",
+          resendIn: (seconds: number) => `Resend code (${seconds}s)`,
+          resend: "Resend code",
+          resendFailed: "Unable to resend the code. Please try again.",
+          back: "Back to registration",
+        }
+      : {
+          title: "Xác nhận email",
+          sentTo: (targetEmail: string) => `Mã OTP đã được gửi đến ${targetEmail}`,
+          validFor: "Mã còn hiệu lực trong:",
+          otpLabel: "MÃ OTP (6 SỐ)",
+          invalidOtp: "Vui lòng nhập mã OTP gồm 6 chữ số",
+          expired: "Mã xác nhận đã hết hạn. Vui lòng đăng ký lại.",
+          locked: "Bạn đã nhập sai OTP 3 lần. Vui lòng đăng ký lại.",
+          attemptsLeft: (count: number) => `Mã OTP không đúng. Bạn còn ${count} lần thử.`,
+          inactive: "Phiên xác nhận không còn hiệu lực. Vui lòng đăng ký lại.",
+          verifyLoading: "ĐANG XÁC NHẬN...",
+          verify: "XÁC NHẬN MÃ",
+          resendLoading: "ĐANG GỬI LẠI...",
+          resendIn: (seconds: number) => `Gửi lại mã (${seconds}s)`,
+          resend: "Gửi lại mã",
+          resendFailed: "Không thể gửi lại mã. Vui lòng thử lại.",
+          back: "Quay lại trang đăng ký",
+        };
 
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -65,11 +105,11 @@ export default function RegisterVerifyPage() {
       setSecondsLeft(remaining);
       if (remaining <= 0) {
         setIsLocked(true);
-        setError("Mã xác nhận đã hết hạn. Vui lòng đăng ký lại.");
+        setError(t.expired);
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [expiresAt]);
+  }, [expiresAt, t.expired]);
 
   const timeLeftLabel = useMemo(() => {
     const minutes = Math.floor(secondsLeft / 60);
@@ -82,7 +122,7 @@ export default function RegisterVerifyPage() {
 
     setError("");
     if (!/^\d{6}$/.test(code.trim())) {
-      setError("Vui lòng nhập mã OTP gồm 6 chữ số");
+      setError(t.invalidOtp);
       return;
     }
 
@@ -102,9 +142,9 @@ export default function RegisterVerifyPage() {
         setAttemptCount(nextAttempt);
         if (nextAttempt >= MAX_ATTEMPTS) {
           setIsLocked(true);
-          setError("Bạn đã nhập sai OTP 3 lần. Vui lòng đăng ký lại.");
+          setError(t.locked);
         } else {
-          setError(`Mã OTP không đúng. Bạn còn ${MAX_ATTEMPTS - nextAttempt} lần thử.`);
+          setError(t.attemptsLeft(MAX_ATTEMPTS - nextAttempt));
         }
       } else if (
         authError.message === "verification_code_expired" ||
@@ -112,9 +152,9 @@ export default function RegisterVerifyPage() {
         authError.message === "verification_session_inactive"
       ) {
         setIsLocked(true);
-        setError("Phiên xác nhận không còn hiệu lực. Vui lòng đăng ký lại.");
+        setError(t.inactive);
       } else {
-        setError("Không thể xác nhận mã. Vui lòng thử lại.");
+        setError(t.inactive);
       }
     } finally {
       setLoading(false);
@@ -143,9 +183,9 @@ export default function RegisterVerifyPage() {
         authError.message === "verification_session_inactive"
       ) {
         setIsLocked(true);
-        setError("Phiên xác nhận không còn hiệu lực. Vui lòng đăng ký lại.");
+        setError(t.inactive);
       } else {
-        setError("Không thể gửi lại mã. Vui lòng thử lại.");
+        setError(t.resendFailed);
       }
     } finally {
       setResendLoading(false);
@@ -156,16 +196,16 @@ export default function RegisterVerifyPage() {
     <SafeAreaView className="flex-1 bg-slate-100">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1 items-center justify-center px-4">
         <View className="w-full max-w-md bg-white rounded-2xl shadow-md p-6">
-          <Text className="text-2xl font-bold text-slate-800 text-center">Xác nhận email</Text>
+          <Text className="text-2xl font-bold text-slate-800 text-center">{t.title}</Text>
           <Text className="text-sm text-slate-600 text-center mt-2">
-            Mã OTP đã được gửi đến {email}
+            {t.sentTo(email)}
           </Text>
           <Text className="text-sm text-slate-500 text-center mt-1">
-            Mã còn hiệu lực trong: {timeLeftLabel}
+            {t.validFor} {timeLeftLabel}
           </Text>
 
           <View className="mt-6">
-            <Text className="text-xs font-bold text-slate-600 uppercase tracking-wide">MÃ OTP (6 SỐ)</Text>
+            <Text className="text-xs font-bold text-slate-600 uppercase tracking-wide">{t.otpLabel}</Text>
             <TextInput
               value={code}
               onChangeText={(text) => setCode(text.replace(/\D/g, ""))}
@@ -189,7 +229,7 @@ export default function RegisterVerifyPage() {
             className={`w-full py-3 rounded-lg bg-zalo-blue items-center justify-center flex-row mt-6 ${loading || isLocked ? "opacity-60" : ""}`}
           >
             {loading ? <ActivityIndicator color="#fff" className="mr-2" /> : null}
-            <Text className="text-white font-semibold">{loading ? "ĐANG XÁC NHẬN..." : "XÁC NHẬN MÃ"}</Text>
+            <Text className="text-white font-semibold">{loading ? t.verifyLoading : t.verify}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -199,10 +239,10 @@ export default function RegisterVerifyPage() {
           >
             <Text className="text-slate-700 font-semibold">
               {resendLoading
-                ? "ĐANG GỬI LẠI..."
+                ? t.resendLoading
                 : resendCountdown > 0
-                  ? `Gửi lại mã (${resendCountdown}s)`
-                  : "Gửi lại mã"}
+                  ? t.resendIn(resendCountdown)
+                  : t.resend}
             </Text>
           </TouchableOpacity>
 
@@ -210,7 +250,7 @@ export default function RegisterVerifyPage() {
             onPress={() => router.replace("/register")}
             className="w-full py-3 rounded-lg items-center justify-center mt-3"
           >
-            <Text className="text-zalo-blue font-semibold">Quay lại trang đăng ký</Text>
+            <Text className="text-zalo-blue font-semibold">{t.back}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

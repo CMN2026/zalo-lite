@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, ActivityIndicator, Image } from "react-native";
 import { useRouter } from "expo-router";
 import { FontAwesome } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
 import { useAuth } from "../contexts/auth";
+import { useSettings } from "../contexts/settings";
 import { login as loginRequest, loginWithGoogle, saveAuthSession } from "../lib/auth";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -12,6 +13,7 @@ WebBrowser.maybeCompleteAuthSession();
 export default function LoginPage() {
   const router = useRouter();
   const { login: authLogin } = useAuth();
+  const { language } = useSettings();
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -25,6 +27,52 @@ export default function LoginPage() {
   const googleWebClientId =
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? "";
   const isGoogleConfigured = Boolean(googleAndroidClientId);
+  const t =
+    language === "en"
+      ? {
+          loginFailed: "Login failed. Please try again.",
+          appSubtitle: "Sign in to your Zalo account",
+          identifierLabel: "PHONE NUMBER OR EMAIL",
+          identifierPlaceholder: "Phone number or email",
+          passwordLabel: "PASSWORD",
+          forgotPassword: "Forgot password?",
+          loading: "SIGNING IN...",
+          login: "SIGN IN",
+          googleLoading: "Processing...",
+          noAccount: "Don't have an account? ",
+          register: "Register",
+          googleNotConfigured: "Google Sign-In is not configured on Android.",
+          googleNotReady: "Google Sign-In is not ready. Please try again.",
+          missingGoogleToken: "Google token was not returned.",
+          googleFailed: "Google sign-in failed.",
+          copyright: "© 2024 Zalo Lite. All rights reserved.",
+          errorMap: {
+            invalid_credentials: "Incorrect phone number, email, or password.",
+            invalid_or_expired_token: "Your session has expired. Please sign in again.",
+          } satisfies Record<string, string>,
+        }
+      : {
+          loginFailed: "Đăng nhập thất bại. Vui lòng thử lại.",
+          appSubtitle: "Đăng nhập tài khoản Zalo",
+          identifierLabel: "SỐ ĐIỆN THOẠI HOẶC EMAIL",
+          identifierPlaceholder: "Số điện thoại hoặc email",
+          passwordLabel: "MẬT KHẨU",
+          forgotPassword: "Quên mật khẩu?",
+          loading: "ĐANG ĐĂNG NHẬP...",
+          login: "ĐĂNG NHẬP",
+          googleLoading: "Đang xử lý...",
+          noAccount: "Chưa có tài khoản? ",
+          register: "Đăng ký",
+          googleNotConfigured: "Ứng dụng chưa cấu hình Google Sign-In trên Android.",
+          googleNotReady: "Google Sign-In chưa sẵn sàng. Vui lòng thử lại.",
+          missingGoogleToken: "Không nhận được Google token.",
+          googleFailed: "Đăng nhập Google thất bại.",
+          copyright: "© 2024 Zalo Lite. All rights reserved.",
+          errorMap: {
+            invalid_credentials: "Số điện thoại, email hoặc mật khẩu không đúng.",
+            invalid_or_expired_token: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+          } satisfies Record<string, string>,
+        };
 
   const [request, , promptAsync] = Google.useIdTokenAuthRequest({
     // Prevent runtime crash when env vars are missing in production builds.
@@ -44,8 +92,8 @@ export default function LoginPage() {
       authLogin(response.data.user);
       router.replace("/");
     } catch (err: unknown) {
-      const message = err instanceof Error && err.message ? err.message : "Đăng nhập thất bại. Vui lòng thử lại.";
-      setError(message);
+      const message = err instanceof Error && err.message ? err.message : "request_failed";
+      setError(t.errorMap[message] ?? t.loginFailed);
     } finally {
       setLoading(false);
     }
@@ -54,11 +102,11 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     setError("");
     if (!isGoogleConfigured) {
-      setError("Ứng dụng chưa cấu hình Google Sign-In trên Android.");
+      setError(t.googleNotConfigured);
       return;
     }
     if (!request) {
-      setError("Google Sign-In chưa sẵn sàng. Vui lòng thử lại.");
+      setError(t.googleNotReady);
       return;
     }
 
@@ -71,7 +119,7 @@ export default function LoginPage() {
 
       const idToken = result.params?.id_token;
       if (!idToken) {
-        setError("Không nhận được Google token.");
+        setError(t.missingGoogleToken);
         return;
       }
 
@@ -93,7 +141,7 @@ export default function LoginPage() {
         email_registered_use_password_login:
           "Email này đã đăng ký tài khoản. Vui lòng đăng nhập bằng mật khẩu.",
       };
-      setError(errorMap[rawMessage] ?? "Đăng nhập Google thất bại.");
+      setError(errorMap[rawMessage] ?? t.googleFailed);
     } finally {
       setGoogleLoading(false);
     }
@@ -103,21 +151,23 @@ export default function LoginPage() {
     <SafeAreaView className="flex-1 bg-slate-100">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1 items-center justify-center px-4">
         <View className="items-center mb-8">
-          <View className="w-16 h-16 bg-zalo-blue rounded-2xl flex items-center justify-center mb-4">
-            <Text className="text-white text-3xl font-bold">Z</Text>
-          </View>
+          <Image
+            source={require("../assets/images/icon.png")}
+            style={{ width: 64, height: 64, marginBottom: 16, borderRadius: 16 }}
+            resizeMode="contain"
+          />
           <Text className="text-3xl font-bold text-slate-800 mb-2">Zalo Lite</Text>
-          <Text className="text-slate-500">Đăng nhập tài khoản Zalo</Text>
+          <Text className="text-slate-500">{t.appSubtitle}</Text>
         </View>
 
         <View className="w-full max-w-md bg-white rounded-2xl shadow-md p-6">
           <View className="space-y-4">
             <View>
-              <Text className="text-xs font-bold text-slate-600 uppercase tracking-wide">SỐ ĐIỆN THOẠI HOẶC EMAIL</Text>
+              <Text className="text-xs font-bold text-slate-600 uppercase tracking-wide">{t.identifierLabel}</Text>
               <TextInput
                 value={identifier}
                 onChangeText={setIdentifier}
-                placeholder="Số điện thoại hoặc email"
+                placeholder={t.identifierPlaceholder}
                 className="w-full mt-2 px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm"
                 autoCapitalize="none"
               />
@@ -125,9 +175,9 @@ export default function LoginPage() {
 
             <View className="mt-4">
               <View className="flex-row justify-between items-center mb-1">
-                <Text className="text-xs font-bold text-slate-600 uppercase tracking-wide">MẬT KHẨU</Text>
+                <Text className="text-xs font-bold text-slate-600 uppercase tracking-wide">{t.passwordLabel}</Text>
                 <TouchableOpacity onPress={() => router.push("/forgot-password")}>
-                  <Text className="text-xs text-zalo-blue font-semibold">Quên mật khẩu?</Text>
+                  <Text className="text-xs text-zalo-blue font-semibold">{t.forgotPassword}</Text>
                 </TouchableOpacity>
               </View>
               <TextInput
@@ -153,7 +203,7 @@ export default function LoginPage() {
               {loading ? (
                 <ActivityIndicator color="#fff" className="mr-2" />
               ) : null}
-              <Text className="text-white font-semibold">{loading ? "ĐANG ĐĂNG NHẬP..." : "ĐĂNG NHẬP"}</Text>
+              <Text className="text-white font-semibold">{loading ? t.loading : t.login}</Text>
             </TouchableOpacity>
           </View>
 
@@ -170,20 +220,20 @@ export default function LoginPage() {
               {googleLoading ? <ActivityIndicator size="small" color="#EA4335" /> : null}
               <FontAwesome name="google" size={14} color="#EA4335" />
               <Text className="text-sm font-semibold text-slate-700">
-                {googleLoading ? "Đang xử lý..." : "Google"}
+                {googleLoading ? t.googleLoading : "Google"}
               </Text>
             </TouchableOpacity>
           </View>
 
           <View className="flex-row justify-center mt-6">
-            <Text className="text-sm text-slate-600">Chưa có tài khoản? </Text>
+            <Text className="text-sm text-slate-600">{t.noAccount}</Text>
             <TouchableOpacity onPress={() => router.push("/register")}>
-              <Text className="text-zalo-blue font-semibold text-sm">Đăng ký</Text>
+              <Text className="text-zalo-blue font-semibold text-sm">{t.register}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <Text className="text-xs text-slate-400 mt-8">© 2024 Zalo Lite. All rights reserved.</Text>
+        <Text className="text-xs text-slate-400 mt-8">{t.copyright}</Text>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

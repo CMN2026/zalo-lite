@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { register } from "../lib/auth";
@@ -176,9 +177,14 @@ export default function RegisterPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 px-4">
       {/* Header */}
       <div className="flex flex-col items-center mb-6">
-        <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xl font-bold">
-          +
-        </div>
+        <Image
+          src="/auth-logo.png"
+          alt="Zalo Lite logo"
+          width={64}
+          height={64}
+          className="rounded-2xl"
+          priority
+        />
         <h1 className="text-2xl font-semibold mt-3">Zalo Lite</h1>
         <p className="text-sm text-slate-500">{t.title}</p>
       </div>
