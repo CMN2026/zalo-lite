@@ -26,6 +26,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { VideoView, useVideoPlayer } from "expo-video";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "../../contexts/auth";
 import { useSettings } from "../../contexts/settings";
@@ -298,6 +299,7 @@ function FileMessage({
 }) {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [imgError, setImgError] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const url = buildFileUrl(file.path, token);
   const isImage = file.mimetype?.startsWith("image/");
   const isVideo = file.mimetype?.startsWith("video/");
@@ -307,6 +309,18 @@ function FileMessage({
   if (token) {
     imageHeaders["Authorization"] = `Bearer ${token}`;
   }
+  const videoPlayer = useVideoPlayer(
+    isVideo
+      ? {
+          uri: url,
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        }
+      : null,
+    (player) => {
+      player.loop = false;
+      player.muted = false;
+    },
+  );
 
   if (isImage) {
     return (
@@ -379,13 +393,7 @@ function FileMessage({
 
   if (isVideo) {
     return (
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={() => {
-          void Linking.openURL(url).catch((error) => {
-            console.warn("[FileMessage] Failed to open video:", url, error);
-          });
-        }}
+      <View
         style={{
           width: 220,
           borderRadius: 12,
@@ -395,25 +403,45 @@ function FileMessage({
           borderColor: "#e2e8f0",
         }}
       >
-        <View
-          style={{
-            height: 140,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: isMe ? "rgba(15,23,42,0.18)" : "#e2e8f0",
-          }}
-        >
-          <Text style={{ fontSize: 34, marginBottom: 6 }}>🎬</Text>
-          <Text
+        {videoError ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => {
+              void Linking.openURL(url).catch((error) => {
+                console.warn("[FileMessage] Failed to open video:", url, error);
+              });
+            }}
             style={{
-              fontSize: 12,
-              fontWeight: "600",
-              color: isMe ? "#eff6ff" : "#334155",
+              height: 140,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: isMe ? "rgba(15,23,42,0.18)" : "#e2e8f0",
             }}
           >
-            Chạm để mở video
-          </Text>
-        </View>
+            <Text style={{ fontSize: 34, marginBottom: 6 }}>🎬</Text>
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: "600",
+                color: isMe ? "#eff6ff" : "#334155",
+              }}
+            >
+              Không phát trực tiếp được, chạm để mở
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <VideoView
+            player={videoPlayer}
+            nativeControls
+            contentFit="cover"
+            allowsFullscreen
+            style={{
+              width: "100%",
+              height: 180,
+              backgroundColor: "#0f172a",
+            }}
+          />
+        )}
         <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
           <Text
             style={{
@@ -428,8 +456,27 @@ function FileMessage({
           <Text style={{ fontSize: 11, color: isMe ? "#dbeafe" : "#64748b", marginTop: 4 }}>
             {Math.round((file.size ?? 0) / 1024)} KB
           </Text>
+          <TouchableOpacity
+            onPress={() => {
+              void Linking.openURL(url).catch((error) => {
+                console.warn("[FileMessage] Failed to open video externally:", url, error);
+                setVideoError(true);
+              });
+            }}
+            style={{ marginTop: 8 }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "600",
+                color: isMe ? "#bfdbfe" : "#2563eb",
+              }}
+            >
+              Mở bằng ứng dụng khác
+            </Text>
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      </View>
     );
   }
 

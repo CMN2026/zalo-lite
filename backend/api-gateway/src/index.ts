@@ -535,6 +535,7 @@ io.on("connection", (socket: Socket) => {
     "call:answer",
     "call:ice_candidate",
     "call:participant_update",
+    "call:leave",
     "call:end",
   ];
 
@@ -587,6 +588,7 @@ io.on("connection", (socket: Socket) => {
     "call:answer",
     "call:ice_candidate",
     "call:participant_update",
+    "call:participant_left",
     "call:end",
     "call:missed",
     "call:signal_ack",
