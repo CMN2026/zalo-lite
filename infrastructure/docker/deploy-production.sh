@@ -25,7 +25,29 @@ fi
 
 $DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull
 $DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d postgres redis livekit
-$DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm user-service npx prisma migrate deploy
+
+set +e
+migrate_output="$($DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm user-service npx prisma migrate deploy 2>&1)"
+migrate_status=$?
+set -e
+
+if [ $migrate_status -ne 0 ]; then
+  printf '%s\n' "$migrate_output"
+
+  case "$migrate_output" in
+    *"Error: P3005"*)
+      echo "Detected existing schema without Prisma baseline. Marking initial migration as applied."
+      $DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm user-service \
+        npx prisma migrate resolve --applied 20260411081648_init
+      $DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm user-service \
+        npx prisma migrate deploy
+      ;;
+    *)
+      exit $migrate_status
+      ;;
+  esac
+fi
+
 $DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 
 for container in \
