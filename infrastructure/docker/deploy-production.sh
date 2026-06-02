@@ -51,6 +51,7 @@ fi
 $DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 
 for container in \
+  zalo-nginx \
   zalo-user-service \
   zalo-chat-service \
   zalo-chatbot-service \
