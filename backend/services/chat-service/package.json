@@ -20,7 +20,7 @@
   "license": "ISC",
   "description": "Chat service with realtime messaging and friend system",
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.896.0",
+    "@aws-sdk/client-dynamodb": "^3.1032.0",
     "@aws-sdk/client-s3": "^3.1050.0",
     "@aws-sdk/lib-dynamodb": "^3.1032.0",
     "cors": "^2.8.6",
