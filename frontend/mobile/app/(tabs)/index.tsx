@@ -30,6 +30,10 @@ import { useAuth } from "../../contexts/auth";
 import { useSocket } from "../../hooks/useSocket";
 import { getAuthToken } from "../../lib/auth";
 import { API_BASE_URL } from "../../lib/api";
+import {
+  findKeywordMatchRange,
+  formatMessageSearchPreview,
+} from "../../lib/message-search";
 import { blockFriendship, unblockFriendship, getFriendshipStatus } from "../../lib/users";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -622,24 +626,27 @@ export default function ChatsScreen() {
         if (!debouncedMessageSearchKeyword) {
           return true;
         }
-        return message.content
+        const senderName =
+          userCache[message.sender_id]?.fullName ||
+          message.sender_name ||
+          (message.sender_id === currentUserId ? "Bạn" : message.sender_id);
+
+        return formatMessageSearchPreview(message, senderName)
           .toLowerCase()
           .includes(debouncedMessageSearchKeyword);
       })
       .map((message) => {
-        const { text, file } = parseMessageContent(message.content);
-        const content =
-          text || (file ? file.originalName || file.filename || "[Tệp đính kèm]" : "");
         const createdAtMs = new Date(message.created_at).getTime();
+        const senderName =
+          userCache[message.sender_id]?.fullName ||
+          message.sender_name ||
+          (message.sender_id === currentUserId ? "Bạn" : message.sender_id);
 
         return {
           id: message.id,
           senderId: message.sender_id,
-          senderName:
-            userCache[message.sender_id]?.fullName ||
-            message.sender_name ||
-            (message.sender_id === currentUserId ? "Bạn" : message.sender_id),
-          content,
+          senderName,
+          content: formatMessageSearchPreview(message, senderName),
           createdAt: message.created_at,
           createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : 0,
         };
@@ -653,6 +660,30 @@ export default function ChatsScreen() {
     searchSenderId,
     userCache,
   ]);
+
+  const renderHighlightedSearchContent = useCallback(
+    (content: string) => {
+      const match = findKeywordMatchRange(content, debouncedMessageSearchKeyword);
+      if (!match) {
+        return content;
+      }
+
+      return (
+        <>
+          <Text className="text-sm text-slate-600">
+            {content.slice(0, match.start)}
+          </Text>
+          <Text className="bg-amber-200 text-slate-800 font-semibold text-sm">
+            {content.slice(match.start, match.end)}
+          </Text>
+          <Text className="text-sm text-slate-600">
+            {content.slice(match.end)}
+          </Text>
+        </>
+      );
+    },
+    [debouncedMessageSearchKeyword],
+  );
 
   const handleBlockToggle = useCallback(async () => {
     if (!directPeerId) return;
@@ -2637,7 +2668,7 @@ export default function ChatsScreen() {
                         </Text>
                       </View>
                       <Text className="text-sm text-slate-600 mt-1" numberOfLines={2}>
-                        {item.content}
+                        {renderHighlightedSearchContent(item.content)}
                       </Text>
                     </TouchableOpacity>
                   ))

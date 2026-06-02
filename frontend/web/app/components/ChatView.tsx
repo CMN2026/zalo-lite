@@ -30,6 +30,10 @@ import { useSocket } from "../hooks/useSocket";
 import { useAuth } from "../contexts/auth";
 import { getAuthToken } from "../lib/auth";
 import type { LiveKitTokenPayload } from "../lib/calls";
+import {
+  findKeywordMatchRange,
+  formatMessageSearchPreview,
+} from "../lib/message-search";
 import { WEB_GATEWAY_BASE_URL, WEB_CHAT_SERVICE_BASE_URL, WEB_USER_SERVICE_BASE_URL } from "../lib/runtime-base-url";
 import type { AppLanguage } from "./SettingsView";
 
@@ -714,7 +718,16 @@ export default function ChatView({
           return true;
         }
 
-        return message.content.toLowerCase().includes(debouncedMessageSearchKeyword);
+        const senderName =
+          message.sender_name?.trim() ||
+          userLookup[message.sender_id]?.fullName ||
+          (message.sender_id === currentUserId
+            ? user?.fullName || "Bạn"
+            : message.sender_id);
+
+        return formatMessageSearchPreview(message, senderName)
+          .toLowerCase()
+          .includes(debouncedMessageSearchKeyword);
       })
       .filter((message) =>
         searchSenderId === "all" ? true : message.sender_id === searchSenderId,
@@ -740,7 +753,7 @@ export default function ChatView({
           id: message.id,
           senderId: message.sender_id,
           senderName,
-          content: message.type === "file" ? "[Tệp đính kèm]" : message.content,
+          content: formatMessageSearchPreview(message, senderName),
           createdAt: message.created_at,
           createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : 0,
         };
@@ -757,24 +770,17 @@ export default function ChatView({
   ]);
   const highlightMatchedKeyword = useCallback(
     (content: string) => {
-      if (!debouncedMessageSearchKeyword) {
+      const match = findKeywordMatchRange(content, debouncedMessageSearchKeyword);
+      if (!match) {
         return content;
       }
-
-      const normalizedContent = content.toLowerCase();
-      const matchIndex = normalizedContent.indexOf(debouncedMessageSearchKeyword);
-      if (matchIndex < 0) {
-        return content;
-      }
-
-      const matchEnd = matchIndex + debouncedMessageSearchKeyword.length;
       return (
         <>
-          {content.slice(0, matchIndex)}
+          {content.slice(0, match.start)}
           <span className="bg-amber-200 text-slate-800 font-semibold rounded-sm px-0.5">
-            {content.slice(matchIndex, matchEnd)}
+            {content.slice(match.start, match.end)}
           </span>
-          {content.slice(matchEnd)}
+          {content.slice(match.end)}
         </>
       );
     },

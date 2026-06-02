@@ -1,0 +1,253 @@
+@startuml DatabaseSchemas
+hide circle
+hide methods
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam class {
+  BackgroundColor White
+  BorderColor #4B5563
+  ArrowColor #6B7280
+}
+
+title Zalo Lite Database Schema
+
+package "user-service (PostgreSQL)" {
+entity "users" as user_users {
+  id : string <<PK>>
+  email : string <<UQ>>
+  phone : string? <<UQ>>
+  full_name : string
+  avatar_url : string?
+  cover_url : string?
+  bio : string?
+  date_of_birth : datetime?
+  is_active : boolean
+  created_at : datetime
+  updated_at : datetime
+}
+
+entity "email_verification_sessions" as user_email_verification_sessions {
+  id : string <<PK>>
+  email : string
+  full_name : string
+  phone : string?
+  avatar_url : string?
+  password_hash : string
+  otp_hash : string
+  otp_expires_at : datetime
+  resend_available_at : datetime
+  attempt_count : int
+  user_id : string?
+  created_at : datetime
+  updated_at : datetime
+}
+
+entity "local_credentials" as user_local_credentials {
+  id : string <<PK>>
+  user_id : string <<UQ>>
+  password_hash : string
+  created_at : datetime
+  updated_at : datetime
+}
+
+entity "auth_identities" as user_auth_identities {
+  id : string <<PK>>
+  user_id : string
+  provider_user_id : string
+  created_at : datetime
+  updated_at : datetime
+  last_login_at : datetime?
+}
+
+entity "friendships" as user_friendships {
+  id : string <<PK>>
+  requester_id : string
+  addressee_id : string
+  message : string?
+  created_at : datetime
+  updated_at : datetime
+  responded_at : datetime?
+}
+
+}
+
+package "chat-service (DynamoDB)" {
+entity "conversations" as chat_conversations {
+  id : string <<PK>>
+  type : direct | group
+  name : string?
+  created_by : string
+  last_message_at : datetime?
+  created_at : datetime
+}
+note right of chat_conversations
+  Primary key: id
+end note
+
+entity "conversation_members" as chat_conversation_members {
+  conversation_id : string <<PK, FK>>
+  user_id : string <<SK, FK>>
+  role : owner | member
+  joined_at : datetime
+  hidden_at : datetime?
+  cleared_at : datetime?
+  last_read_at : datetime?
+  unread_count : number
+}
+note right of chat_conversation_members
+  GSI: user_id-index (HASH user_id)
+end note
+
+entity "messages" as chat_messages {
+  conversation_id : string <<PK, FK>>
+  created_at : datetime <<SK>>
+  id : string <<ALT>>
+  sender_id : string <<FK>>
+  type : string
+  content : string
+  read_by : string[]
+  reply_to_message_id : string?
+  reactions : MessageReaction[]
+  deleted_for_user_ids : string[]
+  deleted_at : datetime?
+  recalled_at : datetime?
+  recalled_by : string?
+}
+note right of chat_messages
+  Primary access: query by conversation_id + created_at
+end note
+note right of chat_messages
+  Lookup by id currently uses Scan
+end note
+
+entity "friend_requests" as chat_friend_requests {
+  id : string <<PK>>
+  sender_id : string <<FK>>
+  receiver_id : string <<FK>>
+  status : pending | accepted | rejected
+  created_at : datetime
+}
+note right of chat_friend_requests
+  Primary key: id
+end note
+
+entity "friendships" as chat_friendships {
+  user_id : string <<PK, FK>>
+  friend_id : string <<SK, FK>>
+  nickname : string?
+  is_favorite : boolean?
+  created_at : datetime
+}
+note right of chat_friendships
+  Composite key: user_id + friend_id
+end note
+
+entity "call_sessions" as chat_call_sessions {
+  id : string <<PK>>
+  conversation_id : string <<FK>>
+  call_type : direct | group
+  initiator_id : string <<FK>>
+  participants : CallSessionParticipant[]
+  participant_user_ids : string[]
+  status : active | ended
+  started_at : datetime
+  ended_at : datetime?
+  duration_seconds : number?
+  end_reason : string?
+}
+note right of chat_call_sessions
+  Lookup active calls by scan on status/participants or conversation_id
+end note
+
+entity "call_history" as chat_call_history {
+  user_id : string <<PK, FK>>
+  created_at_call_id : string <<SK>>
+  call_id : string <<FK>>
+  conversation_id : string <<FK>>
+  call_type : direct | group
+  initiator_id : string <<FK>>
+  status : answered | declined | missed
+  started_at : datetime
+  ended_at : datetime?
+  duration_seconds : number?
+  end_reason : string?
+  participant_user_ids : string[]
+}
+note right of chat_call_history
+  Composite key: user_id + created_at_call_id
+end note
+
+}
+
+package "post-service (DynamoDB)" {
+entity "posts" as post_posts {
+  id : string <<PK>>
+  user_id : string <<FK>>
+  content : string
+  images : string[]
+  visibility : friends | public
+  reaction_summary : ReactionSummary
+  comment_count : number
+  created_at : datetime
+  updated_at : datetime
+  deleted_at : datetime?
+}
+note right of post_posts
+  GSI: user_id-index (HASH user_id, RANGE created_at)
+end note
+
+entity "post_comments" as post_post_comments {
+  post_id : string <<PK, FK>>
+  created_at : datetime <<SK>>
+  id : string <<ALT>>
+  user_id : string <<FK>>
+  content : string
+  deleted_at : datetime?
+}
+note right of post_post_comments
+  Primary access: query by post_id + created_at
+end note
+note right of post_post_comments
+  Lookup by id currently uses Scan
+end note
+
+entity "post_reactions" as post_post_reactions {
+  post_id : string <<PK, FK>>
+  user_id : string <<SK, FK>>
+  reaction : like | love | haha | sad | angry
+  created_at : datetime
+}
+note right of post_post_reactions
+  Composite key guarantees one reaction per user per post
+end note
+
+}
+
+chat_call_history }o--|| chat_call_sessions : call_id
+chat_call_history }o--|| chat_conversations : conversation_id
+chat_call_history }o--|| user_users : initiator_id
+chat_call_history }o--|| user_users : user_id
+chat_call_sessions }o--|| chat_conversations : conversation_id
+chat_call_sessions }o--|| user_users : initiator_id
+chat_conversation_members }o--|| chat_conversations : conversation_id
+chat_conversation_members }o--|| user_users : user_id
+chat_conversations }o--|| user_users : created_by
+chat_friend_requests }o--|| user_users : receiver_id
+chat_friend_requests }o--|| user_users : sender_id
+chat_friendships }o--|| user_users : friend_id
+chat_friendships }o--|| user_users : user_id
+chat_messages }o--|| chat_conversations : conversation_id
+chat_messages }o--|| user_users : sender_id
+post_post_comments }o--|| post_posts : post_id
+post_post_comments }o--|| user_users : user_id
+post_post_reactions }o--|| post_posts : post_id
+post_post_reactions }o--|| user_users : user_id
+post_posts }o--|| user_users : user_id
+user_auth_identities }o--|| user_users : user_id
+user_email_verification_sessions }o--|| user_users : user_id
+user_friendships }o--|| user_users : addressee_id
+user_friendships }o--|| user_users : requester_id
+user_local_credentials }o--|| user_users : user_id
+
+@enduml
