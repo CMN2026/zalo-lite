@@ -35,8 +35,7 @@ jobs:
             git config --global --add safe.directory "${{ secrets.DEPLOY_PROJECT_DIR }}"
             git restore infrastructure/docker/deploy-production.sh || true
             git pull --ff-only origin main
-            chmod +x infrastructure/docker/deploy-production.sh
-            GHCR_USERNAME="${GHCR_USERNAME}" GHCR_TOKEN="${GHCR_TOKEN}" ./infrastructure/docker/deploy-production.sh
+            GHCR_USERNAME="${GHCR_USERNAME}" GHCR_TOKEN="${GHCR_TOKEN}" sh ./infrastructure/docker/deploy-production.sh
         env:
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
