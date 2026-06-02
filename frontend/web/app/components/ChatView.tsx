@@ -30,12 +30,12 @@ import { useSocket } from "../hooks/useSocket";
 import { useAuth } from "../contexts/auth";
 import { getAuthToken } from "../lib/auth";
 import type { LiveKitTokenPayload } from "../lib/calls";
-import { WEB_GATEWAY_BASE_URL, WEB_CHAT_SERVICE_BASE_URL, WEB_USER_SERVICE_BASE_URL } from "../lib/runtime-base-url";
-import type { AppLanguage } from "./SettingsView";
 import {
   findKeywordMatchRange,
   formatMessageSearchPreview,
-} from "../../../shared/message-search";
+} from "../lib/message-search";
+import { WEB_GATEWAY_BASE_URL, WEB_CHAT_SERVICE_BASE_URL, WEB_USER_SERVICE_BASE_URL } from "../lib/runtime-base-url";
+import type { AppLanguage } from "./SettingsView";
 
 interface Conversation {
   id: string;

@@ -30,12 +30,12 @@ import { useAuth } from "../../contexts/auth";
 import { useSocket } from "../../hooks/useSocket";
 import { getAuthToken } from "../../lib/auth";
 import { API_BASE_URL } from "../../lib/api";
-import { blockFriendship, unblockFriendship, getFriendshipStatus } from "../../lib/users";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   findKeywordMatchRange,
   formatMessageSearchPreview,
-} from "../../../shared/message-search";
+} from "../../lib/message-search";
+import { blockFriendship, unblockFriendship, getFriendshipStatus } from "../../lib/users";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 let documentPickerModule:
   | {
