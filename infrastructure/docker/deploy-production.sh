@@ -64,6 +64,35 @@ $DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d \
 # services are up so Docker does not hit an "address already in use" race
 # while replacing the existing container during a full compose update.
 $DOCKER rm -f zalo-nginx >/dev/null 2>&1 || true
+
+wait_for_host_port_release() {
+  port="$1"
+  attempts=30
+
+  while [ "$attempts" -gt 0 ]; do
+    if command -v ss >/dev/null 2>&1; then
+      if ! ss -ltn "( sport = :$port )" | grep -q ":$port"; then
+        return 0
+      fi
+    elif command -v netstat >/dev/null 2>&1; then
+      if ! netstat -ltn 2>/dev/null | grep -q "[.:]$port "; then
+        return 0
+      fi
+    else
+      # If neither tool is available, do not block deploy.
+      return 0
+    fi
+
+    sleep 1
+    attempts=$((attempts - 1))
+  done
+
+  echo "Host port $port is still in use after waiting for nginx replacement." >&2
+  return 1
+}
+
+wait_for_host_port_release 80
+wait_for_host_port_release 443
 $DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d nginx
 
 for container in \
