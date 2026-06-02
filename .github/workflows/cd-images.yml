@@ -76,3 +76,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'https://chat.zalolite.app' }}
+            NEXT_PUBLIC_USER_SERVICE_URL=${{ vars.NEXT_PUBLIC_USER_SERVICE_URL || 'https://chat.zalolite.app' }}
+            NEXT_PUBLIC_CHAT_SERVICE_URL=${{ vars.NEXT_PUBLIC_CHAT_SERVICE_URL || 'https://chat.zalolite.app' }}
+            NEXT_PUBLIC_CHATBOT_SERVICE_URL=${{ vars.NEXT_PUBLIC_CHATBOT_SERVICE_URL || 'https://chat.zalolite.app' }}
+            NEXT_PUBLIC_POST_SERVICE_URL=${{ vars.NEXT_PUBLIC_POST_SERVICE_URL || 'https://chat.zalolite.app' }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '' }}
+            NEXT_PUBLIC_CHATBOT_STREAMING=${{ vars.NEXT_PUBLIC_CHATBOT_STREAMING || 'false' }}

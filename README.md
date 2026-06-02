@@ -482,15 +482,31 @@ Project đã được chuẩn bị sẵn 3 workflow:
 - `DEPLOY_USER`
 - `DEPLOY_SSH_KEY`
 - `DEPLOY_PROJECT_DIR`
-- `DEPLOY_COMMAND`
+- `GHCR_USERNAME`
+- `GHCR_TOKEN`
 
-Ví dụ `DEPLOY_COMMAND`:
+### Production Deploy Flow
 
-```bash
-git pull origin main
-docker compose -f infrastructure/docker/docker-compose.yml up -d --build
-docker image prune -f
-```
+Production deploy dùng các file sau:
+
+- `infrastructure/docker/docker-compose.production.yml`
+- `infrastructure/docker/.env.production`
+- `infrastructure/docker/deploy-production.sh`
+
+Thiết lập trên server:
+
+1. Clone repo vào thư mục production, ví dụ `/opt/zalo-lite`
+2. Tạo `infrastructure/docker/.env.production` từ `infrastructure/docker/.env.production.example`
+3. Điền toàn bộ secret và endpoint production
+4. Đảm bảo server đã `docker login ghcr.io`
+5. Chạy workflow `Deploy - Manual SSH`
+
+`deploy-production.sh` sẽ:
+
+- pull image mới từ GHCR
+- chạy `docker compose up -d`
+- kiểm tra health của các service chính
+- prune image cũ
 
 ### Suggested Branch Protection
 

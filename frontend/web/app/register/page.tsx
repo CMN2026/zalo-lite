@@ -179,7 +179,7 @@ export default function RegisterPage() {
         <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xl font-bold">
           +
         </div>
-        <h1 className="text-2xl font-semibold mt-3">OTT Care</h1>
+        <h1 className="text-2xl font-semibold mt-3">Zalo Lite</h1>
         <p className="text-sm text-slate-500">{t.title}</p>
       </div>
 
