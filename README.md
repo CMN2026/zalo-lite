@@ -538,7 +538,7 @@ Lưu ý:
 
 - Web + API + Socket.IO đi qua `https://chat.zalolite.app`
 - LiveKit websocket được proxy qua `wss://chat.zalolite.app/livekit/`
-- Biến `LIVEKIT_PUBLIC_URL` trong production env phải giữ dạng `wss://chat.zalolite.app/livekit/`
+- Biến `LIVEKIT_PUBLIC_URL` trong production env nên đặt là `wss://chat.zalolite.app`
 
 ### Suggested Branch Protection
 
