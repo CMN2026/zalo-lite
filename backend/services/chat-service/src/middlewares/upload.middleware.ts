@@ -171,7 +171,8 @@ export const setupFileServer = (app: Express) => {
           typeof req.query.token === "string" ? req.query.token : undefined;
         const token = bearerToken ?? queryToken;
 
-        const userId = token ? verifyToken(token).userId : undefined;
+        const tokenPayload = token ? verifyToken(token) : undefined;
+        const userId = tokenPayload?.userId ?? tokenPayload?.user_id;
         if (!userId) {
           return res.status(401).json({ message: "Unauthorized" });
         }
