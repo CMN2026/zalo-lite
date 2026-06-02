@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Root package for running microservices individually",
   "scripts": {
+    "render:db-schema": "node scripts/render-db-schema.mjs",
     "build:gateway": "npm run build --prefix backend/api-gateway",
     "build:user": "npm run build --prefix backend/services/user-service",
     "build:chat": "npm run build --prefix backend/services/chat-service",
