@@ -492,6 +492,8 @@ Production deploy dùng các file sau:
 - `infrastructure/docker/docker-compose.production.yml`
 - `infrastructure/docker/.env.production`
 - `infrastructure/docker/deploy-production.sh`
+- `infrastructure/nginx/nginx.conf`
+- `infrastructure/nginx/chat.zalolite.app.conf`
 
 Thiết lập trên server:
 
@@ -507,6 +509,36 @@ Thiết lập trên server:
 - chạy `docker compose up -d`
 - kiểm tra health của các service chính
 - prune image cũ
+
+### HTTPS + DNS With Nginx
+
+Production compose đã có sẵn reverse proxy Nginx cho `chat.zalolite.app`.
+
+Thiết lập DNS:
+
+1. Tạo bản ghi `A` cho `chat.zalolite.app` trỏ tới public IP của server
+2. Mở các port:
+   - `80/tcp`
+   - `443/tcp`
+   - `7880/tcp`
+   - `7881/tcp`
+   - `20000-20100/udp`
+
+Thiết lập SSL trên server:
+
+```bash
+sudo apt update
+sudo apt install -y certbot
+sudo certbot certonly --standalone -d chat.zalolite.app
+```
+
+Sau đó deploy lại stack để Nginx mount cert từ `/etc/letsencrypt`.
+
+Lưu ý:
+
+- Web + API + Socket.IO đi qua `https://chat.zalolite.app`
+- LiveKit websocket được proxy qua `wss://chat.zalolite.app/livekit/`
+- Biến `LIVEKIT_PUBLIC_URL` trong production env phải giữ dạng `wss://chat.zalolite.app/livekit/`
 
 ### Suggested Branch Protection
 
