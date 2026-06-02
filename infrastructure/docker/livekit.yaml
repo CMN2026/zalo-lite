@@ -6,11 +6,9 @@ rtc:
   # UDP port range for WebRTC media (matches docker-compose port mapping)
   port_range_start: 20000
   port_range_end: 20100
-  # Docker Desktop on Windows: use_external_ip doesn't work (detects
-  # container-internal IP). For local dev we set node_ip explicitly.
-  # In production, set this to the server's public IP.
-  use_external_ip: false
-  node_ip: 32.236.47.127
+  # On a public EC2 host, advertise the instance public IP so browsers
+  # receive reachable ICE candidates instead of container/internal ones.
+  use_external_ip: true
   # Enable ICE/TCP fallback so clients behind restrictive firewalls can
   # still establish media connections when UDP is blocked.
   tcp_port: 7881
@@ -58,4 +56,3 @@ turn:
 logging:
   level: info
   json: false
-
