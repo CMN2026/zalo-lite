@@ -48,7 +48,23 @@ if [ $migrate_status -ne 0 ]; then
   esac
 fi
 
-$DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+$DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d \
+  postgres \
+  redis \
+  livekit \
+  user-service \
+  chat-service \
+  chatbot-service \
+  post-service \
+  api-gateway \
+  web-frontend \
+  ai-worker-service
+
+# Nginx binds host ports 80/443. Recreate it explicitly after upstream
+# services are up so Docker does not hit an "address already in use" race
+# while replacing the existing container during a full compose update.
+$DOCKER rm -f zalo-nginx >/dev/null 2>&1 || true
+$DOCKER compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d nginx
 
 for container in \
   zalo-nginx \
