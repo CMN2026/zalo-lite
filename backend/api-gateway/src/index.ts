@@ -152,9 +152,48 @@ app.use(
   }) as unknown as express.RequestHandler,
 );
 
+// ── Post service upload proxy (MUST come BEFORE express.json body parsing) ──
+// Creating posts uses multipart/form-data when images are attached. Keep this
+// route stream-based so the upload body is not touched by generic parsers.
+app.use(
+  "/api/posts",
+  authenticateJwt,
+  authorizeRoles("USER", "ADMIN"),
+  buildProxy(env.POST_SERVICE_URL, mapApiPrefix("/api/posts", "/posts")),
+);
+
+// Post uploads proxy (file serving, needs raw stream like /api/uploads)
+app.use(
+  "/api/post-uploads",
+  createProxyMiddleware({
+    target: env.POST_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: (p) => {
+      const rewritten = `/${p}`.replace(/^\/\//, "/").replace(/^\//, "/post-uploads/");
+      return rewritten;
+    },
+    on: {
+      proxyRes(proxyRes) {
+        proxyRes.headers["connection"] = "keep-alive";
+      },
+      error(err, _req, res) {
+        console.error("[Proxy Error /api/post-uploads]", err);
+        const response = res as Response;
+        if (!response.headersSent) {
+          response.status(503).json({
+            message: "service_unavailable",
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      },
+    },
+  }) as unknown as express.RequestHandler,
+);
+
 // IMPORTANT: Parse body here so we can re-serialize it for the proxy.
 // Without this, http-proxy-middleware tries to forward an already-consumed stream.
-// NOTE: /api/uploads is mounted ABOVE so file streaming is unaffected.
+// NOTE: /api/uploads, /api/posts and /api/post-uploads are mounted ABOVE so
+// file streaming is unaffected.
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
@@ -410,42 +449,6 @@ app.use(
   authenticateJwt,
   authorizeRoles("USER", "ADMIN"),
   buildProxy(env.CHATBOT_SERVICE_URL, mapApiPrefix("/api/chatbot", "/chatbot")),
-);
-
-// ── Post Service Routes ──────────────────────────────────────────────────────
-app.use(
-  "/api/posts",
-  authenticateJwt,
-  authorizeRoles("USER", "ADMIN"),
-  buildProxy(env.POST_SERVICE_URL, mapApiPrefix("/api/posts", "/posts")),
-);
-
-// Post uploads proxy (file serving, needs raw stream like /api/uploads)
-app.use(
-  "/api/post-uploads",
-  createProxyMiddleware({
-    target: env.POST_SERVICE_URL,
-    changeOrigin: true,
-    pathRewrite: (p) => {
-      const rewritten = `/${p}`.replace(/^\/\//, "/").replace(/^\//, "/post-uploads/");
-      return rewritten;
-    },
-    on: {
-      proxyRes(proxyRes) {
-        proxyRes.headers["connection"] = "keep-alive";
-      },
-      error(err, _req, res) {
-        console.error("[Proxy Error /api/post-uploads]", err);
-        const response = res as Response;
-        if (!response.headersSent) {
-          response.status(503).json({
-            message: "service_unavailable",
-            error: err instanceof Error ? err.message : "Unknown error",
-          });
-        }
-      },
-    },
-  }) as unknown as express.RequestHandler,
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
