@@ -285,7 +285,7 @@ export class CallService {
 
   /**
    * Leave a group call without ending it for everyone.
-   * If fewer than 2 connected participants remain, auto-ends the call.
+   * Auto-end only when nobody remains active in the room.
    */
   async leaveCall(
     callId: string,
@@ -328,12 +328,14 @@ export class CallService {
 
     await this.callRepository.saveSession(session);
 
-    // Count participants still in the call (connected or initiated — not left/declined/missed)
+    // Count participants still in the call (connected or initiated — not left/declined/missed).
+    // Be conservative here: a participant may still be in the room even if their latest
+    // state update hasn't propagated yet. We only auto-end when there is nobody left.
     const activeParticipants = session.participants.filter(
       (p) => p.state === "connected" || p.state === "initiated",
     );
 
-    if (activeParticipants.length < 2) {
+    if (activeParticipants.length < 1) {
       // Auto-end the call
       const endedSession = await this.endCall(
         callId,
