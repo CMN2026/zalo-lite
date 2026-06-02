@@ -21,6 +21,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm install --no-package-lock --omit=dev
+RUN npm install --no-package-lock --no-save prisma@6.6.0
 COPY prisma.config.ts ./
 COPY prisma ./prisma
 RUN npx prisma generate
