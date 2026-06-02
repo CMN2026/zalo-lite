@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 import { Eye, EyeOff } from "lucide-react";
@@ -225,9 +226,14 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 px-4">
       {/* Logo + Title */}
       <div className="flex flex-col items-center mb-8">
-        <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-2xl font-bold mb-4">
-          +
-        </div>
+        <Image
+          src="/auth-logo.png"
+          alt="Zalo Lite logo"
+          width={64}
+          height={64}
+          className="mb-4 rounded-2xl"
+          priority
+        />
         <h1 className="text-3xl font-bold text-slate-800 mb-2">Zalo Lite</h1>
         <p className="text-slate-500">{t.signIn}</p>
       </div>

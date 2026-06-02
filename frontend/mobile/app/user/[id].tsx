@@ -13,7 +13,9 @@ import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getAuthToken } from "../../lib/auth";
+import { useSettings } from "../../contexts/settings";
 import { useSocket } from "../../hooks/useSocket";
+import { formatLocaleDate } from "../../lib/i18n";
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://32.236.47.127:3004";
@@ -33,10 +35,53 @@ export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { emit } = useSocket();
+  const { language } = useSettings();
   const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const t =
+    language === "en"
+      ? {
+          title: "Error",
+          fetchFailed: "Unable to load user information.",
+          missingUser: "User does not exist",
+          back: "Go back",
+          openChatFailed: "Unable to open the conversation.",
+          connectFailed: "Unable to connect. Please try again.",
+          callFailed: "Unable to start the call.",
+          videoCall: "Video call",
+          message: "Message",
+          personalInfo: "Personal information",
+          bio: "Bio",
+          gender: "Gender",
+          male: "Male",
+          female: "Female",
+          other: "Other",
+          birthday: "Birthday",
+          phone: "Phone",
+          notUpdated: "Not updated",
+        }
+      : {
+          title: "Lỗi",
+          fetchFailed: "Không thể tải thông tin người dùng.",
+          missingUser: "Người dùng không tồn tại",
+          back: "Quay lại",
+          openChatFailed: "Không thể mở cuộc trò chuyện.",
+          connectFailed: "Không thể kết nối. Vui lòng thử lại.",
+          callFailed: "Không thể mở cuộc gọi.",
+          videoCall: "Gọi video",
+          message: "Nhắn tin",
+          personalInfo: "Thông tin cá nhân",
+          bio: "Bio",
+          gender: "Giới tính",
+          male: "Nam",
+          female: "Nữ",
+          other: "Khác",
+          birthday: "Ngày sinh",
+          phone: "Điện thoại",
+          notUpdated: "Chưa cập nhật",
+        };
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -58,7 +103,7 @@ export default function UserProfileScreen() {
         const data = await response.json();
         setProfile(data.data);
       } catch {
-        setError("Không thể tải thông tin người dùng.");
+        setError(t.fetchFailed);
       } finally {
         setLoading(false);
       }
@@ -103,10 +148,10 @@ export default function UserProfileScreen() {
           },
         });
       } else {
-        setError("Không thể mở cuộc trò chuyện.");
+        setError(t.openChatFailed);
       }
     } catch {
-      setError("Không thể kết nối. Vui lòng thử lại.");
+      setError(t.connectFailed);
     } finally {
       setLoading(false);
     }
@@ -120,7 +165,7 @@ export default function UserProfileScreen() {
       const conversationId = await createDirectConversation();
 
       if (!conversationId) {
-        setError("Không thể mở cuộc gọi.");
+        setError(t.callFailed);
         return;
       }
 
@@ -142,7 +187,7 @@ export default function UserProfileScreen() {
         },
       });
     } catch {
-      setError("Không thể mở cuộc gọi.");
+      setError(t.callFailed);
     } finally {
       setLoading(false);
     }
@@ -168,10 +213,10 @@ export default function UserProfileScreen() {
   if (error || !profile) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <Stack.Screen options={{ title: "Lỗi" }} />
-        <Text style={styles.errorText}>{error || "Người dùng không tồn tại"}</Text>
+        <Stack.Screen options={{ title: t.title }} />
+        <Text style={styles.errorText}>{error || t.missingUser}</Text>
         <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-          <Text style={styles.backButtonText}>Quay lại</Text>
+          <Text style={styles.backButtonText}>{t.back}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -212,45 +257,45 @@ export default function UserProfileScreen() {
           <View style={styles.actionButtonsRow}>
             <TouchableOpacity style={styles.actionButton} onPress={openVideoCall}>
               <Feather name="video" size={20} color="#1E293B" />
-              <Text style={styles.actionButtonText}>Gọi video</Text>
+              <Text style={styles.actionButtonText}>{t.videoCall}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity style={[styles.actionButton, styles.primaryButton]} onPress={handleMessage}>
               <Feather name="message-circle" size={20} color="#fff" />
-              <Text style={styles.primaryButtonText}>Nhắn tin</Text>
+              <Text style={styles.primaryButtonText}>{t.message}</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.detailsCard}>
-            <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
+            <Text style={styles.sectionTitle}>{t.personalInfo}</Text>
             
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Bio</Text>
-              <Text style={styles.detailValue}>{profile.bio || "Chưa cập nhật"}</Text>
+              <Text style={styles.detailLabel}>{t.bio}</Text>
+              <Text style={styles.detailValue}>{profile.bio || t.notUpdated}</Text>
             </View>
             
             {profile.gender && (
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Giới tính</Text>
+                <Text style={styles.detailLabel}>{t.gender}</Text>
                 <Text style={styles.detailValue}>
-                  {profile.gender === "MALE" ? "Nam" : profile.gender === "FEMALE" ? "Nữ" : "Khác"}
+                  {profile.gender === "MALE" ? t.male : profile.gender === "FEMALE" ? t.female : t.other}
                 </Text>
               </View>
             )}
             
             {profile.dateOfBirth && (
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Ngày sinh</Text>
+                <Text style={styles.detailLabel}>{t.birthday}</Text>
                 <Text style={styles.detailValue}>
-                  {new Date(profile.dateOfBirth).toLocaleDateString("vi-VN")}
+                  {formatLocaleDate(profile.dateOfBirth, language)}
                 </Text>
               </View>
             )}
             
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Điện thoại</Text>
+              <Text style={styles.detailLabel}>{t.phone}</Text>
               <Text style={styles.detailValue}>
-                {profile.phone ? "********" + profile.phone.slice(-3) : "Chưa cập nhật"}
+                {profile.phone ? "********" + profile.phone.slice(-3) : t.notUpdated}
               </Text>
             </View>
           </View>

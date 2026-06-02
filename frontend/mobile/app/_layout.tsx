@@ -25,7 +25,7 @@ export const unstable_settings = {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const { theme } = useSettings();
+  const { language, theme } = useSettings();
   const { user, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
@@ -57,7 +57,10 @@ function RootLayoutNav() {
         <Stack.Screen name="register-verify" options={{ headerShown: false }} />
         <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
         <Stack.Screen name="reset-password" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        <Stack.Screen
+          name="modal"
+          options={{ presentation: 'modal', title: language === "en" ? "Modal" : "Hộp thoại" }}
+        />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

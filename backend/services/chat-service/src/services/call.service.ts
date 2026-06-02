@@ -499,6 +499,13 @@ export class CallService {
       throw new HttpError(403, "not_a_member");
     }
 
+    const updatedSession = await this.markParticipantState(
+      input.callId,
+      input.userId,
+      input.conversationId,
+      "connected",
+    );
+
     const roomName = `call-${input.callId}`;
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
@@ -513,6 +520,7 @@ export class CallService {
         metadata: JSON.stringify({
           call_id: session.id,
           conversation_id: session.conversation_id,
+          call_type: updatedSession.call_type,
           user_id: input.userId,
         }),
       },

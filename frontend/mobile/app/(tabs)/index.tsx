@@ -22,11 +22,13 @@ import {
   Modal,
   Dimensions,
   PanResponder,
+  Linking,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "../../contexts/auth";
+import { useSettings } from "../../contexts/settings";
 import { useSocket } from "../../hooks/useSocket";
 import { getAuthToken } from "../../lib/auth";
 import { API_BASE_URL } from "../../lib/api";
@@ -298,6 +300,7 @@ function FileMessage({
   const [imgError, setImgError] = useState(false);
   const url = buildFileUrl(file.path, token);
   const isImage = file.mimetype?.startsWith("image/");
+  const isVideo = file.mimetype?.startsWith("video/");
 
   // Build headers with Authorization token for React Native Image loader
   const imageHeaders: Record<string, string> = {};
@@ -374,10 +377,96 @@ function FileMessage({
     );
   }
 
+  if (isVideo) {
+    return (
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => {
+          void Linking.openURL(url).catch((error) => {
+            console.warn("[FileMessage] Failed to open video:", url, error);
+          });
+        }}
+        style={{
+          width: 220,
+          borderRadius: 12,
+          overflow: "hidden",
+          backgroundColor: isMe ? "rgba(255,255,255,0.14)" : "#f8fafc",
+          borderWidth: isMe ? 0 : 1,
+          borderColor: "#e2e8f0",
+        }}
+      >
+        <View
+          style={{
+            height: 140,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: isMe ? "rgba(15,23,42,0.18)" : "#e2e8f0",
+          }}
+        >
+          <Text style={{ fontSize: 34, marginBottom: 6 }}>🎬</Text>
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: "600",
+              color: isMe ? "#eff6ff" : "#334155",
+            }}
+          >
+            Chạm để mở video
+          </Text>
+        </View>
+        <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: "600",
+              color: isMe ? "#fff" : "#1e293b",
+            }}
+            numberOfLines={2}
+          >
+            {file.originalName ?? file.filename}
+          </Text>
+          <Text style={{ fontSize: 11, color: isMe ? "#dbeafe" : "#64748b", marginTop: 4 }}>
+            {Math.round((file.size ?? 0) / 1024)} KB
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
   // Non-image file
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <Text style={{ fontSize: 22 }}>📎</Text>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={() => {
+        void Linking.openURL(url).catch((error) => {
+          console.warn("[FileMessage] Failed to open file:", url, error);
+        });
+      }}
+      style={{
+        width: 220,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        borderRadius: 12,
+        backgroundColor: isMe ? "rgba(255,255,255,0.12)" : "#f8fafc",
+        borderWidth: isMe ? 0 : 1,
+        borderColor: "#e2e8f0",
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+      }}
+    >
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 10,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: isMe ? "rgba(255,255,255,0.18)" : "#e2e8f0",
+        }}
+      >
+        <Text style={{ fontSize: 22 }}>📎</Text>
+      </View>
       <View style={{ flex: 1 }}>
         <Text
           style={{
@@ -389,17 +478,18 @@ function FileMessage({
         >
           {file.originalName ?? file.filename}
         </Text>
-        <Text style={{ fontSize: 11, color: isMe ? "#dbeafe" : "#94a3b8" }}>
-          {file.mimetype} · {Math.round((file.size ?? 0) / 1024)}KB
+        <Text style={{ fontSize: 11, color: isMe ? "#dbeafe" : "#64748b", marginTop: 4 }}>
+          {file.mimetype || "Tệp đính kèm"} · {Math.round((file.size ?? 0) / 1024)} KB
         </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
 // ── Main Screen ──────────────────────────────────────────────────────────────
 export default function ChatsScreen() {
   const { user } = useAuth();
+  const { language } = useSettings();
   const { isConnected, on, off, emit, join, leave } = useSocket();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -424,6 +514,32 @@ export default function ChatsScreen() {
     ? showConversationListNonceParam[0]
     : showConversationListNonceParam;
   const currentUserId = user?.id ?? "";
+  const t =
+    language === "en"
+      ? {
+          messages: "Messages",
+          online: "● Online",
+          offline: "○ Offline...",
+          searchPlaceholder: "Search...",
+          loading: "Loading...",
+          noConversations: "No conversations yet",
+          noConversationsHint: "Add friends to start chatting",
+          group: "Group",
+          onlineStatus: "Online",
+          offlineStatus: "Offline",
+        }
+      : {
+          messages: "Tin nhắn",
+          online: "● Trực tuyến",
+          offline: "○ Ngoại tuyến...",
+          searchPlaceholder: "Tìm kiếm...",
+          loading: "Đang tải...",
+          noConversations: "Chưa có cuộc trò chuyện",
+          noConversationsHint: "Kết bạn để bắt đầu nhắn tin",
+          group: "Nhóm",
+          onlineStatus: "Trực tuyến",
+          offlineStatus: "Ngoại tuyến",
+        };
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -2143,10 +2259,10 @@ export default function ChatsScreen() {
               <Text className="text-xs text-blue-100">
                 {typingIndicatorText ??
                   (activeConv.type === "group"
-                    ? "Nhóm"
+                    ? t.group
                     : activeConv.online
-                      ? "● Trực tuyến"
-                      : "● Ngoại tuyến")}
+                      ? t.online
+                      : language === "en" ? "● Offline" : "● Ngoại tuyến")}
               </Text>
             </View>
             <TouchableOpacity
@@ -2643,7 +2759,7 @@ export default function ChatsScreen() {
 
               <ScrollView className="flex-1">
                 <Text className="px-4 pt-4 pb-2 text-sm font-semibold text-slate-700">
-                  Tin nhắn
+                  {t.messages}
                 </Text>
                 {filteredMessageResults.length === 0 ? (
                   <Text className="px-4 py-2 text-sm text-slate-500">
@@ -2991,7 +3107,7 @@ export default function ChatsScreen() {
                   Tin nhắn
                 </Text>
                 <Text className="text-xs text-blue-100">
-                  {isConnected ? "● Trực tuyến" : "○ Ngoại tuyến..."}
+                  {isConnected ? t.online : t.offline}
                 </Text>
               </View>
             </View>
@@ -3010,7 +3126,7 @@ export default function ChatsScreen() {
               <TextInput
                 value={searchTerm}
                 onChangeText={setSearchTerm}
-                placeholder="Tìm kiếm..."
+                placeholder={t.searchPlaceholder}
                 placeholderTextColor="#bae6fd"
                 className="flex-1 text-sm text-white"
               />
@@ -3020,7 +3136,7 @@ export default function ChatsScreen() {
           {loading ? (
             <View className="flex-1 items-center justify-center">
               <ActivityIndicator size="large" color="#2563EB" />
-              <Text className="text-slate-400 text-sm mt-3">Đang tải...</Text>
+              <Text className="text-slate-400 text-sm mt-3">{t.loading}</Text>
             </View>
           ) : filteredConversations.length === 0 ? (
             <View className="flex-1 items-center justify-center">
@@ -3028,10 +3144,10 @@ export default function ChatsScreen() {
                 <Text className="text-4xl">💬</Text>
               </View>
               <Text className="text-slate-600 font-medium">
-                Chưa có cuộc trò chuyện
+                {t.noConversations}
               </Text>
               <Text className="text-slate-400 text-xs mt-1">
-                Kết bạn để bắt đầu nhắn tin
+                {t.noConversationsHint}
               </Text>
             </View>
           ) : (
@@ -3081,7 +3197,7 @@ export default function ChatsScreen() {
                             className={`text-[11px] ${item.online ? "text-emerald-600" : "text-slate-400"}`}
                             numberOfLines={1}
                           >
-                            {item.online ? "Trực tuyến" : "Ngoại tuyến"}
+                            {item.online ? t.onlineStatus : t.offlineStatus}
                           </Text>
                           <Text
                             className={`text-sm ${item.unread > 0 ? "text-zalo-text font-semibold" : "text-zalo-gray"}`}

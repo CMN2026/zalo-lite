@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, LogBox, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useSettings } from '../contexts/settings';
 import { useSocket } from '../hooks/useSocket';
 import { endCall, getActiveCallForConversation, getLiveKitToken, leaveCall, startCall } from '../lib/calls';
 
@@ -304,6 +305,7 @@ function RoomControls({
 export default function WebCallScreen() {
   const params = useLocalSearchParams<CallParams>();
   const router = useRouter();
+  const { language } = useSettings();
   const insets = useSafeAreaInsets();
   const connectionRef = useRef<LiveKitConnection | null>(null);
   const endedRef = useRef(false);
@@ -314,7 +316,37 @@ export default function WebCallScreen() {
   const [seconds, setSeconds] = useState(0);
   const [groupPage, setGroupPage] = useState(0);
   const [error, setError] = useState('');
-  const { emit, on, off } = useSocket();
+  const { emit, on, off, isConnected } = useSocket();
+  const t =
+    language === "en"
+      ? {
+          loadingRoom: "Opening call room...",
+          missingConversation: "Missing conversationId to start the call.",
+          permissionDenied: "You need to grant Camera and Microphone permissions to place a call.",
+          missingModule: "Missing WebRTC native module on this build.",
+          callNotReady: "The call is not ready yet. Please try again.",
+          livekitNotConfigured: "LiveKit is not configured on the server.",
+          initFailed: (message: string) => `Unable to initialize the call: ${message}`,
+          cannotJoin: "Unable to join the call",
+          unknownError: "An unknown error occurred.",
+          back: "Go back",
+          missingModuleTitle: "Missing WebRTC native module",
+          missingModuleHelp: "Run the Android dev build (`expo run:android`) to use video calling.",
+        }
+      : {
+          loadingRoom: "Đang mở phòng gọi...",
+          missingConversation: "Thiếu conversationId để bắt đầu cuộc gọi.",
+          permissionDenied: "Bạn cần cấp quyền Camera và Micro để thực hiện cuộc gọi.",
+          missingModule: "Thiếu WebRTC native module trên build hiện tại.",
+          callNotReady: "Cuộc gọi chưa sẵn sàng. Vui lòng thử gọi lại.",
+          livekitNotConfigured: "LiveKit chưa được cấu hình trên server.",
+          initFailed: (message: string) => `Không thể khởi tạo cuộc gọi: ${message}`,
+          cannotJoin: "Không thể vào cuộc gọi",
+          unknownError: "Đã xảy ra lỗi không xác định.",
+          back: "Quay lại",
+          missingModuleTitle: "Thiếu WebRTC native module",
+          missingModuleHelp: "Hãy chạy dev build Android (`expo run:android`) để dùng gọi video.",
+        };
 
   useEffect(() => {
     LogBox.ignoreLogs([
@@ -381,26 +413,32 @@ export default function WebCallScreen() {
     try {
       if (current && notifyServer) {
         if (callType === 'group') {
-          emit('call:leave', {
-            call_id: current.callId,
-            conversation_id: current.conversationId,
-            reason,
-          });
-          await leaveCall({
-            call_id: current.callId,
-            conversation_id: current.conversationId,
-          });
+          if (isConnected) {
+            emit('call:leave', {
+              call_id: current.callId,
+              conversation_id: current.conversationId,
+              reason,
+            });
+          } else {
+            await leaveCall({
+              call_id: current.callId,
+              conversation_id: current.conversationId,
+            });
+          }
         } else {
-          emit('call:end', {
-            call_id: current.callId,
-            conversation_id: current.conversationId,
-            reason,
-          });
-          await endCall({
-            call_id: current.callId,
-            conversation_id: current.conversationId,
-            reason,
-          });
+          if (isConnected) {
+            emit('call:end', {
+              call_id: current.callId,
+              conversation_id: current.conversationId,
+              reason,
+            });
+          } else {
+            await endCall({
+              call_id: current.callId,
+              conversation_id: current.conversationId,
+              reason,
+            });
+          }
         }
       }
     } catch {
@@ -414,14 +452,14 @@ export default function WebCallScreen() {
     } catch {
       // Ignore audio-session shutdown failures during cleanup.
     }
-  }, [callType, emit]);
+  }, [callType, emit, isConnected]);
 
   useEffect(() => {
     let cancelled = false;
 
     const bootstrapCall = async () => {
       if (!conversationId) {
-        setError('Thiếu conversationId để bắt đầu cuộc gọi.');
+        setError(t.missingConversation);
         setLoading(false);
         return;
       }
@@ -514,15 +552,15 @@ export default function WebCallScreen() {
         });
 
         if (rawMessage.includes('media_permission_denied')) {
-          setError('Bạn cần cấp quyền Camera và Micro để thực hiện cuộc gọi.');
+          setError(t.permissionDenied);
         } else if (rawMessage.includes('webrtc_native_module_missing')) {
-          setError('Thiếu WebRTC native module trên build hiện tại.');
+          setError(t.missingModule);
         } else if (rawMessage.includes('call_not_found') || rawMessage.includes('call_not_active')) {
-          setError('Cuộc gọi chưa sẵn sàng. Vui lòng thử gọi lại.');
+          setError(t.callNotReady);
         } else if (rawMessage.includes('livekit_not_configured')) {
-          setError('LiveKit chưa được cấu hình trên server.');
+          setError(t.livekitNotConfigured);
         } else {
-          setError(`Không thể khởi tạo cuộc gọi: ${rawMessage}`);
+          setError(t.initFailed(rawMessage));
         }
 
         try {
@@ -602,7 +640,7 @@ export default function WebCallScreen() {
       <View style={styles.loadingWrap}>
         <Stack.Screen options={{ headerShown: false }} />
         <ActivityIndicator size="large" color="#FFFFFF" />
-        <Text style={styles.loadingText}>Đang mở phòng gọi...</Text>
+        <Text style={styles.loadingText}>{t.loadingRoom}</Text>
       </View>
     );
   }
@@ -612,10 +650,10 @@ export default function WebCallScreen() {
       <SafeAreaView style={[styles.errorScreen, { paddingTop: insets.top + 12 }]}> 
         <Stack.Screen options={{ headerShown: false }} />
         <Ionicons name="alert-circle-outline" size={42} color="#F97316" />
-        <Text style={styles.errorTitle}>Không thể vào cuộc gọi</Text>
-        <Text style={styles.errorText}>{error || 'Đã xảy ra lỗi không xác định.'}</Text>
+        <Text style={styles.errorTitle}>{t.cannotJoin}</Text>
+        <Text style={styles.errorText}>{error || t.unknownError}</Text>
         <Pressable style={styles.errorButton} onPress={() => router.back()}>
-          <Text style={styles.errorButtonText}>Quay lại</Text>
+          <Text style={styles.errorButtonText}>{t.back}</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -626,10 +664,10 @@ export default function WebCallScreen() {
       <SafeAreaView style={[styles.errorScreen, { paddingTop: insets.top + 12 }]}> 
         <Stack.Screen options={{ headerShown: false }} />
         <Ionicons name="warning-outline" size={42} color="#F97316" />
-        <Text style={styles.errorTitle}>Thiếu WebRTC native module</Text>
-        <Text style={styles.errorText}>Hãy chạy dev build Android (`expo run:android`) để dùng gọi video.</Text>
+        <Text style={styles.errorTitle}>{t.missingModuleTitle}</Text>
+        <Text style={styles.errorText}>{t.missingModuleHelp}</Text>
         <Pressable style={styles.errorButton} onPress={() => router.back()}>
-          <Text style={styles.errorButtonText}>Quay lại</Text>
+          <Text style={styles.errorButtonText}>{t.back}</Text>
         </Pressable>
       </SafeAreaView>
     );
