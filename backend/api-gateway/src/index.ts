@@ -320,10 +320,14 @@ async function forwardJsonToUserService(
 // Public routes — no auth required
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.use(
-  "/api/auth",
-  buildProxy(env.USER_SERVICE_URL, mapApiPrefix("/api/auth", "/auth")),
-);
+app.use("/api/auth", async (req, res, next) => {
+  try {
+    const upstreamPath = mapApiPrefix("/api/auth", "/auth")(req.originalUrl);
+    await forwardJsonToUserService(req, res, upstreamPath);
+  } catch (error) {
+    next(error);
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Protected routes — JWT required
