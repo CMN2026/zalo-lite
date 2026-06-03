@@ -49,6 +49,9 @@ export default function LoginPage() {
           errorMap: {
             invalid_credentials: "Incorrect phone number, email, or password.",
             invalid_or_expired_token: "Your session has expired. Please sign in again.",
+            gateway_internal_error: "The login server is temporarily unavailable. Please try again later.",
+            internal_server_error: "The login server encountered an error. Please try again later.",
+            service_unavailable: "The login service is currently unavailable. Please try again later.",
           } satisfies Record<string, string>,
         }
       : {
@@ -71,6 +74,9 @@ export default function LoginPage() {
           errorMap: {
             invalid_credentials: "Số điện thoại, email hoặc mật khẩu không đúng.",
             invalid_or_expired_token: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+            gateway_internal_error: "Máy chủ đăng nhập đang gặp sự cố. Vui lòng thử lại sau.",
+            internal_server_error: "Dịch vụ đăng nhập đang gặp lỗi. Vui lòng thử lại sau.",
+            service_unavailable: "Dịch vụ đăng nhập tạm thời không khả dụng. Vui lòng thử lại sau.",
           } satisfies Record<string, string>,
         };
 
